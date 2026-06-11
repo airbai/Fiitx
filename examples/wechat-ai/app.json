@@ -1,0 +1,34 @@
+{
+  "pages": [
+    "customer-chatbox-miniapp/pages/index/index"
+  ],
+  "subPackages": [
+    {
+      "root": "customer-chatbox-miniapp/skills",
+      "pages": [],
+      "independent": true
+    }
+  ],
+  "lazyCodeLoading": "requiredComponents",
+  "window": {
+    "navigationBarTitleText": "Deepsix Channel Demo",
+    "navigationBarBackgroundColor": "#f7f8fb",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f8fb"
+  },
+  "agent": {
+    "skills": [
+      {
+        "name": "drink",
+        "description": "咖啡点单场景：推荐饮品、选择规格、填写收货地址、生成订单确认卡",
+        "path": "customer-chatbox-miniapp/skills/drink-skill"
+      }
+    ],
+    "pageMetadata": "page-meta.json"
+  },
+  "style": "v2",
+  "requiredPrivateInfos": [
+    "chooseAddress"
+  ],
+  "sitemapLocation": "sitemap.json"
+}

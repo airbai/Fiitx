@@ -16,8 +16,11 @@ function createWorkspaceManager({ policyEngine, fallbackRoot = () => process.cwd
       root = "";
     }
 
-    const resolved = path.resolve(root || path.join(os.homedir(), "Fiitx Workspaces"));
-    const safeRoot = isFilesystemRoot(resolved) ? path.join(os.homedir(), "Fiitx Workspaces") : resolved;
+    // Fiitx workspace name kept for easy restore:
+    // const defaultRoot = path.join(os.homedir(), "Fiitx Workspaces");
+    const defaultRoot = path.join(os.homedir(), "Deepsix Workspaces");
+    const resolved = path.resolve(root || defaultRoot);
+    const safeRoot = isFilesystemRoot(resolved) ? defaultRoot : resolved;
     fs.mkdirSync(safeRoot, { recursive: true });
     return safeRoot;
   }

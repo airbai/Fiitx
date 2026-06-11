@@ -1,0 +1,9 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "name": "Deepsix 咖啡助手",
+      "description": "客户在小程序 chatbox 里输入咖啡点单需求，Deepsix Gateway 路由到 drink-skill 并返回微信卡片 payload"
+    }
+  ]
+}

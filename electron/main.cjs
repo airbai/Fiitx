@@ -5,15 +5,22 @@ const artifactEngine = require("./services/artifact-engine.cjs");
 const policyEngine = require("./services/policy-engine.cjs");
 const { createAgentRuntime } = require("./services/agent-runtime.cjs");
 const { createModelRouter } = require("./services/model-router.cjs");
+const { createSessionLogStore } = require("./services/session-log-store.cjs");
+const { createTelemetryStore } = require("./services/telemetry-store.cjs");
 const { createThreadStore } = require("./services/thread-store.cjs");
 const { createToolRuntime } = require("./services/tool-runtime.cjs");
 const { createWorkspaceManager } = require("./services/workspace-manager.cjs");
+const { createWechatChannelServer } = require("./services/wechat-channel-server.cjs");
+const { createWechatAiSkillGateway } = require("./services/wechat-ai-skill-gateway.cjs");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+let mainWindow = null;
 
 function getDefaultWorkspaceRoot() {
   const documentsPath = app.getPath("documents");
-  const root = path.join(documentsPath, "Fiitx Workspaces");
+  // Fiitx branding kept for easy restore:
+  // const root = path.join(documentsPath, "Fiitx Workspaces");
+  const root = path.join(documentsPath, "Deepsix Workspaces");
   fs.mkdirSync(root, { recursive: true });
   return root;
 }
@@ -24,12 +31,28 @@ const workspaceManager = createWorkspaceManager({
 });
 const toolRuntime = createToolRuntime({ workspaceManager });
 const modelRouter = createModelRouter({ app, safeStorage });
+const sessionLogStore = createSessionLogStore({ app });
+const telemetryStore = createTelemetryStore({ app });
 const threadStore = createThreadStore({ app });
+const wechatAiSkillGateway = createWechatAiSkillGateway();
 const agentRuntime = createAgentRuntime({
   artifactEngine,
   modelRouter,
   policyEngine,
-  toolRuntime
+  sessionLogStore,
+  telemetryStore,
+  toolRuntime,
+  wechatAiSkillGateway
+});
+const wechatChannelServer = createWechatChannelServer({
+  wechatAiSkillGateway,
+  port: Number(process.env.DEEPSIX_WECHAT_CHANNEL_PORT || 18766),
+  onInboundMessage: (payload) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("wechat-channel:inbound", payload);
+  }
 });
 
 function createWindow() {
@@ -39,14 +62,25 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: "#f6f7fb",
-    title: "Fiitx",
+    // Fiitx branding kept for easy restore:
+    // title: "Fiitx",
+    title: "Deepsix",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
-    icon: path.join(__dirname, "../assets/icon-1024.png"),
+    // Fiitx icon kept for easy restore:
+    // icon: path.join(__dirname, "../assets/icon-1024.png"),
+    icon: path.join(__dirname, "../assets/deepsix-logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
+    }
+  });
+  mainWindow = window;
+
+  window.on("closed", () => {
+    if (mainWindow === window) {
+      mainWindow = null;
     }
   });
 
@@ -262,6 +296,9 @@ function parsePathPayload(payload) {
 
 app.whenReady().then(() => {
   modelRouter.ensureSeededProfiles();
+  wechatChannelServer.start().catch((error) => {
+    console.error("[wechat-channel] failed to start", error);
+  });
 
   ipcMain.handle("app:get-platform", () => ({
     platform: process.platform,
@@ -349,6 +386,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle("thread-state:save", (_event, payload) => threadStore.save(payload));
 
+  ipcMain.handle("wechat-ai:discover-skills", () => wechatAiSkillGateway.discoverSkills());
+
+  ipcMain.handle("wechat-ai:route-prompt", (_event, payload) => wechatAiSkillGateway.routePrompt(payload));
+
+  ipcMain.handle("wechat-ai:invoke-skill", (_event, payload) => wechatAiSkillGateway.callApi(payload));
+
+  ipcMain.handle("wechat-channel:status", () => wechatChannelServer.getStatus());
+
   ipcMain.handle("agent:run-task", async (event, payload) => {
     const emitProgress = createProgressEmitter(event, payload?.taskId, payload?.threadId);
 
@@ -410,6 +455,18 @@ app.whenReady().then(() => {
     return agentRuntime.compact(payload, emitProgress);
   });
 
+  ipcMain.handle("agent:session-tree", (_event, payload = {}) => {
+    return sessionLogStore.getTree(payload.threadId || payload.taskId || payload.sessionId || "default");
+  });
+
+  ipcMain.handle("agent:session-replay", (_event, payload = {}) => {
+    return sessionLogStore.replay(payload.threadId || payload.taskId || payload.sessionId || "default", payload);
+  });
+
+  ipcMain.handle("agent:telemetry-summary", (_event, payload = {}) => {
+    return telemetryStore.summarize(payload.limit || 500);
+  });
+
   createWindow();
 
   app.on("activate", () => {
@@ -423,4 +480,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  void wechatChannelServer.stop();
 });

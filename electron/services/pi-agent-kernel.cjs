@@ -1,3 +1,5 @@
+const { createToolCallingAgentSession } = require("./tool-agent-loop.cjs");
+
 const EMPTY_USAGE = {
   input: 0,
   output: 0,
@@ -78,7 +80,9 @@ function contextToPrompt(context) {
 function createPiModel(profile, payload) {
   return {
     id: profile?.model || payload.model || "fiitx-model",
-    name: profile?.model || payload.model || "Fiitx Model",
+    // Fiitx branding kept for easy restore:
+    // name: profile?.model || payload.model || "Fiitx Model",
+    name: profile?.model || payload.model || "Deepsix Model",
     api: "fiitx-openai-compatible",
     provider: profile?.provider || "fiitx",
     baseUrl: profile?.baseUrl || "",
@@ -109,6 +113,48 @@ function createUserMessage(text) {
     role: "user",
     content: text ? [{ type: "text", text }] : [],
     timestamp: Date.now()
+  };
+}
+
+function createExternalContextMessage(payload) {
+  const prompt = payload.externalContext?.prompt;
+  if (!prompt) {
+    return null;
+  }
+
+  return {
+    role: "user",
+    content: [{ type: "text", text: prompt }],
+    timestamp: Date.now(),
+    fiitxContextKind: "external-url"
+  };
+}
+
+function createThreadContextMessage(payload) {
+  const prompt = payload.threadContextPrompt;
+  if (!prompt) {
+    return null;
+  }
+
+  return {
+    role: "user",
+    content: [{ type: "text", text: prompt }],
+    timestamp: Date.now(),
+    fiitxContextKind: "thread-semantic"
+  };
+}
+
+function createChannelContextMessage(payload) {
+  const prompt = payload.channelAdapterPrompt;
+  if (!prompt) {
+    return null;
+  }
+
+  return {
+    role: "user",
+    content: [{ type: "text", text: prompt }],
+    timestamp: Date.now(),
+    fiitxContextKind: "channel-adapter"
   };
 }
 
@@ -194,8 +240,46 @@ async function runPiAgentTurn({ payload, profile, modelRouter, systemPrompt, use
   return session.prompt(userPrompt);
 }
 
-async function createPiAgentSession({ payload, profile, modelRouter, systemPrompt, emitProgress = () => undefined }) {
+async function createPiAgentSession({
+  payload,
+  profile,
+  modelRouter,
+  systemPrompt,
+  emitProgress = () => undefined,
+  toolRuntime,
+  toolRegistry,
+  policyGate,
+  sessionLogStore,
+  telemetryStore,
+  signal
+}) {
+  if (
+    payload?.intent?.mode === "coding" &&
+    payload?.enableToolCalling !== false &&
+    profile?.supportsTools !== false &&
+    toolRuntime &&
+    policyGate &&
+    typeof modelRouter.callChatMessages === "function"
+  ) {
+    return createToolCallingAgentSession({
+      payload,
+      profile,
+      modelRouter,
+      systemPrompt,
+      toolRuntime,
+      toolRegistry,
+      policyGate,
+      sessionLogStore,
+      telemetryStore,
+      emitProgress,
+      signal
+    });
+  }
+
   const { Agent, createAssistantMessageEventStream } = await loadPiModules();
+  const externalContextMessage = createExternalContextMessage(payload);
+  const threadContextMessage = createThreadContextMessage(payload);
+  const channelContextMessage = createChannelContextMessage(payload);
   const agent = new Agent({
     initialState: {
       systemPrompt,
@@ -210,6 +294,37 @@ async function createPiAgentSession({ payload, profile, modelRouter, systemPromp
       profile,
       payload
     }),
+    transformContext: async (messages, signal) => {
+      if (signal?.aborted) {
+        return messages;
+      }
+      const injected = [];
+      if (threadContextMessage) {
+        injected.push(threadContextMessage);
+      }
+      if (channelContextMessage) {
+        injected.push(channelContextMessage);
+      }
+      if (externalContextMessage) {
+        injected.push(externalContextMessage);
+      }
+      if (injected.length === 0) {
+        return messages;
+      }
+      emitProgress({
+        status: "running",
+        title: "transformContext",
+        detail: [
+          threadContextMessage ? "线程语义上下文" : "",
+          channelContextMessage ? "通道上下文" : "",
+          externalContextMessage ? "外部文档上下文" : ""
+        ].filter(Boolean).join(" + ")
+      });
+      return [
+        ...injected,
+        ...messages
+      ];
+    },
     steeringMode: "all",
     followUpMode: "one-at-a-time",
     toolExecution: "sequential",
@@ -347,7 +462,9 @@ async function createPiAgentSession({ payload, profile, modelRouter, systemPromp
       const summary = await modelRouter.callChat(profile, source, {
         timeoutMs: 60000,
         systemPrompt: [
-          "你负责压缩 Fiitx Agent session 上下文。",
+          // Fiitx branding kept for easy restore:
+          // "你负责压缩 Fiitx Agent session 上下文。",
+          "你负责压缩 Deepsix Agent session 上下文。",
           "保留用户目标、关键约束、已完成动作、未完成动作、文件路径、审批结果和错误信息。",
           "输出中文摘要，避免丢失可恢复执行所需的信息。",
           customInstructions ? `额外要求：${customInstructions}` : ""

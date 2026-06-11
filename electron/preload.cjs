@@ -12,6 +12,15 @@ contextBridge.exposeInMainWorld("fiitx", {
   testModelConnection: (payload) => ipcRenderer.invoke("model:test", payload),
   loadThreadState: () => ipcRenderer.invoke("thread-state:load"),
   saveThreadState: (payload) => ipcRenderer.invoke("thread-state:save", payload),
+  discoverWechatAiSkills: () => ipcRenderer.invoke("wechat-ai:discover-skills"),
+  routeWechatAiPrompt: (payload) => ipcRenderer.invoke("wechat-ai:route-prompt", payload),
+  invokeWechatAiSkill: (payload) => ipcRenderer.invoke("wechat-ai:invoke-skill", payload),
+  getWechatChannelStatus: () => ipcRenderer.invoke("wechat-channel:status"),
+  onWechatChannelInbound: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("wechat-channel:inbound", listener);
+    return () => ipcRenderer.removeListener("wechat-channel:inbound", listener);
+  },
   runAgentTask: (payload) => ipcRenderer.invoke("agent:run-task", payload),
   promptAgent: (payload) => ipcRenderer.invoke("agent:prompt", payload),
   steerAgent: (payload) => ipcRenderer.invoke("agent:steer", payload),
@@ -19,6 +28,9 @@ contextBridge.exposeInMainWorld("fiitx", {
   abortAgent: (payload) => ipcRenderer.invoke("agent:abort", payload),
   continueAgent: (payload) => ipcRenderer.invoke("agent:continue", payload),
   compactAgent: (payload) => ipcRenderer.invoke("agent:compact", payload),
+  getAgentSessionTree: (payload) => ipcRenderer.invoke("agent:session-tree", payload),
+  replayAgentSession: (payload) => ipcRenderer.invoke("agent:session-replay", payload),
+  getAgentTelemetrySummary: (payload) => ipcRenderer.invoke("agent:telemetry-summary", payload),
   onAgentProgress: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("agent:progress", listener);

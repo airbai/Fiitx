@@ -93,8 +93,18 @@ function formatTimeoutSeconds(timeoutMs) {
   return Math.max(1, Math.round(timeoutMs / 1000));
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("用户已停止当前任务。"));
+      return;
+    }
+    const timeout = setTimeout(resolve, ms);
+    signal?.addEventListener?.("abort", () => {
+      clearTimeout(timeout);
+      reject(new Error("用户已停止当前任务。"));
+    }, { once: true });
+  });
 }
 
 function isHttpUrl(value) {
@@ -252,7 +262,7 @@ function createModelRouter({ app, safeStorage }) {
       id
     });
 
-    const next = profiles.filter((profile) => profile.id !== id).concat(storedProfile);
+    const next = [storedProfile].concat(profiles.filter((profile) => profile.id !== id));
     writeProfiles(next);
     return sanitizeProfile(storedProfile);
   }
@@ -457,7 +467,27 @@ function createModelRouter({ app, safeStorage }) {
     );
   }
 
-  async function callChat(profile, prompt, options = {}) {
+  function normalizeToolCall(call, index) {
+    const rawArguments = call?.function?.arguments || call?.arguments || "{}";
+    let parsedArguments = {};
+    try {
+      parsedArguments = typeof rawArguments === "string" ? JSON.parse(rawArguments || "{}") : rawArguments || {};
+    } catch {
+      parsedArguments = {
+        _raw: String(rawArguments || "")
+      };
+    }
+
+    return {
+      id: call?.id || `tool-call-${Date.now()}-${index}`,
+      type: call?.type || "function",
+      name: call?.function?.name || call?.name || "",
+      arguments: parsedArguments,
+      rawArguments
+    };
+  }
+
+  async function callChatMessages(profile, messages, options = {}) {
     const apiKey = decryptApiKey(profile?.encryptedApiKey);
     if (!profile || !apiKey) {
       throw new Error("没有找到可解密的模型 API Key");
@@ -483,18 +513,9 @@ function createModelRouter({ app, safeStorage }) {
           },
           body: JSON.stringify({
             model: normalizeModelName(profile.model),
-            messages: [
-              {
-                role: "system",
-                content:
-                  options.systemPrompt ||
-                  "你是 Fiitx Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
-              },
-              {
-                role: "user",
-                content: prompt
-              }
-            ],
+            messages,
+            tools: options.tools?.length ? options.tools : undefined,
+            tool_choice: options.tools?.length ? options.toolChoice || "auto" : undefined,
             temperature: 0.2,
             stream: false
           }),
@@ -516,16 +537,52 @@ function createModelRouter({ app, safeStorage }) {
       }
 
       const data = JSON.parse(raw);
-      const content = data?.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new Error("模型响应中没有 message content");
+      const choice = data?.choices?.[0];
+      const message = choice?.message;
+      if (!message) {
+        throw new Error("模型响应中没有 message");
       }
 
-      return content.trim();
+      const content = typeof message.content === "string" ? message.content.trim() : "";
+      return {
+        content,
+        finishReason: choice?.finish_reason || "",
+        message: {
+          role: message.role || "assistant",
+          content,
+          tool_calls: message.tool_calls || []
+        },
+        rawToolCalls: message.tool_calls || [],
+        toolCalls: (message.tool_calls || []).map(normalizeToolCall),
+        raw: data
+      };
     } finally {
       clearTimeout(timeout);
       options.signal?.removeEventListener?.("abort", abortListener);
     }
+  }
+
+  async function callChat(profile, prompt, options = {}) {
+    const result = await callChatMessages(profile, [
+      {
+        role: "system",
+        content:
+          options.systemPrompt ||
+          // Fiitx branding kept for easy restore:
+          // "你是 Fiitx Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
+          "你是 Deepsix Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ], options);
+
+    if (!result.content) {
+      throw new Error("模型响应中没有 message content");
+    }
+
+    return result.content;
   }
 
   async function downloadImageToCache(url, prompt, model) {
@@ -721,7 +778,7 @@ function createModelRouter({ app, safeStorage }) {
     const startedAt = Date.now();
     const timeoutMs = options.timeoutMs || 600000;
     while (Date.now() - startedAt < timeoutMs) {
-      await delay(options.pollIntervalMs || 5000);
+      await delay(options.pollIntervalMs || 5000, options.signal);
       const status = await fetchJson(videoStatusEndpointForProfile(profile), {
         method: "POST",
         headers: {
@@ -790,7 +847,7 @@ function createModelRouter({ app, safeStorage }) {
     const timeoutMs = options.timeoutMs || 600000;
     const statusUrl = absoluteUrl(openRouterVideosEndpoint(profile), pollingUrl);
     while (Date.now() - startedAt < timeoutMs) {
-      await delay(options.pollIntervalMs || 5000);
+      await delay(options.pollIntervalMs || 5000, options.signal);
       const status = await fetchJson(statusUrl, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: options.signal
@@ -904,6 +961,9 @@ function createModelRouter({ app, safeStorage }) {
     const profiles = resolveModelProfiles(options.preferredModel, intent);
     const errors = [];
     for (const profile of profiles) {
+      if (options.signal?.aborted) {
+        throw new Error("用户已停止当前媒体生成任务。");
+      }
       options.onAttempt?.(profile);
       try {
         if (intent.modality === "image") {
@@ -916,6 +976,9 @@ function createModelRouter({ app, safeStorage }) {
           return { ...(await callAudio(profile, prompt, options)), profile };
         }
       } catch (error) {
+        if (options.signal?.aborted) {
+          throw new Error("用户已停止当前媒体生成任务。");
+        }
         errors.push(`${profile.provider} / ${profile.model}: ${error instanceof Error ? error.message : "媒体生成失败"}`);
       }
     }
@@ -943,6 +1006,7 @@ function createModelRouter({ app, safeStorage }) {
     callMediaWithFallback,
     callImage,
     callChat,
+    callChatMessages,
     ensureSeededProfiles,
     listProfiles,
     normalizeModelName,

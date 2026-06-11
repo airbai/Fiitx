@@ -33,11 +33,8 @@ import {
   LucideIcon,
   MessageSquare,
   Mic,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
   PanelRight,
-  PanelRightClose,
-  PanelRightOpen,
   Play,
   Plus,
   Presentation,
@@ -47,7 +44,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
-  Sparkles,
+  Square,
   SquarePlus,
   Store,
   Terminal,
@@ -55,7 +52,16 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import logoUrl from "../assets/fiitx-logo.png";
+// Fiitx logo kept for easy restore:
+// import logoUrl from "../assets/fiitx-logo.png";
+import logoUrl from "../assets/deepsix-logo.png";
+
+// Fiitx product name kept for easy restore:
+// const PRODUCT_NAME = "Fiitx";
+// const PRODUCT_EYEBROW = "Fiitx BYOM Agent Desktop";
+const PRODUCT_NAME = "Deepsix";
+const PRODUCT_EYEBROW = "Deepsix BYOM Agent Desktop";
+const PRODUCT_SUBTITLE = "Enterprise Agent";
 
 hljs.registerLanguage("bash", bash);
 hljs.registerLanguage("sh", bash);
@@ -133,12 +139,48 @@ type AuditLog = {
 };
 
 type AgentSpec = {
+  id: string;
   name: string;
   scope: string;
+  objective: string;
+  systemPrompt: string;
   model: string;
   status: "ready" | "active" | "draft";
   tools: string[];
+  skills: string[];
+  triggers: string[];
+  systems: string[];
+  stages: AgentStage[];
+  metrics: string[];
+  channels: string[];
+  policy: PermissionMode;
   accent: string;
+};
+
+type AgentStage = {
+  name: string;
+  owner: string;
+  trigger: string;
+  action: string;
+  output: string;
+};
+
+type ChannelAdapterSpec = {
+  id: string;
+  name: string;
+  channelType: "desktop-ui" | "wechat-miniprogram-ai";
+  description: string;
+  transport: string;
+  entrypoint: string;
+  sessionKeyStrategy: string;
+  status: "active" | "ready" | "draft";
+  capabilities: string[];
+  contextSources: string[];
+  outputModes: string[];
+  followUpPolicy: string;
+  agentBindings: string[];
+  systemPrompt: string;
+  sampleEvent: string;
 };
 
 type ModelForm = {
@@ -217,6 +259,7 @@ const defaultPolicySettings: PolicySettings = {
   sandboxMode: "workspace-write",
   defaultPermissionMode: "ask",
   actionModes: {
+    "web.fetch_url": "auto",
     "workspace.scan": "ask",
     "workspace.write_manifest": "ask",
     "shell.exec": "ask",
@@ -248,7 +291,350 @@ const initialApprovals: Approval[] = [];
 
 const initialAuditLogs: AuditLog[] = [];
 
-const agents: AgentSpec[] = [];
+const defaultAgentSpecs: AgentSpec[] = [
+  {
+    id: "hotel-orchestrator",
+    name: "酒店文旅总控 Agent",
+    scope: "跨部门任务分发、上下文编排、审批与质量闭环",
+    objective: "把客房、收益、营销、服务、运营和文旅产品放到同一个 AgentSession 中，按业务意图自动选择子 Agent、Skill 和外部系统。",
+    systemPrompt: "你是酒店文旅行业的大 Agent 调度器。先理解业务目标和当前上下文，再选择最小必要子 Agent 与工具。涉及订单、价格、退款、客户隐私、对外发布和财务动作时必须走 Policy Gate。",
+    model: AUTO_MODEL_LABEL,
+    status: "active",
+    tools: ["intent.route", "agent.dispatch", "policy.request", "session.compact", "artifact.report"],
+    skills: ["AGENTS.md", "hotel-skill-registry", "mcp.json", "external-context"],
+    triggers: ["用户在工作台直接下达任务", "PMS/CRM/渠道事件进入", "微信/企微会话携带 followUp/context", "定时任务或异常告警"],
+    systems: ["PMS", "CRM", "RMS", "OTA", "POS", "工单系统", "企业微信/微信小程序"],
+    stages: [
+      {
+        name: "理解意图",
+        owner: "总控 Agent",
+        trigger: "用户或外部系统事件",
+        action: "transformContext 后识别任务类型、风险、所需数据源",
+        output: "Agent route plan"
+      },
+      {
+        name: "选择 Skill",
+        owner: "总控 Agent",
+        trigger: "route plan 已生成",
+        action: "按 SKILL.md/mcp.json 声明选择原子接口和展示组件",
+        output: "Tool call manifest"
+      },
+      {
+        name: "执行与审批",
+        owner: "Policy Engine",
+        trigger: "工具调用前",
+        action: "beforeToolCall 检查权限、客户隐私、价格和财务风险",
+        output: "允许、阻断或请求审批"
+      },
+      {
+        name: "交付闭环",
+        owner: "Artifact Engine",
+        trigger: "工具结果返回",
+        action: "生成报告、卡片、话术、工单或系统更新摘要",
+        output: "可审计结果"
+      }
+    ],
+    metrics: ["跨系统人工查询减少 40%", "审批动作可追溯", "任务上下文可恢复", "输出质量统一"],
+    channels: ["Deepsix Workbench", "微信小程序 AI", "企业微信", "PMS 事件"],
+    policy: "ask",
+    accent: "blue"
+  },
+  {
+    id: "revenue-manager",
+    name: "收益管理 Agent",
+    scope: "价格、房态、渠道库存、竞对和活动策略",
+    objective: "根据入住率、提前期、节假日、竞对价格和渠道表现给出可审批的调价建议，减少人工看表和重复操作。",
+    systemPrompt: "你是酒店收益管理 Agent。你只能提出可解释的价格和库存建议；直接改价、关房、开促销必须请求审批。",
+    model: AUTO_MODEL_LABEL,
+    status: "ready",
+    tools: ["pms.availability.read", "rms.forecast.read", "ota.rate.read", "rate.recommend", "artifact.diff"],
+    skills: ["revenue-pricing", "competitor-rate-scan", "holiday-demand-forecast"],
+    triggers: ["每日 08:30 收益巡检", "入住率低于阈值", "竞对价格异常", "节假日前 14 天"],
+    systems: ["PMS", "RMS", "OTA", "BI 数据仓库"],
+    stages: [
+      {
+        name: "读取经营数据",
+        owner: "收益 Agent",
+        trigger: "巡检或用户询问",
+        action: "读取房态、ADR、RevPAR、渠道库存和竞对价格",
+        output: "收益上下文"
+      },
+      {
+        name: "生成策略",
+        owner: "收益 Agent",
+        trigger: "上下文完整",
+        action: "给出调价、控房、促销和渠道优先级建议",
+        output: "价格策略草案"
+      },
+      {
+        name: "审批执行",
+        owner: "Policy Engine",
+        trigger: "涉及价格或库存写入",
+        action: "请求审批后调用 PMS/RMS 写入接口",
+        output: "执行记录"
+      }
+    ],
+    metrics: ["RevPAR 提升", "人工看板时间降低", "异常价格及时发现", "调价有审计记录"],
+    channels: ["工作台", "定时任务", "管理层日报"],
+    policy: "ask",
+    accent: "green"
+  },
+  {
+    id: "guest-service",
+    name: "前台住中服务 Agent",
+    scope: "预订确认、入住问答、续住、换房、加购和工单",
+    objective: "把前台高频问答和住中服务流转自动化，前台只处理异常、审批和有情绪的复杂场景。",
+    systemPrompt: "你是前台住中服务 Agent。回答必须基于酒店政策和当前订单上下文。涉及隐私、退款、换房、账务和跨部门工单时必须记录并走审批策略。",
+    model: AUTO_MODEL_LABEL,
+    status: "ready",
+    tools: ["booking.lookup", "guest.profile.read", "ticket.create", "upsell.offer", "message.reply"],
+    skills: ["guest-service", "reservation-assistant", "stay-ticket-router"],
+    triggers: ["客人在微信小程序提问", "入住前自动提醒", "住中服务请求", "前台转交"],
+    systems: ["PMS", "CRM", "工单系统", "微信小程序", "企业微信"],
+    stages: [
+      {
+        name: "识别客人上下文",
+        owner: "服务 Agent",
+        trigger: "消息进入",
+        action: "读取订单、会员等级、入住日期和历史偏好",
+        output: "客人上下文"
+      },
+      {
+        name: "解决或分派",
+        owner: "服务 Agent",
+        trigger: "意图明确",
+        action: "直接回答、生成加购推荐或创建工单",
+        output: "回复/工单"
+      },
+      {
+        name: "住中闭环",
+        owner: "工单系统",
+        trigger: "工单完成",
+        action: "同步完成状态并生成满意度追问",
+        output: "服务记录"
+      }
+    ],
+    metrics: ["高频问答自动化率", "工单响应时长", "加购转化率", "前台重复工作减少"],
+    channels: ["微信小程序 AI", "企业微信", "前台工作台"],
+    policy: "ask",
+    accent: "blue"
+  },
+  {
+    id: "complaint-recovery",
+    name: "客诉补救 Agent",
+    scope: "差评预警、投诉分级、补救方案和复盘",
+    objective: "在客诉出现早期识别风险，生成标准化补救方案，并把高风险动作交给主管审批。",
+    systemPrompt: "你是客诉补救 Agent。先安抚情绪，再核查事实和责任边界。不得擅自承诺赔付、退款或法律责任；需要主管审批。",
+    model: AUTO_MODEL_LABEL,
+    status: "ready",
+    tools: ["sentiment.classify", "review.scan", "ticket.escalate", "compensation.plan", "artifact.postmortem"],
+    skills: ["complaint-triage", "service-recovery", "review-response"],
+    triggers: ["差评出现", "情绪强烈关键词", "工单超时", "客人要求补偿"],
+    systems: ["点评平台", "OTA", "CRM", "工单系统", "PMS"],
+    stages: [
+      {
+        name: "风险分级",
+        owner: "客诉 Agent",
+        trigger: "评论或消息进入",
+        action: "识别情绪、客诉类型、金额和曝光风险",
+        output: "风险等级"
+      },
+      {
+        name: "补救建议",
+        owner: "客诉 Agent",
+        trigger: "风险等级确定",
+        action: "生成话术、补偿建议和部门分派",
+        output: "补救方案"
+      },
+      {
+        name: "复盘沉淀",
+        owner: "运营质检 Agent",
+        trigger: "客诉关闭",
+        action: "总结根因、责任部门和预防动作",
+        output: "复盘报告"
+      }
+    ],
+    metrics: ["差评响应时长", "投诉升级率下降", "补救一致性", "复盘完成率"],
+    channels: ["工单系统", "点评平台", "工作台"],
+    policy: "ask",
+    accent: "amber"
+  },
+  {
+    id: "marketing-content",
+    name: "营销内容 Agent",
+    scope: "活动策划、图文短视频、渠道投放和私域运营",
+    objective: "把酒店房型、餐饮、会议、亲子、周边文旅产品自动转化为多渠道营销素材和投放计划。",
+    systemPrompt: "你是酒店文旅营销 Agent。输出必须符合品牌调性、渠道限制和事实边界。涉及对外发布、价格承诺和素材版权时必须审批。",
+    model: AUTO_MODEL_LABEL,
+    status: "ready",
+    tools: ["content.generate", "image.generate", "campaign.plan", "channel.publish", "artifact.preview"],
+    skills: ["hotel-marketing", "social-content", "campaign-calendar"],
+    triggers: ["新品套餐上线", "节假日活动", "低入住率促销", "用户要求生成素材"],
+    systems: ["CMS", "小红书/抖音", "公众号", "微信小程序", "PMS/RMS"],
+    stages: [
+      {
+        name: "抽取卖点",
+        owner: "营销 Agent",
+        trigger: "活动或产品输入",
+        action: "从房型、价格、权益、目的地和人群里抽取卖点",
+        output: "卖点卡片"
+      },
+      {
+        name: "生成素材",
+        owner: "营销 Agent",
+        trigger: "卖点确认",
+        action: "生成文案、图片提示词、短视频脚本和渠道版本",
+        output: "营销素材 artifact"
+      },
+      {
+        name: "审批发布",
+        owner: "Policy Engine",
+        trigger: "准备对外发布",
+        action: "检查价格、版权、敏感词和品牌规范",
+        output: "待发布包"
+      }
+    ],
+    metrics: ["素材生产时间降低", "渠道发布一致性", "活动转化率", "品牌错误减少"],
+    channels: ["工作台", "微信小程序", "内容平台"],
+    policy: "ask",
+    accent: "red"
+  },
+  {
+    id: "concierge-trip",
+    name: "礼宾行程 Agent",
+    scope: "目的地推荐、行程规划、票务餐饮和本地体验",
+    objective: "把酒店周边文旅资源和住客偏好结合，生成可执行的个性化行程，提高住客体验和本地消费转化。",
+    systemPrompt: "你是礼宾行程 Agent。推荐必须考虑客人时间、预算、同行人群、天气和酒店可售资源。涉及预订和支付时必须确认并审批。",
+    model: AUTO_MODEL_LABEL,
+    status: "draft",
+    tools: ["poi.search", "itinerary.plan", "weather.lookup", "ticket.reserve", "message.reply"],
+    skills: ["destination-concierge", "local-experience", "itinerary-card"],
+    triggers: ["客人询问周边怎么玩", "入住前 24 小时", "雨天/节假日提醒", "亲子/商务标签匹配"],
+    systems: ["目的地资源库", "票务接口", "餐饮 POS", "PMS", "微信小程序"],
+    stages: [
+      {
+        name: "理解偏好",
+        owner: "礼宾 Agent",
+        trigger: "客人发起需求",
+        action: "读取住客画像、同行人群、停留时间和预算",
+        output: "行程约束"
+      },
+      {
+        name: "组合资源",
+        owner: "礼宾 Agent",
+        trigger: "约束明确",
+        action: "组合景点、餐饮、交通和酒店增值服务",
+        output: "行程卡片"
+      },
+      {
+        name: "确认预订",
+        owner: "Policy Engine",
+        trigger: "用户选择方案",
+        action: "确认价格、库存、支付和取消规则",
+        output: "预订请求"
+      }
+    ],
+    metrics: ["住客满意度", "本地体验转化", "礼宾响应时长", "推荐采纳率"],
+    channels: ["微信小程序 AI", "前台", "企业微信"],
+    policy: "ask",
+    accent: "green"
+  },
+  {
+    id: "ops-quality",
+    name: "运营质检 Agent",
+    scope: "巡检、SOP、能耗、卫生、设备和服务质量",
+    objective: "把巡检、质检、能耗异常和 SOP 执行变成可跟踪任务，提升服务标准一致性。",
+    systemPrompt: "你是运营质检 Agent。你负责发现异常、生成检查清单、创建工单和复盘，但不能绕过负责人直接关闭问题。",
+    model: AUTO_MODEL_LABEL,
+    status: "ready",
+    tools: ["checklist.generate", "iot.alert.read", "ticket.create", "sop.lookup", "artifact.report"],
+    skills: ["ops-checklist", "energy-alert", "quality-audit"],
+    triggers: ["每日巡检", "IoT 告警", "客诉复盘", "SOP 更新"],
+    systems: ["IoT/能耗系统", "工单系统", "SOP 知识库", "PMS", "BI"],
+    stages: [
+      {
+        name: "扫描异常",
+        owner: "质检 Agent",
+        trigger: "巡检或告警",
+        action: "读取巡检表、设备告警、客诉和能耗数据",
+        output: "异常列表"
+      },
+      {
+        name: "分派任务",
+        owner: "质检 Agent",
+        trigger: "异常确认",
+        action: "匹配 SOP 和责任部门，创建整改任务",
+        output: "整改工单"
+      },
+      {
+        name: "质量复盘",
+        owner: "总控 Agent",
+        trigger: "任务关闭",
+        action: "生成趋势和责任闭环报告",
+        output: "质检报告"
+      }
+    ],
+    metrics: ["整改闭环率", "SOP 执行一致性", "能耗异常发现", "服务质量提升"],
+    channels: ["工作台", "IoT 告警", "工单系统"],
+    policy: "auto",
+    accent: "amber"
+  }
+];
+
+const defaultChannelAdapters: ChannelAdapterSpec[] = [
+  {
+    id: "deepsix-workbench",
+    name: "Deepsix Workbench",
+    channelType: "desktop-ui",
+    description: "桌面工作台入口，承接 chat / coding / artifact / approval 的完整 AgentSession 生命周期。",
+    transport: "Electron IPC / local session",
+    entrypoint: "Chatbox -> agent:prompt / steer / followUp / abort / compact",
+    sessionKeyStrategy: "threadId",
+    status: "active",
+    capabilities: ["chat", "coding", "artifact", "approval", "followUp", "steer", "abort", "compact"],
+    contextSources: ["threadContext", "workspace", "attachments", "external URLs", "selected artifact"],
+    outputModes: ["rich markdown", "artifact pane", "inline approval", "execution timeline"],
+    followUpPolicy: "绑定当前 threadId，steer 注入当前 turn，followUp 排队进入下一轮。",
+    agentBindings: ["hotel-orchestrator", "revenue-manager", "guest-service", "complaint-recovery", "marketing-content", "concierge-trip", "ops-quality"],
+    systemPrompt: "这是桌面工作台通道。回答可以更完整，允许输出结构化报告、文件 manifest、审批动作和 artifact 引导。",
+    sampleEvent: `{
+  "channelId": "deepsix-workbench",
+  "threadId": "thread-123",
+  "eventType": "prompt",
+  "senderId": "desktop-user",
+  "replyStyle": "desktop-rich"
+}`
+  },
+  {
+    id: "wechat-clawbot",
+    name: "微信 ClawBot",
+    channelType: "wechat-miniprogram-ai",
+    description: "面向微信小程序 AI 的会话 adapter。把微信侧 context / followUp / 页面场景注入到 pi-style AgentSession。",
+    transport: "微信小程序 AI / channel adapter",
+    entrypoint: "AGENTS.md + SKILL.md + mcp.json + channel event envelope",
+    sessionKeyStrategy: "appId + openId + conversationId",
+    status: "active",
+    capabilities: ["chat", "quick-reply", "followUp", "context-carry", "service-handoff", "compact-mobile-output"],
+    contextSources: ["openId", "conversationId", "pagePath", "scene", "tenant/hotelId", "guest profile hint", "mini-program metadata"],
+    outputModes: ["mobile-first markdown", "wechat action suggestions", "handoff card", "pending-action summary"],
+    followUpPolicy: "同一 conversationId 持续 followUp，不重新开线程；需要转人工时输出待接管动作。",
+    agentBindings: ["guest-service", "complaint-recovery", "concierge-trip", "marketing-content", "hotel-orchestrator"],
+    systemPrompt: "这是微信小程序 AI 通道。回答应先给用户可直接发送的短答案，再给内部待执行动作。输出适配手机阅读：短段落、短列表、明确下一步。",
+    sampleEvent: `{
+  "channelId": "wechat-clawbot",
+  "conversationId": "wx-conv-001",
+  "messageId": "wx-msg-001",
+  "senderId": "openid_xxx",
+  "senderName": "微信住客",
+  "tenantId": "hotel-beijing-haidian",
+  "appId": "wx-demo-app",
+  "pagePath": "/pages/ai/chat",
+  "scene": "guest_service",
+  "eventType": "message",
+  "replyStyle": "wechat-mini-program"
+}`
+  }
+];
 
 const providerTemplates = [
   { name: "DeepSeek", baseUrl: "https://api.deepseek.com", tag: "尝试 / 默认模型" },
@@ -278,6 +664,20 @@ const providerModelDefaults: Record<string, string> = {
   "硅基流动": "deepseek-ai/DeepSeek-V3",
   "阿里百炼": "qwen-plus",
   "火山方舟": "deepseek-v3-250324"
+};
+
+const providerContextWindowDefaults: Record<string, number> = {
+  DeepSeek: 64000,
+  MiniMax: 100000,
+  Kimi: 128000,
+  "清华智谱 GLM": 64000,
+  OpenRouter: 128000,
+  "OpenAI-compatible": 128000,
+  Anthropic: 200000,
+  Gemini: 1000000,
+  "硅基流动": 64000,
+  "阿里百炼": 128000,
+  "火山方舟": 128000
 };
 
 const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
@@ -324,6 +724,143 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     bestFor: ["coding", "research", "vision", "image", "cheap"]
   }
 };
+
+const providerAliases: Record<string, string[]> = {
+  DeepSeek: ["deepseek", "deep seek", "深度求索", "深度求索ai"],
+  MiniMax: ["minimax", "mini max", "海螺", "abab"],
+  Kimi: ["kimi", "moonshot", "月之暗面"],
+  "清华智谱 GLM": ["glm", "智谱", "智谱清言", "bigmodel", "zhipu"],
+  OpenRouter: ["openrouter", "open router"],
+  "OpenAI-compatible": ["openai", "chatgpt", "gpt"],
+  Anthropic: ["anthropic", "claude"],
+  Gemini: ["gemini", "google ai", "google"],
+  "硅基流动": ["硅基流动", "siliconflow", "silicon flow"],
+  "阿里百炼": ["阿里百炼", "百炼", "dashscope", "通义", "qwen"],
+  "火山方舟": ["火山方舟", "火山", "volcengine", "doubao", "豆包"]
+};
+
+const modelProviderHints: Array<{ pattern: RegExp; provider: string; model?: string }> = [
+  { pattern: /deepseek-v4-flash/i, provider: "DeepSeek", model: "deepseek-v4-flash" },
+  { pattern: /deepseek-v4-pro/i, provider: "DeepSeek", model: "deepseek-v4-pro" },
+  { pattern: /deepseek(?:-ai)?\/deepseek-v3/i, provider: "硅基流动", model: "deepseek-ai/DeepSeek-V3" },
+  { pattern: /minimax-text-01/i, provider: "MiniMax", model: "minimax-text-01" },
+  { pattern: /moonshot-v1-128k/i, provider: "Kimi", model: "moonshot-v1-128k" },
+  { pattern: /glm-4-flash/i, provider: "清华智谱 GLM", model: "glm-4-flash" },
+  { pattern: /openrouter\/auto|openrouter-auto|openrouter auto/i, provider: "OpenRouter", model: "openrouter/auto" },
+  { pattern: /qwen-[\w.-]+/i, provider: "阿里百炼" },
+  { pattern: /doubao-[\w.-]+/i, provider: "火山方舟" },
+  { pattern: /gpt-[\w.-]+/i, provider: "OpenAI-compatible" },
+  { pattern: /claude-[\w.-]+/i, provider: "Anthropic" },
+  { pattern: /gemini-[\w.-]+/i, provider: "Gemini" }
+];
+
+const apiKeyPattern = /\b(?:sk|rk|pk|ak)-[A-Za-z0-9][A-Za-z0-9._-]{12,}\b|\bAIza[0-9A-Za-z_-]{20,}\b/g;
+
+type ChatModelConfigIntent = {
+  provider?: string;
+  model?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  hasConfigurationSignal: boolean;
+};
+
+function maskSecret(value: string) {
+  if (value.length <= 12) {
+    return "****";
+  }
+
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function redactSecrets(text: string) {
+  return text.replace(apiKeyPattern, (match) => maskSecret(match));
+}
+
+function slug(value: string) {
+  return String(value || "model")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72) || "model";
+}
+
+function includesAny(haystack: string, needles: string[]) {
+  return needles.some((needle) => haystack.includes(needle.toLowerCase()));
+}
+
+function inferProviderFromText(text: string) {
+  const normalized = text.toLowerCase();
+  for (const [provider, aliases] of Object.entries(providerAliases)) {
+    if (includesAny(normalized, aliases)) {
+      return provider;
+    }
+  }
+
+  return "";
+}
+
+function inferModelFromText(text: string) {
+  for (const hint of modelProviderHints) {
+    const matched = text.match(hint.pattern);
+    if (matched) {
+      return {
+        provider: hint.provider,
+        model: hint.model ?? matched[0]
+      };
+    }
+  }
+
+  const explicitModel = text.match(/(?:模型|model)\s*(?:是|=|:|：)?\s*([A-Za-z0-9][A-Za-z0-9._/-]{2,80})/i);
+  if (explicitModel?.[1]) {
+    return {
+      provider: inferProviderFromText(text),
+      model: explicitModel[1]
+    };
+  }
+
+  return {
+    provider: "",
+    model: ""
+  };
+}
+
+function inferBaseUrlFromText(text: string) {
+  return text.match(/https?:\/\/[^\s"'，。；;]+/i)?.[0] ?? "";
+}
+
+function buildModelPayloadFromChat(text: string, recentMessages: Message[]): ChatModelConfigIntent {
+  const contextText = recentMessages
+    .slice(-8)
+    .map((message) => message.body)
+    .concat(text)
+    .join("\n");
+  const apiKey = text.match(apiKeyPattern)?.[0] ?? "";
+  const currentModel = inferModelFromText(text);
+  const contextualModel = currentModel.model ? currentModel : inferModelFromText(contextText);
+  const provider = currentModel.provider || inferProviderFromText(text) || contextualModel.provider || inferProviderFromText(contextText);
+  const model = currentModel.model || contextualModel.model || (provider ? providerModelDefaults[provider] : "");
+  const baseUrl = inferBaseUrlFromText(text) || (providerTemplates.find((item) => item.name === provider)?.baseUrl ?? "");
+  const normalizedText = contextText.toLowerCase();
+  const hasConfigurationSignal = Boolean(
+    apiKey ||
+      provider ||
+      model ||
+      normalizedText.includes("api key") ||
+      normalizedText.includes("apikey") ||
+      normalizedText.includes("key") ||
+      normalizedText.includes("模型") ||
+      normalizedText.includes("profile") ||
+      normalizedText.includes("配置")
+  );
+
+  return {
+    provider,
+    model,
+    baseUrl,
+    apiKey,
+    hasConfigurationSignal
+  };
+}
 
 const defaultProfiles: FiitxModelProfile[] = [
   {
@@ -477,12 +1014,18 @@ export default function App() {
   const [approvals, setApprovals] = useState(initialApprovals);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactId>("report");
+  const [visualSourceModes, setVisualSourceModes] = useState<Record<string, "preview" | "source">>({});
   const [composer, setComposer] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileArtifact | null>(null);
   const [artifacts, setArtifacts] = useState<FileArtifact[]>(fileArtifacts);
   const [activeAgentTaskId, setActiveAgentTaskId] = useState("");
   const [agentProgressEvents, setAgentProgressEvents] = useState<FiitxAgentProgress[]>([]);
+  const [agentSpecs, setAgentSpecs] = useState<AgentSpec[]>(defaultAgentSpecs);
+  const [selectedAgentId, setSelectedAgentId] = useState(defaultAgentSpecs[0]?.id ?? "");
+  const [channelAdapters, setChannelAdapters] = useState<ChannelAdapterSpec[]>(defaultChannelAdapters);
+  const [selectedChannelAdapterId, setSelectedChannelAdapterId] = useState(defaultChannelAdapters[0]?.id ?? "");
+  const [activeChannelAdapterId, setActiveChannelAdapterId] = useState(defaultChannelAdapters[0]?.id ?? "");
   const [lastAgentArtifact, setLastAgentArtifact] = useState<FileArtifact | null>(null);
   const [executionArtifacts, setExecutionArtifacts] = useState<FileArtifact[]>([]);
   const [executionExpanded, setExecutionExpanded] = useState(false);
@@ -499,13 +1042,15 @@ export default function App() {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
   const [policySettings, setPolicySettings] = useState<PolicySettings>(defaultPolicySettings);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [abortPending, setAbortPending] = useState(false);
   const [visiblePanels, setVisiblePanels] = useState<Record<PanelKey, boolean>>({
     sidebar: true,
     artifact: false,
     terminal: false
   });
   const [workspacePath, setWorkspacePath] = useState("");
-  const [profiles, setProfiles] = useState<FiitxModelProfile[]>(defaultProfiles);
+  const [profiles, setProfiles] = useState<FiitxModelProfile[]>([]);
+  const [autoModelRouting, setAutoModelRouting] = useState(true);
   const [platform, setPlatform] = useState("macOS");
   const [encryptionAvailable, setEncryptionAvailable] = useState(false);
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "failed">("idle");
@@ -538,6 +1083,18 @@ export default function App() {
         createdAt: 0
       },
     [activeThreadId, threads]
+  );
+  const selectedAgent = useMemo(
+    () => agentSpecs.find((agent) => agent.id === selectedAgentId) ?? agentSpecs[0],
+    [agentSpecs, selectedAgentId]
+  );
+  const selectedChannelAdapter = useMemo(
+    () => channelAdapters.find((adapter) => adapter.id === selectedChannelAdapterId) ?? channelAdapters[0],
+    [channelAdapters, selectedChannelAdapterId]
+  );
+  const activeChannelAdapter = useMemo(
+    () => channelAdapters.find((adapter) => adapter.id === activeChannelAdapterId) ?? channelAdapters[0],
+    [channelAdapters, activeChannelAdapterId]
   );
 
   const pendingApprovalCount = approvals.filter((approval) => approval.status === "pending").length;
@@ -637,10 +1194,7 @@ export default function App() {
 	    });
 
     window.fiitx?.listModelProfiles().then((savedProfiles) => {
-      if (savedProfiles.length > 0) {
-        const savedIds = new Set(savedProfiles.map((profile) => profile.id));
-        setProfiles(defaultProfiles.filter((profile) => !savedIds.has(profile.id)).concat(savedProfiles));
-      }
+      setProfiles(savedProfiles);
     });
 	  }, []);
 
@@ -655,6 +1209,10 @@ export default function App() {
       const loadedThreads = Array.isArray(state.threads) ? state.threads as Thread[] : [];
       const loadedFolders = Array.isArray(state.projectFolders) ? state.projectFolders as ProjectFolder[] : [];
       const loadedRootThreadIds = Array.isArray(state.rootThreadIds) ? state.rootThreadIds : [];
+      const loadedAgentSpecs = Array.isArray(state.agentSpecs) && state.agentSpecs.length > 0 ? state.agentSpecs as AgentSpec[] : defaultAgentSpecs;
+      const loadedChannelAdapters = Array.isArray((state as FiitxThreadState).channelAdapters) && (state as FiitxThreadState).channelAdapters!.length > 0
+        ? (state as FiitxThreadState).channelAdapters as ChannelAdapterSpec[]
+        : defaultChannelAdapters;
       const rawRecords = (state.threadRecords ?? {}) as Record<string, Partial<ThreadRecord>>;
       const loadedRecords = Object.fromEntries(
         Object.entries(rawRecords).map(([threadId, record]) => [threadId, normalizeThreadRecord(record)])
@@ -667,6 +1225,23 @@ export default function App() {
       setThreads(loadedThreads);
       setProjectFoldersState(loadedFolders);
       setRootThreadIds(loadedRootThreadIds.filter((threadId) => loadedThreads.some((thread) => thread.id === threadId)));
+      setAgentSpecs(loadedAgentSpecs);
+      setSelectedAgentId(
+        state.selectedAgentId && loadedAgentSpecs.some((agent) => agent.id === state.selectedAgentId)
+          ? state.selectedAgentId
+          : loadedAgentSpecs[0]?.id ?? ""
+      );
+      setChannelAdapters(loadedChannelAdapters);
+      setSelectedChannelAdapterId(
+        (state as FiitxThreadState).selectedChannelAdapterId && loadedChannelAdapters.some((adapter) => adapter.id === (state as FiitxThreadState).selectedChannelAdapterId)
+          ? (state as FiitxThreadState).selectedChannelAdapterId as string
+          : loadedChannelAdapters[0]?.id ?? ""
+      );
+      setActiveChannelAdapterId(
+        (state as FiitxThreadState).activeChannelAdapterId && loadedChannelAdapters.some((adapter) => adapter.id === (state as FiitxThreadState).activeChannelAdapterId)
+          ? (state as FiitxThreadState).activeChannelAdapterId as string
+          : loadedChannelAdapters[0]?.id ?? ""
+      );
       setThreadRecords(loadedRecords);
       setApprovals(Array.isArray(state.approvals) ? state.approvals as Approval[] : []);
       setAuditLogs(Array.isArray(state.auditLogs) ? state.auditLogs as AuditLog[] : []);
@@ -686,6 +1261,9 @@ export default function App() {
       }
       if (state.workspacePath) {
         setWorkspacePath(state.workspacePath as string);
+      }
+      if (typeof state.autoModelRouting === "boolean") {
+        setAutoModelRouting(state.autoModelRouting);
       }
       setActiveThreadId(targetThreadId);
 
@@ -723,9 +1301,15 @@ export default function App() {
         projectFolders: projectFoldersState,
         rootThreadIds,
         threadRecords: recordsToSave,
+        agentSpecs,
+        selectedAgentId,
+        channelAdapters,
+        selectedChannelAdapterId,
+        activeChannelAdapterId,
         approvals,
         auditLogs,
-        policySettings
+        policySettings,
+        autoModelRouting
       });
     }, 250);
 
@@ -733,9 +1317,13 @@ export default function App() {
   }, [
     activeThreadId,
     agentProgressEvents,
+    agentSpecs,
     approvals,
     artifacts,
     auditLogs,
+    activeChannelAdapterId,
+    autoModelRouting,
+    channelAdapters,
     executionArtifacts,
     executionExpanded,
     executionFinishedAt,
@@ -745,6 +1333,8 @@ export default function App() {
     projectFoldersState,
     policySettings,
     rootThreadIds,
+    selectedChannelAdapterId,
+    selectedAgentId,
     threadRecords,
     threads,
     threadStateLoaded,
@@ -765,6 +1355,102 @@ export default function App() {
 
     return () => unsubscribe?.();
   }, [activeThreadId]);
+
+  useEffect(() => {
+    const unsubscribe = window.fiitx?.onWechatChannelInbound?.((event) => {
+      const conversationId = event.inbound?.conversationId || `wechat-${Date.now()}`;
+      const threadId = `thread-wechat-${pathSlug(conversationId).slice(0, 80) || "local"}`;
+      const existingThread = threads.find((thread) => thread.id === threadId);
+      const receivedAt = timeNow();
+      const card = event.reply?.primaryCard as Record<string, unknown> | undefined;
+      const cardTitle = String(card?.title || card?.apiName || "微信卡片");
+      const artifact: FileArtifact | null = card
+        ? {
+            path: `wechat://${conversationId}/${String(card.apiName || "card")}`,
+            title: `微信卡片：${cardTitle}`,
+            language: "wechat-card",
+            status: "added",
+            additions: 0,
+            deletions: 0,
+            preview: JSON.stringify(card, null, 2)
+          }
+        : null;
+
+      const nextThread: Thread = existingThread ?? {
+        id: threadId,
+        title: buildFallbackTaskTitle(event.inbound?.text || "微信客户消息"),
+        kind: "微信 ClawBot",
+        model: "deepsix-gateway",
+        status: "done",
+        updatedAt: "刚刚",
+        createdAt: Date.now(),
+        workspacePath,
+        projectFolderId: null
+      };
+
+      setThreads((current) => {
+        const withoutThread = current.filter((thread) => thread.id !== threadId);
+        return [
+          {
+            ...nextThread,
+            title: nextThread.title || buildFallbackTaskTitle(event.inbound?.text || "微信客户消息"),
+            status: "done",
+            updatedAt: "刚刚"
+          },
+          ...withoutThread
+        ];
+      });
+      setRootThreadIds((current) => [threadId, ...current.filter((item) => item !== threadId)]);
+      setProjectFoldersState((current) =>
+        current.map((folder) => ({
+          ...folder,
+          threads: folder.threads.filter((item) => item !== threadId)
+        }))
+      );
+      setThreadRecords((current) => ({
+        ...current,
+        [threadId]: normalizeThreadRecord(current[threadId] as Partial<ThreadRecord> | undefined)
+      }));
+      setActiveThreadId(threadId);
+
+      updateMessagesForThread(threadId, (current) => [
+        ...current,
+        {
+          id: `message-wechat-user-${event.inbound?.messageId || Date.now()}`,
+          role: "user",
+          author: "微信客户",
+          body: event.inbound?.text || "",
+          time: receivedAt
+        },
+        {
+          id: `message-wechat-agent-${Date.now()}`,
+          role: "agent",
+          author: "Deepsix Gateway",
+          body: event.reply?.text || "已通过微信 Channel 处理。",
+          time: receivedAt
+        }
+      ], true);
+
+      if (artifact) {
+        updateArtifactsForThread(threadId, (current) => [artifact, ...current.filter((item) => item.path !== artifact.path)], true);
+        setThreadLastArtifact(threadId, artifact, true);
+        setThreadExecutionArtifacts(threadId, [artifact], true);
+        selectFileArtifact(artifact);
+      }
+
+      recordAgentProgress(
+        `wechat-channel-${event.inbound?.messageId || Date.now()}`,
+        "微信 Channel",
+        artifact ? `已返回 ${artifact.title}` : event.reply?.text || "已处理微信消息",
+        event.ok ? "success" : "warn",
+        threadId,
+        true
+      );
+      addAudit("微信 ClawBot", "接收小程序消息", event.inbound?.text || conversationId, event.ok ? "success" : "warn");
+    });
+
+    return () => unsubscribe?.();
+  }, [activeThreadId, threads, workspacePath]);
 
   useEffect(() => {
     if (!agentRunning) {
@@ -922,6 +1608,66 @@ export default function App() {
         content: message.body,
         time: message.time
       }));
+  }
+
+  function clipThreadContext(value: string | undefined, limit = 1400) {
+    const normalized = String(value || "").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "";
+    }
+    return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+  }
+
+  function toThreadArtifactContext(file: FileArtifact) {
+    return {
+      path: file.path,
+      title: file.title,
+      language: file.language,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      preview: clipThreadContext(file.preview)
+    };
+  }
+
+  function buildPiThreadContext(thread: Thread) {
+    const folder =
+      (thread.projectFolderId ? projectFoldersState.find((item) => item.id === thread.projectFolderId) : null) ??
+      projectFoldersState.find((item) => item.threads.includes(thread.id)) ??
+      null;
+    const isCurrentWorkbench = thread.id === activeThreadId || activeThreadId === DRAFT_THREAD_ID;
+    const record = isCurrentWorkbench ? null : normalizeThreadRecord(threadRecords[thread.id]);
+    const threadArtifacts = isCurrentWorkbench ? artifacts : record?.artifacts ?? [];
+    const threadExecutionArtifacts = isCurrentWorkbench ? executionArtifacts : record?.executionArtifacts ?? [];
+    const threadLastArtifact = isCurrentWorkbench ? lastAgentArtifact : record?.lastAgentArtifact ?? null;
+    const threadMessages = isCurrentWorkbench ? messages : record?.messages ?? [];
+    const targetWorkspace = thread.workspacePath || folder?.path || workspacePath;
+    const targetArtifact = threadLastArtifact ?? selectedFile ?? threadArtifacts[0] ?? threadExecutionArtifacts[0] ?? null;
+
+    return {
+      activeThread: {
+        id: thread.id,
+        title: thread.title,
+        kind: thread.kind,
+        status: thread.status,
+        workspacePath: targetWorkspace
+      },
+      selectedProjectFolder: folder ? { id: folder.id, name: folder.name, path: folder.path || "" } : null,
+      currentTarget: targetArtifact ? toThreadArtifactContext(targetArtifact) : null,
+      selectedFile: selectedFile ? toThreadArtifactContext(selectedFile) : null,
+      lastArtifact: threadLastArtifact ? toThreadArtifactContext(threadLastArtifact) : null,
+      artifacts: threadArtifacts.slice(0, 8).map(toThreadArtifactContext),
+      executionArtifacts: threadExecutionArtifacts.slice(0, 6).map(toThreadArtifactContext),
+      recentMessages: threadMessages
+        .filter((message) => !message.approvalId && message.role !== "system")
+        .slice(-8)
+        .map((message) => ({
+          role: message.role === "user" ? "user" as const : "assistant" as const,
+          author: message.author,
+          content: clipThreadContext(message.body, 900),
+          time: message.time
+        }))
+    };
   }
 
   function getArtifactExtension(file: FileArtifact) {
@@ -1242,7 +1988,7 @@ export default function App() {
 
   function copyText(text: string) {
     void navigator.clipboard?.writeText(text);
-    addAudit("Composer", "复制 Markdown", `${text.length} chars`, "info");
+    addAudit("Composer", "复制消息", `${text.length} chars`, "info");
   }
 
   function normalizeCodeLanguage(language: string) {
@@ -1297,12 +2043,240 @@ export default function App() {
     );
   }
 
-  function renderMediaPreview(source: string, title: string, key: string, htmlContent = "") {
+  function getVisualSourceMode(key: string) {
+    return visualSourceModes[key] || "preview";
+  }
+
+  function setVisualSourceMode(key: string, mode: "preview" | "source") {
+    setVisualSourceModes((current) => ({
+      ...current,
+      [key]: mode
+    }));
+  }
+
+  function renderVisualSourceFrame({
+    id,
+    title,
+    language,
+    source,
+    children
+  }: {
+    id: string;
+    title: string;
+    language: string;
+    source: string;
+    children: ReactNode;
+  }) {
+    const mode = getVisualSourceMode(id);
+    return (
+      <div className="visual-source-frame" key={id}>
+        <div className="visual-source-header">
+          <span>{title}</span>
+          <div className="visual-source-actions">
+            <button
+              className={mode === "preview" ? "active" : ""}
+              onClick={() => setVisualSourceMode(id, "preview")}
+              type="button"
+            >
+              <Eye size={13} />
+              <span>预览</span>
+            </button>
+            <button
+              className={mode === "source" ? "active" : ""}
+              onClick={() => setVisualSourceMode(id, "source")}
+              type="button"
+            >
+              <FileText size={13} />
+              <span>源码</span>
+            </button>
+            <button onClick={() => copyText(source)} title="复制源码" type="button">
+              <Copy size={13} />
+              <span>复制</span>
+            </button>
+          </div>
+        </div>
+        {mode === "preview" ? (
+          <div className="visual-source-preview">{children}</div>
+        ) : (
+          <pre className="visual-source-code">
+            <code dangerouslySetInnerHTML={{ __html: highlightCode(source, language) }} />
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  function parseMarkdownTable(lines: string[], startIndex: number) {
+    const headerLine = lines[startIndex];
+    const separatorLine = lines[startIndex + 1];
+    if (!headerLine || !separatorLine || !headerLine.includes("|")) {
+      return null;
+    }
+    if (!/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(separatorLine)) {
+      return null;
+    }
+
+    const parseCells = (value: string) =>
+      value
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim());
+
+    const headers = parseCells(headerLine);
+    if (headers.length < 2) {
+      return null;
+    }
+
+    const rows: string[][] = [];
+    let index = startIndex + 2;
+    while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+      const row = parseCells(lines[index]);
+      if (row.length < 2) {
+        break;
+      }
+      rows.push(row);
+      index += 1;
+    }
+
+    return {
+      headers,
+      rows,
+      source: lines.slice(startIndex, index).join("\n"),
+      nextIndex: index
+    };
+  }
+
+  function renderMarkdownTable(table: NonNullable<ReturnType<typeof parseMarkdownTable>>, key: string) {
+    return renderVisualSourceFrame({
+      id: key,
+      title: "Markdown 表格",
+      language: "markdown",
+      source: table.source,
+      children: (
+        <div className="markdown-table-wrap">
+          <table className="markdown-table">
+            <thead>
+              <tr>
+                {table.headers.map((header, headerIndex) => (
+                  <th key={`${header}-${headerIndex}`}>{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {table.headers.map((_, cellIndex) => (
+                    <td key={`cell-${rowIndex}-${cellIndex}`}>{row[cellIndex] || ""}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    });
+  }
+
+  function parseMermaidNode(raw: string) {
+    const trimmed = raw.trim();
+    const match = /^([A-Za-z0-9_]+)(?:\[(.*?)\]|\((.*?)\)|\{(.*?)\}|"(.*?)")?$/.exec(trimmed);
+    if (!match) {
+      return {
+        id: trimmed,
+        label: trimmed
+      };
+    }
+    return {
+      id: match[1],
+      label: match[2] || match[3] || match[4] || match[5] || match[1]
+    };
+  }
+
+  function parseMermaidFlow(code: string) {
+    const nodes = new Map<string, string>();
+    const edges: Array<{ from: string; to: string; label?: string }> = [];
+
+    code
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .forEach((line) => {
+        if (/^(graph|flowchart)\s+/i.test(line) || line.startsWith("%%")) {
+          return;
+        }
+        const edgeMatch = /^(.+?)\s*[-=.]+(?:\|([^|]+)\|)?[->x.]+\s*(.+)$/.exec(line);
+        if (edgeMatch) {
+          const from = parseMermaidNode(edgeMatch[1]);
+          const to = parseMermaidNode(edgeMatch[3]);
+          nodes.set(from.id, from.label);
+          nodes.set(to.id, to.label);
+          edges.push({ from: from.id, to: to.id, label: edgeMatch[2] });
+          return;
+        }
+        const node = parseMermaidNode(line);
+        nodes.set(node.id, node.label);
+      });
+
+    return {
+      nodes: Array.from(nodes.entries()).map(([id, label]) => ({ id, label })),
+      edges
+    };
+  }
+
+  function renderMermaidPreview(code: string, key: string) {
+    const flow = parseMermaidFlow(code);
+    return renderVisualSourceFrame({
+      id: key,
+      title: "流程图",
+      language: "mermaid",
+      source: code,
+      children: flow.nodes.length > 0 ? (
+        <div className="flowchart-preview">
+          <div className="flowchart-nodes">
+            {flow.nodes.map((node) => (
+              <div className="flowchart-node" key={node.id}>
+                <small>{node.id}</small>
+                <span>{node.label}</span>
+              </div>
+            ))}
+          </div>
+          {flow.edges.length > 0 ? (
+            <div className="flowchart-edges">
+              {flow.edges.map((edge, edgeIndex) => (
+                <div className="flowchart-edge" key={`${edge.from}-${edge.to}-${edgeIndex}`}>
+                  <span>{edge.from}</span>
+                  <b>{edge.label || "→"}</b>
+                  <span>{edge.to}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="visual-source-empty">暂未识别出节点，切换到源码查看。</p>
+      )
+    });
+  }
+
+  function renderMediaPreview(source: string, title: string, key: string, htmlContent = "", sourceMarkdown = "") {
     const kind = getMediaKindFromSource(source) || (htmlContent ? "html" : "");
     const src = getFileUrl(source);
+    const wrapMedia = (content: ReactNode, sourceLanguage = "markdown") =>
+      sourceMarkdown
+        ? renderVisualSourceFrame({
+            id: `media-frame-${key}`,
+            title: title || "媒体",
+            language: sourceLanguage,
+            source: sourceMarkdown,
+            children: content
+          })
+        : content;
 
     if (kind === "image") {
-      return (
+      return wrapMedia(
         <figure className="media-preview media-preview-image" key={key}>
           <img src={src} alt={title || "图片预览"} />
           {title ? <figcaption>{title}</figcaption> : null}
@@ -1311,7 +2285,7 @@ export default function App() {
     }
 
     if (kind === "video") {
-      return (
+      return wrapMedia(
         <figure className="media-preview media-preview-video" key={key}>
           <video src={src} controls playsInline preload="metadata" />
           {title ? <figcaption>{title}</figcaption> : null}
@@ -1320,7 +2294,7 @@ export default function App() {
     }
 
     if (kind === "audio") {
-      return (
+      return wrapMedia(
         <figure className="media-preview media-preview-audio" key={key}>
           <audio src={src} controls preload="metadata" />
           {title ? <figcaption>{title}</figcaption> : null}
@@ -1329,7 +2303,7 @@ export default function App() {
     }
 
     if (kind === "html") {
-      return (
+      return wrapMedia(
         <div className="media-preview media-preview-html" key={key}>
           <div className="media-preview-header">
             <span>{title || "HTML 预览"}</span>
@@ -1341,12 +2315,13 @@ export default function App() {
             srcDoc={htmlContent || undefined}
             title={title || "HTML 预览"}
           />
-        </div>
+        </div>,
+        "html"
       );
     }
 
     if (kind === "pdf") {
-      return (
+      return wrapMedia(
         <div className="media-preview media-preview-pdf" key={key}>
           <iframe src={src} title={title || "PDF 预览"} />
         </div>
@@ -1362,17 +2337,17 @@ export default function App() {
     if (imageMatch) {
       const title = imageMatch[1] || "媒体预览";
       const source = imageMatch[2].trim();
-      return renderMediaPreview(source, title, key);
+      return renderMediaPreview(source, title, key, "", trimmed);
     }
 
     const dataUriMatch = /^\(?\s*(data:(?:image|video|audio)\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\s*\)?$/i.exec(trimmed);
     if (dataUriMatch) {
-      return renderMediaPreview(dataUriMatch[1], "内联媒体", key);
+      return renderMediaPreview(dataUriMatch[1], "内联媒体", key, "", trimmed);
     }
 
     const mediaUrlMatch = /^((?:https?|file):\/\/\S+\.(?:png|jpe?g|gif|webp|svg|mp4|mov|webm|mp3|wav|ogg|m4a)(?:\?\S*)?)$/i.exec(trimmed);
     if (mediaUrlMatch) {
-      return renderMediaPreview(mediaUrlMatch[1], mediaUrlMatch[1].split("/").pop() || "媒体预览", key);
+      return renderMediaPreview(mediaUrlMatch[1], mediaUrlMatch[1].split("/").pop() || "媒体预览", key, "", trimmed);
     }
 
     return null;
@@ -1395,7 +2370,7 @@ export default function App() {
         ? /^\((data:(?:image|video|audio)\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\)$/i.exec(lines[index + 1].trim())
         : null;
       if (splitImageAlt && splitImageSource) {
-        blocks.push(renderMediaPreview(splitImageSource[1], splitImageAlt[1] || "内联媒体", `media-split-${index}`));
+        blocks.push(renderMediaPreview(splitImageSource[1], splitImageAlt[1] || "内联媒体", `media-split-${index}`, "", `${line.trim()}\n${lines[index + 1].trim()}`));
         index += 2;
         continue;
       }
@@ -1416,7 +2391,23 @@ export default function App() {
           index += 1;
         }
         index += 1;
-        blocks.push(renderCodeBlock(codeLines.join("\n"), language, `code-${index}`));
+        const code = codeLines.join("\n");
+        const normalizedLanguage = normalizeCodeLanguage(language);
+        if (["mermaid", "flowchart"].includes(normalizedLanguage) || /^(graph|flowchart)\s+/i.test(code.trim())) {
+          blocks.push(renderMermaidPreview(code, `flow-${index}`));
+        } else if (["html", "svg"].includes(normalizedLanguage)) {
+          const visual = renderMediaPreview("", normalizedLanguage === "svg" ? "SVG 预览" : "HTML 预览", `html-code-${index}`, code, `\`\`\`${language}\n${code}\n\`\`\``);
+          blocks.push(visual || renderCodeBlock(code, language, `code-${index}`));
+        } else {
+          blocks.push(renderCodeBlock(code, language, `code-${index}`));
+        }
+        continue;
+      }
+
+      const table = parseMarkdownTable(lines, index);
+      if (table) {
+        blocks.push(renderMarkdownTable(table, `table-${index}`));
+        index = table.nextIndex;
         continue;
       }
 
@@ -1462,6 +2453,7 @@ export default function App() {
         index < lines.length &&
         lines[index].trim() &&
         !renderMarkdownMediaLine(lines[index], `media-probe-${index}`) &&
+        !parseMarkdownTable(lines, index) &&
         !lines[index].startsWith("```") &&
         !/^(#{1,3})\s+/.test(lines[index]) &&
         !/^\s*[-*]\s+/.test(lines[index]) &&
@@ -1531,7 +2523,13 @@ export default function App() {
 
     return (
       <>
-        {renderInlineMessageText(message.body, paths)}
+        <div className="user-message-content">
+          <button className="message-copy-button" onClick={() => copyText(message.body)} title="复制消息">
+            <Copy size={14} />
+            <span>复制</span>
+          </button>
+          {renderInlineMessageText(message.body, paths)}
+        </div>
         {renderPathResourceGroup(paths)}
       </>
     );
@@ -1624,7 +2622,7 @@ export default function App() {
       deletions: 0,
       preview: `附件：${path}
 
-Fiitx 可以把附件作为 artifact 输入源处理：
+${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
 - 摘要
 - 提取结构
 - 生成 Word/PPT
@@ -1759,12 +2757,167 @@ Fiitx 可以把附件作为 artifact 输入源处理：
 
   function inferAgentMode(prompt: string, files: string[] = []): "chat" | "coding" {
     const text = prompt.toLowerCase();
-    const signals = ["代码", "项目", "文件", "目录结构", "开发", "实现", "生成", "修复", "bug", "build", "npm", "git", "app", "小程序", "网页", "组件", "接口", "脚本"];
+    const signals = ["代码", "项目", "文件", "目录结构", "开发", "实现", "修复", "bug", "build", "npm", "git", "app", "小程序", "网页", "组件", "接口", "脚本"];
     return files.length > 0 || signals.some((signal) => text.includes(signal.toLowerCase())) ? "coding" : "chat";
   }
 
   function agentLabel(mode: "chat" | "coding" | undefined) {
     return mode === "chat" ? "Chat Agent" : "Coding Agent";
+  }
+
+  const agentRouteHints: Record<string, string[]> = {
+    "hotel-orchestrator": ["总控", "跨部门", "编排", "调度", "多系统", "工作流", "审批", "闭环", "分发"],
+    "revenue-manager": ["收益", "房价", "调价", "价格", "房态", "库存", "入住率", "revpar", "adr", "渠道", "竞对", "促销"],
+    "guest-service": ["前台", "住中", "入住", "续住", "换房", "加购", "预订", "订单", "客人问答", "服务请求"],
+    "complaint-recovery": ["客诉", "投诉", "差评", "异味", "房间异味", "补救", "安抚", "赔付", "退款", "不满", "抱怨", "道歉", "升级投诉"],
+    "marketing-content": ["营销", "活动", "文案", "海报", "小红书", "公众号", "短视频", "私域", "套餐", "推广"],
+    "concierge-trip": ["礼宾", "行程", "攻略", "文旅", "景点", "餐厅", "票务", "路线", "亲子", "目的地", "住客", "两天一晚", "北京", "海淀", "周边游"],
+    "ops-quality": ["质检", "巡检", "sop", "卫生", "设备", "能耗", "维修", "清洁", "客房检查", "运营"]
+  };
+
+  function normalizeRouteText(value: string) {
+    return value.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function scoreAgentForPrompt(agent: AgentSpec, prompt: string, channelId = activeChannelAdapterId) {
+    if (agent.status === "draft") {
+      return 0;
+    }
+    if (inferAgentMode(prompt) === "coding") {
+      return 0;
+    }
+
+    const text = normalizeRouteText(prompt);
+    const channelAdapter = channelAdapters.find((adapter) => adapter.id === channelId);
+    const hints = agentRouteHints[agent.id] ?? [];
+    let semanticScore = 0;
+    for (const hint of hints) {
+      if (text.includes(hint.toLowerCase())) {
+        semanticScore += hint.length >= 3 ? 8 : 5;
+      }
+    }
+
+    const searchable = [
+      agent.name,
+      agent.scope,
+      agent.objective,
+      agent.systemPrompt,
+      ...agent.triggers,
+      ...agent.systems,
+      ...agent.tools,
+      ...agent.skills,
+      ...agent.channels,
+      ...agent.metrics
+    ];
+    for (const item of searchable) {
+      const normalized = normalizeRouteText(item);
+      if (normalized.length >= 2 && text.includes(normalized)) {
+        semanticScore += 3;
+      }
+    }
+
+    if (semanticScore <= 0) {
+      return 0;
+    }
+
+    const channelBoost = channelAdapter?.agentBindings.includes(agent.id)
+      ? channelAdapter.channelType === "wechat-miniprogram-ai" ? 14 : 6
+      : 0;
+
+    return semanticScore + channelBoost;
+  }
+
+  function matchAgentSpecForPrompt(prompt: string, channelId = activeChannelAdapterId) {
+    const ranked = agentSpecs
+      .map((agent) => ({ agent, score: scoreAgentForPrompt(agent, prompt, channelId) }))
+      .sort((a, b) => b.score - a.score);
+    return ranked[0]?.score >= 5 ? ranked[0].agent : null;
+  }
+
+  function buildRuntimeAgentRegistry(): FiitxRuntimeAgentSpec[] {
+    return agentSpecs.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      scope: agent.scope,
+      objective: agent.objective,
+      systemPrompt: agent.systemPrompt,
+      model: agent.model,
+      status: agent.status,
+      tools: agent.tools,
+      skills: agent.skills,
+      triggers: agent.triggers,
+      systems: agent.systems,
+      stages: agent.stages,
+      metrics: agent.metrics,
+      channels: agent.channels,
+      policy: agent.policy
+    }));
+  }
+
+  function buildRuntimeChannelRegistry(): FiitxChannelAdapterSpec[] {
+    return channelAdapters.map((adapter) => ({
+      id: adapter.id,
+      name: adapter.name,
+      channelType: adapter.channelType,
+      description: adapter.description,
+      transport: adapter.transport,
+      entrypoint: adapter.entrypoint,
+      sessionKeyStrategy: adapter.sessionKeyStrategy,
+      status: adapter.status,
+      capabilities: adapter.capabilities,
+      contextSources: adapter.contextSources,
+      outputModes: adapter.outputModes,
+      followUpPolicy: adapter.followUpPolicy,
+      agentBindings: adapter.agentBindings,
+      systemPrompt: adapter.systemPrompt,
+      sampleEvent: adapter.sampleEvent
+    }));
+  }
+
+  function buildRuntimeChannelContext(threadId: string) {
+    const adapter = activeChannelAdapter ?? channelAdapters[0];
+    const currentProjectFolder = selectedProjectFolderId
+      ? projectFoldersState.find((item) => item.id === selectedProjectFolderId) ?? null
+      : null;
+    if (!adapter) {
+      return undefined;
+    }
+
+    if (adapter.channelType === "wechat-miniprogram-ai") {
+      return {
+        channelId: adapter.id,
+        conversationId: `wx-${threadId}`,
+        messageId: `wx-msg-${Date.now()}`,
+        senderId: "openid-demo",
+        senderName: "微信住客",
+        tenantId: currentProjectFolder?.name || "hotel-demo",
+        appId: "wx-clawbot-simulator",
+        pagePath: "/pages/ai/chat",
+        scene: "workbench-simulator",
+        eventType: "message",
+        replyStyle: "wechat-mini-program",
+        metadata: {
+          source: "deepsix-workbench",
+          simulator: true,
+          workspacePath: activeThread.workspacePath || workspacePath || ""
+        }
+      } satisfies FiitxChannelContext;
+    }
+
+    return {
+      channelId: adapter.id,
+      conversationId: threadId,
+      messageId: `desktop-msg-${Date.now()}`,
+      senderId: "desktop-user",
+      senderName: "工作台用户",
+      eventType: "prompt",
+      replyStyle: "desktop-rich",
+      metadata: {
+        source: "deepsix-workbench",
+        simulator: false,
+        workspacePath: activeThread.workspacePath || workspacePath || ""
+      }
+    } satisfies FiitxChannelContext;
   }
 
   function updateMessagesForThread(threadId: string, updater: Message[] | ((current: Message[]) => Message[]), display = threadId === activeThreadId) {
@@ -1981,6 +3134,231 @@ Fiitx 可以把附件作为 artifact 输入源处理：
     return projectFoldersState.find((folder) => folder.threads.includes(threadId))?.id ?? null;
   }
 
+  function getManualModelProfile() {
+    return profiles[0] ?? null;
+  }
+
+  function getRuntimeModelId() {
+    return autoModelRouting ? AUTO_MODEL : getManualModelProfile()?.id ?? AUTO_MODEL;
+  }
+
+  function getRuntimeModelLabel() {
+    const profile = getManualModelProfile();
+    return autoModelRouting ? AUTO_MODEL_LABEL : profile ? `${profile.provider} / ${profile.model}` : AUTO_MODEL_LABEL;
+  }
+
+  function upsertConfiguredProfile(profile: FiitxModelProfile) {
+    setProfiles((current) => [
+      profile,
+      ...current.filter(
+        (item) =>
+          item.id !== profile.id &&
+          !(item.provider === profile.provider && item.model === profile.model)
+      )
+    ]);
+  }
+
+  function createChatConfiguredProfile(payload: FiitxModelPayload): FiitxModelProfile {
+    return {
+      id: payload.id ?? `chat-${Date.now()}`,
+      provider: payload.provider,
+      model: payload.model,
+      baseUrl: payload.baseUrl,
+      apiKeyRef: `keychain:${payload.provider}:${payload.model}`,
+      contextWindow: payload.contextWindow,
+      supportsTools: payload.supportsTools,
+      supportsVision: payload.supportsVision,
+      supportsStreaming: payload.supportsStreaming,
+      supportsJsonMode: payload.supportsJsonMode,
+      bestFor: payload.bestFor,
+      toolCallStyle: payload.toolCallStyle,
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async function handleModelConfigurationMessage(body: string, visibleBody: string) {
+    if (attachments.length > 0) {
+      return false;
+    }
+
+    const intent = buildModelPayloadFromChat(body, messages);
+    const exactModelOrProvider =
+      body.trim().length <= 120 &&
+      Boolean(intent.provider || intent.model) &&
+      !/[，。！？!?]/.test(body.trim()) &&
+      !/(介绍|回答|写|生成|开发|修复|分析|总结|解释)/.test(body);
+    const explicitConfiguration =
+      Boolean(intent.apiKey) ||
+      /(api\s*key|apikey|密钥|key|模型配置|配置模型|保存.*模型|保存.*key|profile|provider|base\s*url|baseurl|模型中心|这是.*key|这个.*key)/i.test(body);
+
+    if (!intent.hasConfigurationSignal || (!explicitConfiguration && !exactModelOrProvider)) {
+      return false;
+    }
+
+    const redactedBody = redactSecrets(visibleBody || body);
+    const labelBase = intent.provider || intent.model || "模型";
+    const runtimeThread =
+      activeThread.id === DRAFT_THREAD_ID
+        ? createTaskThread(`配置 ${labelBase} profile`, selectedProjectFolderId)
+        : activeThread;
+    const taskId = `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const startedAt = Date.now();
+    const finishedAt = Date.now();
+    const missing = [
+      !intent.provider ? "供应商/provider" : "",
+      !intent.model ? "模型/model" : "",
+      !intent.apiKey ? "API Key" : "",
+      !intent.baseUrl ? "Base URL" : ""
+    ].filter(Boolean);
+
+    setComposer("");
+    setAttachments([]);
+    setActiveAgentTaskId(taskId);
+    setAgentProgressEvents([]);
+    setLastAgentArtifact(null);
+    setExecutionArtifacts([]);
+    setExecutionStartedAt(startedAt);
+    setExecutionFinishedAt(finishedAt);
+    setStatusNow(finishedAt);
+    setExecutionExpanded(false);
+    updateThreadRecord(runtimeThread.id, (record) => ({
+      ...record,
+      activeAgentTaskId: taskId,
+      progressEvents: [],
+      lastAgentArtifact: null,
+      executionArtifacts: [],
+      executionStartedAt: startedAt,
+      executionFinishedAt: finishedAt,
+      executionExpanded: false
+    }));
+    recordAgentProgress(
+      taskId,
+      missing.length === 0 ? "模型配置完成" : "模型配置待补齐",
+      missing.length === 0 ? `${intent.provider} / ${intent.model}` : `还缺：${missing.join("、")}`,
+      missing.length === 0 ? "success" : "warn",
+      runtimeThread.id,
+      true
+    );
+
+    updateMessagesForThread(runtimeThread.id, (current) => [
+      ...current,
+      {
+        id: `message-user-${Date.now()}`,
+        role: "user",
+        author: "你",
+        body: redactedBody,
+        time: timeNow()
+      }
+    ], true);
+
+    if (missing.length > 0) {
+      const nextStep =
+        missing.includes("API Key")
+          ? `请继续发送 ${intent.provider || "供应商"} 的 API Key。`
+          : "请继续补充 provider、model 或 Base URL，例如：DeepSeek / deepseek-v4-flash / https://api.deepseek.com。";
+      updateMessagesForThread(runtimeThread.id, (current) => [
+        ...current,
+        {
+          id: `message-agent-${Date.now()}`,
+          role: "agent",
+          author: "Model Center",
+          body: `我识别到你在配置模型 profile，但信息还不完整。\n\n已识别：\n- Provider：${intent.provider || "未识别"}\n- Model：${intent.model || "未识别"}\n- Base URL：${intent.baseUrl || "未识别"}\n- API Key：${intent.apiKey ? maskSecret(intent.apiKey) : "未提供"}\n\n${nextStep}`,
+          time: timeNow()
+        }
+      ], true);
+      renameThread(runtimeThread.id, `配置 ${labelBase} profile`);
+      setThreads((current) =>
+        current.map((thread) =>
+          thread.id === runtimeThread.id
+            ? { ...thread, kind: "Model Config", model: AUTO_MODEL_LABEL, status: "waiting", updatedAt: "刚刚" }
+            : thread
+        )
+      );
+      addAudit("Model Center", "等待补齐模型配置", missing.join("、"), "warn");
+      return true;
+    }
+
+    const capabilityDefaults = providerCapabilityDefaults[intent.provider!] ?? {};
+    const payload: FiitxModelPayload = {
+      id: `chat-${slug(intent.provider!)}-${slug(intent.model!)}`,
+      provider: intent.provider!,
+      model: intent.model!,
+      baseUrl: intent.baseUrl,
+      apiKey: intent.apiKey,
+      contextWindow: providerContextWindowDefaults[intent.provider!] ?? 64000,
+      supportsTools: capabilityDefaults.supportsTools ?? true,
+      supportsVision: capabilityDefaults.supportsVision ?? false,
+      supportsStreaming: capabilityDefaults.supportsStreaming ?? true,
+      supportsJsonMode: capabilityDefaults.supportsJsonMode ?? true,
+      bestFor: capabilityDefaults.bestFor ?? ["coding", "research"],
+      toolCallStyle: capabilityDefaults.toolCallStyle ?? "openai"
+    };
+
+    let profile: FiitxModelProfile;
+    try {
+      const saved = await window.fiitx?.saveModelProfile(payload);
+      profile = saved ?? createChatConfiguredProfile(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "保存模型 profile 失败";
+      updateMessagesForThread(runtimeThread.id, (current) => [
+        ...current,
+        {
+          id: `message-agent-${Date.now()}`,
+          role: "agent",
+          author: "Model Center",
+          body: `模型配置保存失败：${message}`,
+          time: timeNow()
+        }
+      ], true);
+      setThreads((current) =>
+        current.map((thread) =>
+          thread.id === runtimeThread.id
+            ? { ...thread, kind: "Model Config", status: "waiting", updatedAt: "刚刚" }
+            : thread
+        )
+      );
+      addAudit("Model Center", "模型配置保存失败", message, "warn");
+      return true;
+    }
+
+    upsertConfiguredProfile(profile);
+    setAutoModelRouting(true);
+    setModelForm((current) => ({
+      ...current,
+      provider: payload.provider,
+      model: payload.model,
+      baseUrl: payload.baseUrl ?? current.baseUrl,
+      apiKey: "",
+      contextWindow: payload.contextWindow ?? current.contextWindow,
+      supportsTools: payload.supportsTools,
+      supportsVision: payload.supportsVision,
+      supportsStreaming: payload.supportsStreaming,
+      supportsJsonMode: payload.supportsJsonMode,
+      bestFor: payload.bestFor,
+      toolCallStyle: payload.toolCallStyle
+    }));
+    updateMessagesForThread(runtimeThread.id, (current) => [
+      ...current,
+      {
+        id: `message-agent-${Date.now()}`,
+        role: "agent",
+        author: "Model Center",
+        body: `已保存模型 profile：${profile.provider} / ${profile.model}\n\nAPI Key 已脱敏并写入${encryptionAvailable ? "系统安全存储" : "本地 profile 存储"}。自动模型路由已开启，后续任务会优先使用已配置 key。`,
+        time: timeNow()
+      }
+    ], true);
+    renameThread(runtimeThread.id, `${profile.provider} 模型已配置`);
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === runtimeThread.id
+          ? { ...thread, kind: "Model Config", model: `${profile.provider} / ${profile.model}`, status: "done", updatedAt: "刚刚" }
+          : thread
+      )
+    );
+    addAudit("Model Center", "通过 chatbox 保存模型 profile", `${profile.provider} / ${profile.model}`, "success");
+    return true;
+  }
+
   function placeThreadInProject(threadId: string, preferredFolderId: string | null | undefined = undefined) {
     const existingFolderId = getCurrentThreadFolderId(threadId);
     const targetFolderId = preferredFolderId === undefined ? existingFolderId ?? selectedProjectFolderId : preferredFolderId;
@@ -2026,7 +3404,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
       id: `thread-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       title: buildFallbackTaskTitle(seedPrompt),
       kind: mode === "chat" ? "Chat" : "Coding",
-      model: AUTO_MODEL_LABEL,
+      model: getRuntimeModelLabel(),
       status: "waiting",
       updatedAt: "刚刚",
       createdAt: Date.now(),
@@ -2094,16 +3472,20 @@ Fiitx 可以把附件作为 artifact 输入源处理：
   }
 
   async function abortActiveTask() {
-    if (!isPersistableThread(activeThreadId) || !activeAgentTaskId) {
+    if (!isPersistableThread(activeThreadId) || !activeAgentTaskId || abortPending) {
       return;
     }
 
+    setAbortPending(true);
     recordAgentProgress(activeAgentTaskId, "请求停止", "用户停止当前 Agent 回合。", "warn", activeThreadId, true);
     const result = await window.fiitx?.abortAgent?.({
       threadId: activeThreadId,
       taskId: activeAgentTaskId
     });
     addAudit("Agent Session", result?.ok ? "abort" : "abort 失败", result?.message || activeThreadId, result?.ok ? "warn" : "info");
+    if (!result?.ok) {
+      setAbortPending(false);
+    }
   }
 
   async function sendMessage() {
@@ -2118,13 +3500,18 @@ Fiitx 可以把附件作为 artifact 输入源处理：
       .join("\n");
 
     if (agentRunning) {
-      await steerRunningTask(visibleBody);
+      await abortActiveTask();
+      return;
+    }
+
+    if (await handleModelConfigurationMessage(body, visibleBody)) {
       return;
     }
 
     const permission = permissionOptions.find((option) => option.id === permissionMode) ?? permissionOptions[0];
     const optimisticMode = inferAgentMode(body || "请处理这些附件。", attachments);
-    const optimisticAgentLabel = agentLabel(optimisticMode);
+    const matchedBusinessAgent = matchAgentSpecForPrompt(body || "请处理这些附件。", activeChannelAdapterId);
+    const optimisticAgentLabel = matchedBusinessAgent?.name ?? agentLabel(optimisticMode);
     const runtimeThread = activeThread.id === DRAFT_THREAD_ID ? createTaskThread(body || "请处理这些附件。", selectedProjectFolderId) : activeThread;
     placeThreadInProject(runtimeThread.id);
     const agentMessageId = `message-agent-${Date.now()}`;
@@ -2133,22 +3520,30 @@ Fiitx 可以把附件作为 artifact 输入源处理：
       taskId,
       prompt: body || "请处理这些附件。",
       workspacePath,
-      model: AUTO_MODEL,
+      model: getRuntimeModelId(),
       permissionMode,
       policySettings,
       attachments,
       threadId: runtimeThread.id,
       currentDate: getCurrentDateContext(),
       timeZone: "Asia/Shanghai",
-      contextMessages: buildPiContextMessages()
+      channelId: activeChannelAdapterId,
+      channelContext: buildRuntimeChannelContext(runtimeThread.id),
+      agentRegistry: buildRuntimeAgentRegistry(),
+      channelRegistry: buildRuntimeChannelRegistry(),
+      contextMessages: buildPiContextMessages(),
+      threadContext: buildPiThreadContext(runtimeThread)
     };
     const optimisticBody =
-      optimisticMode === "chat"
-        ? "正在分析上下文并自动选择模型。"
-        : `正在分析任务意图并自动选择模型。权限为“${permission.label}”。`;
+      matchedBusinessAgent
+        ? `正在通过 ${activeChannelAdapter?.name || "当前通道"} 调用 ${matchedBusinessAgent.name}，并结合线程上下文生成处理方案。`
+        : optimisticMode === "chat"
+        ? `正在通过 ${activeChannelAdapter?.name || "当前通道"} 分析上下文并自动选择模型。`
+        : `正在通过 ${activeChannelAdapter?.name || "当前通道"} 分析任务意图并自动选择模型。权限为“${permission.label}”。`;
     const startedAt = Date.now();
     setActiveAgentTaskId(taskId);
     setAgentProgressEvents([]);
+    setAbortPending(false);
     setLastAgentArtifact(null);
     setExecutionArtifacts([]);
     setExecutionStartedAt(startedAt);
@@ -2217,7 +3612,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
           message.id === agentMessageId
             ? {
                 ...message,
-                author: result.ok ? agentLabel(result.mode) : "Agent Runtime",
+                author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
                 body: result.summary
               }
             : message
@@ -2254,6 +3649,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
             ? {
                 ...thread,
                 model: result.provider && result.model ? `${result.provider} / ${result.model}` : result.model ?? AUTO_MODEL_LABEL,
+                kind: result.agentName ? result.agentName.replace(/\s*Agent$/i, "") : thread.kind,
                 status: result.approvalRequests?.length ? "waiting" : result.ok ? "done" : "waiting",
                 updatedAt: "刚刚"
               }
@@ -2286,6 +3682,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
         executionExpanded: false
       }));
       setAgentRunning(false);
+      setAbortPending(false);
     }
   }
 
@@ -2295,15 +3692,22 @@ Fiitx 可以把附件作为 artifact 输入源处理：
     }
 
     const taskId = `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const resumeThread = threads.find((thread) => thread.id === approval.resumePayload?.threadId) ?? activeThread;
     const payload: FiitxAgentTaskPayload = {
       ...approval.resumePayload,
       taskId,
-      permissionMode: "auto"
+      permissionMode: "auto",
+      agentRegistry: approval.resumePayload.agentRegistry ?? buildRuntimeAgentRegistry(),
+      channelRegistry: approval.resumePayload.channelRegistry ?? buildRuntimeChannelRegistry(),
+      channelId: approval.resumePayload.channelId ?? activeChannelAdapterId,
+      channelContext: approval.resumePayload.channelContext ?? buildRuntimeChannelContext(approval.resumePayload.threadId),
+      threadContext: buildPiThreadContext(resumeThread)
     };
     const agentMessageId = `message-agent-${Date.now()}`;
     const startedAt = Date.now();
     setActiveAgentTaskId(taskId);
     setAgentRunning(true);
+    setAbortPending(false);
     setExecutionArtifacts([]);
     setExecutionStartedAt(startedAt);
     setExecutionFinishedAt(null);
@@ -2339,7 +3743,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
           message.id === agentMessageId
             ? {
                 ...message,
-                author: result.ok ? agentLabel(result.mode) : "Agent Runtime",
+                author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
                 body: result.summary
               }
             : message
@@ -2383,6 +3787,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
         executionExpanded: false
       }));
       setAgentRunning(false);
+      setAbortPending(false);
     }
   }
 
@@ -2508,7 +3913,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
           updatedAt: new Date().toISOString()
       } satisfies FiitxModelProfile);
 
-      setProfiles((current) => current.filter((item) => item.id !== profile.id).concat(profile));
+      upsertConfiguredProfile(profile);
       setModelForm((current) => ({ ...current, apiKey: "" }));
       addAudit("Model Center", "保存模型 profile", `${profile.provider} / ${profile.model}`, "success");
     } finally {
@@ -2518,11 +3923,15 @@ Fiitx 可以把附件作为 artifact 输入源处理：
 
   function renderHeader() {
     const workspaceLabel = workspacePath ? workspacePath.split("/").filter(Boolean).slice(-1)[0] : "选择工作区";
+    const headerTitle = activeView === "workbench" ? activeThread.title : navItems.find((item) => item.id === activeView)?.label;
     return (
       <header className="topbar">
-        <div>
-          <div className="eyebrow">Fiitx BYOM Agent Desktop</div>
-          <h1>{navItems.find((item) => item.id === activeView)?.label}</h1>
+        <div className="topbar-title-group">
+          {!visiblePanels.sidebar ? renderPaneToggleButton("sidebar", "topbar-pane-toggle") : null}
+          <div className="topbar-title-copy">
+          <div className="eyebrow">{PRODUCT_EYEBROW}</div>
+          <h1 title={headerTitle}>{headerTitle}</h1>
+          </div>
         </div>
         <div className="topbar-actions">
           <button className="icon-text-button ghost" onClick={chooseWorkspace} title="选择工作区">
@@ -2536,6 +3945,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
             <Plus size={17} />
             <span>新建任务</span>
           </button>
+          {activeView === "workbench" ? renderPaneToggleButton("artifact", "topbar-pane-toggle") : null}
         </div>
       </header>
     );
@@ -2675,16 +4085,37 @@ Fiitx 可以把附件作为 artifact 输入源处理：
     );
   }
 
+  function renderPaneToggleButton(panel: Exclude<PanelKey, "terminal">, className = "") {
+    const Icon = panel === "sidebar" ? PanelLeft : PanelRight;
+    const isVisible = visiblePanels[panel];
+    const title =
+      panel === "sidebar"
+        ? isVisible ? "收起左侧导航" : "展开左侧导航"
+        : isVisible ? "收起 Artifact" : "展开 Artifact";
+
+    return (
+      <button
+        className={["pane-toggle-button", className].filter(Boolean).join(" ")}
+        title={title}
+        onClick={() => togglePanel(panel)}
+        type="button"
+      >
+        <Icon size={18} />
+      </button>
+    );
+  }
+
   function renderSidebar() {
     return (
       <aside className="sidebar">
         <div className="window-drag" />
         <div className="brand">
-          <img src={logoUrl} alt="Fiitx" />
-          <div>
-            <strong>Fiitx</strong>
-            <span>Enterprise Agent</span>
+          <img src={logoUrl} alt={PRODUCT_NAME} />
+          <div className="brand-copy">
+            <strong>{PRODUCT_NAME}</strong>
+            <span>{PRODUCT_SUBTITLE}</span>
           </div>
+          {renderPaneToggleButton("sidebar", "sidebar-brand-toggle")}
         </div>
 
         {renderProjectSection()}
@@ -2714,14 +4145,6 @@ Fiitx 可以把附件作为 artifact 输入源处理：
             <Store size={15} />
             <span>模型中心</span>
           </button>
-          <div className="route-pill">
-            <Sparkles size={15} />
-            <span>{AUTO_MODEL_LABEL}</span>
-          </div>
-          <div className="route-pill muted">
-            <Database size={15} />
-            <span>{profiles.filter((profile) => profile.updatedAt !== "default").length} 个已配置 Key</span>
-          </div>
           <div className="route-pill muted">
             <LockKeyhole size={15} />
             <span>{encryptionAvailable ? "Keychain 加密" : "本地加密不可用"}</span>
@@ -2842,6 +4265,14 @@ Fiitx 可以把附件作为 artifact 输入源处理：
                 ))}
               </div>
             ) : null}
+            {activeChannelAdapter ? (
+              <div className="composer-channel-row">
+                <div className="composer-channel-chip" title={activeChannelAdapter.description}>
+                  <MessageSquare size={14} />
+                  <span>当前通道：{activeChannelAdapter.name}</span>
+                </div>
+              </div>
+            ) : null}
             <div className="composer-input">
               <textarea
                 value={composer}
@@ -2849,7 +4280,11 @@ Fiitx 可以把附件作为 artifact 输入源处理：
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    void sendMessage();
+                    if (agentRunning) {
+                      void abortActiveTask();
+                    } else {
+                      void sendMessage();
+                    }
                   }
                 }}
                 placeholder="输入消息或任务"
@@ -2876,18 +4311,13 @@ Fiitx 可以把附件作为 artifact 输入源处理：
                 <button className="composer-icon-button" onClick={startVoiceInput} title="语音输入">
                   <Mic size={19} />
                 </button>
-                {agentRunning ? (
-                  <button className="composer-icon-button danger" onClick={abortActiveTask} title="停止当前回合">
-                    <X size={18} />
-                  </button>
-                ) : null}
                 <button
-                  className="send-button"
-                  onClick={sendMessage}
-                  title={agentRunning ? "发送中途补充" : "发送任务"}
-                  disabled={!composer.trim() && attachments.length === 0}
+                  className={agentRunning ? "send-button stop" : "send-button"}
+                  onClick={agentRunning ? abortActiveTask : sendMessage}
+                  title={agentRunning ? "停止当前任务" : "发送任务"}
+                  disabled={agentRunning ? abortPending : !composer.trim() && attachments.length === 0}
                 >
-                  <Send size={18} />
+                  {agentRunning ? <Square size={17} fill="currentColor" /> : <Send size={18} />}
                 </button>
               </div>
             </div>
@@ -3153,8 +4583,17 @@ Fiitx 可以把附件作为 artifact 输入源处理：
           <div className="panel-header">
             <div>
               <span>已配置模型</span>
-              <small>{profiles.length} 个 profile</small>
+              <small>{profiles.length} 个已配置 Key</small>
             </div>
+            <label className="model-routing-switch">
+              <span>{AUTO_MODEL_LABEL}</span>
+              <input
+                type="checkbox"
+                checked={autoModelRouting}
+                onChange={(event) => setAutoModelRouting(event.target.checked)}
+              />
+              <b aria-hidden="true" />
+            </label>
           </div>
           <div className="profile-list">
             {profiles.map((profile) => (
@@ -3175,35 +4614,472 @@ Fiitx 可以把附件作为 artifact 输入源处理：
     );
   }
 
-  function renderAgents() {
+  function parseAgentListInput(value: string) {
+    return value
+      .split(/\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function updateAgentSpec(id: string, patch: Partial<AgentSpec>) {
+    setAgentSpecs((current) => current.map((agent) => (agent.id === id ? { ...agent, ...patch } : agent)));
+  }
+
+  function updateAgentListField(id: string, key: "tools" | "skills" | "triggers" | "systems" | "metrics" | "channels", value: string) {
+    updateAgentSpec(id, { [key]: parseAgentListInput(value) } as Partial<AgentSpec>);
+  }
+
+  function updateAgentStage(agentId: string, index: number, patch: Partial<AgentStage>) {
+    setAgentSpecs((current) =>
+      current.map((agent) =>
+        agent.id === agentId
+          ? {
+              ...agent,
+              stages: agent.stages.map((stage, stageIndex) => (stageIndex === index ? { ...stage, ...patch } : stage))
+            }
+          : agent
+      )
+    );
+  }
+
+  function addAgentStage(agentId: string) {
+    setAgentSpecs((current) =>
+      current.map((agent) =>
+        agent.id === agentId
+          ? {
+              ...agent,
+              stages: agent.stages.concat({
+                name: "新阶段",
+                owner: agent.name,
+                trigger: "待定义触发条件",
+                action: "待定义动作",
+                output: "待定义输出"
+              })
+            }
+          : agent
+      )
+    );
+  }
+
+  function removeAgentStage(agentId: string, index: number) {
+    setAgentSpecs((current) =>
+      current.map((agent) =>
+        agent.id === agentId
+          ? {
+              ...agent,
+              stages: agent.stages.filter((_, stageIndex) => stageIndex !== index)
+            }
+          : agent
+      )
+    );
+  }
+
+  function resetAgentSpecs() {
+    setAgentSpecs(defaultAgentSpecs);
+    setSelectedAgentId(defaultAgentSpecs[0]?.id ?? "");
+    addAudit("Agent Registry", "重置行业 Agent 模板", "hotel-travel-defaults", "warn");
+  }
+
+  function updateChannelAdapterSpec(id: string, patch: Partial<ChannelAdapterSpec>) {
+    setChannelAdapters((current) =>
+      current.map((adapter) => (adapter.id === id ? { ...adapter, ...patch } : adapter))
+    );
+  }
+
+  function updateChannelAdapterListField(
+    id: string,
+    key: "capabilities" | "contextSources" | "outputModes" | "agentBindings",
+    value: string
+  ) {
+    updateChannelAdapterSpec(id, {
+      [key]: value
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    } as Partial<ChannelAdapterSpec>);
+  }
+
+  function resetChannelAdapters() {
+    setChannelAdapters(defaultChannelAdapters);
+    setSelectedChannelAdapterId(defaultChannelAdapters[0]?.id ?? "");
+    setActiveChannelAdapterId(defaultChannelAdapters[0]?.id ?? "");
+    addAudit("Channel Registry", "重置通道模板", "channel-adapters-defaults", "warn");
+  }
+
+  function activateChannelAdapter(adapterId: string) {
+    setActiveChannelAdapterId(adapterId);
+    setActiveView("workbench");
+    const adapter = channelAdapters.find((item) => item.id === adapterId);
+    addAudit("Channel Adapter", "切换当前通道", adapter?.name || adapterId, "info");
+  }
+
+  function buildAgentManifest(agent: AgentSpec) {
+    return `# ${agent.name}
+
+## AGENTS.md instruction
+${agent.systemPrompt}
+
+## Objective
+${agent.objective}
+
+## Skills
+${agent.skills.map((skill) => `- ${skill}`).join("\n")}
+
+## Tool schema draft
+\`\`\`json
+${JSON.stringify(
+  {
+    name: agent.id,
+    description: agent.scope,
+    policy: agent.policy,
+    channels: agent.channels,
+    systems: agent.systems,
+    tools: agent.tools.map((tool) => ({
+      name: tool,
+      description: `${agent.name} can call ${tool}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          context: { type: "string", description: "业务上下文，来自 Deepsix threadContext / 外部系统事件 / 用户输入" }
+        },
+        required: ["context"]
+      }
+    }))
+  },
+  null,
+  2
+)}
+\`\`\`
+
+## Orchestration
+${agent.stages.map((stage, index) => `${index + 1}. ${stage.name}: ${stage.trigger} -> ${stage.action} -> ${stage.output}`).join("\n")}
+`;
+  }
+
+  function buildChannelManifest(adapter: ChannelAdapterSpec) {
+    return `# ${adapter.name}
+
+## Channel adapter
+- id: ${adapter.id}
+- type: ${adapter.channelType}
+- transport: ${adapter.transport}
+- entrypoint: ${adapter.entrypoint}
+- sessionKey: ${adapter.sessionKeyStrategy}
+- followUp: ${adapter.followUpPolicy}
+
+## Capabilities
+${adapter.capabilities.map((item) => `- ${item}`).join("\n")}
+
+## Context sources
+${adapter.contextSources.map((item) => `- ${item}`).join("\n")}
+
+## Output modes
+${adapter.outputModes.map((item) => `- ${item}`).join("\n")}
+
+## Bound business agents
+${adapter.agentBindings.map((item) => `- ${item}`).join("\n")}
+
+## System prompt
+${adapter.systemPrompt}
+
+## Sample event
+\`\`\`json
+${adapter.sampleEvent}
+\`\`\`
+`;
+  }
+
+  function useAgentInWorkbench(agent: AgentSpec) {
+    setActiveView("workbench");
+    setComposer(`使用「${agent.name}」处理任务：\n\n目标：${agent.objective}\n\n请先基于当前上下文制定执行计划，再按 policy gate 请求必要审批。`);
+  }
+
+  function renderAgentListEditor(agent: AgentSpec, key: "tools" | "skills" | "triggers" | "systems" | "metrics" | "channels", label: string) {
     return (
-      <div className="agents-layout">
-        {agents.length === 0 ? <div className="panel empty-state">暂无 Agent 编排</div> : null}
-        {agents.map((agent) => (
-          <section className={`agent-panel panel ${agent.accent}`} key={agent.name}>
-            <div className="agent-heading">
-              <div>
-                <span className={`agent-status ${agent.status}`}>{agent.status}</span>
-                <h3>{agent.name}</h3>
-                <p>{agent.scope}</p>
-              </div>
-              <Bot size={24} />
+      <label className="agent-editor-field">
+        <span>{label}</span>
+        <textarea
+          value={agent[key].join("\n")}
+          onChange={(event) => updateAgentListField(agent.id, key, event.target.value)}
+          rows={Math.min(6, Math.max(3, agent[key].length))}
+        />
+      </label>
+    );
+  }
+
+  function renderChannelListEditor(
+    adapter: ChannelAdapterSpec,
+    key: "capabilities" | "contextSources" | "outputModes" | "agentBindings",
+    label: string
+  ) {
+    return (
+      <label className="agent-editor-field">
+        <span>{label}</span>
+        <textarea
+          value={adapter[key].join("\n")}
+          onChange={(event) => updateChannelAdapterListField(adapter.id, key, event.target.value)}
+          rows={Math.min(6, Math.max(3, adapter[key].length))}
+        />
+      </label>
+    );
+  }
+
+  function renderAgents() {
+    if (!selectedAgent || !selectedChannelAdapter) {
+      return <div className="panel empty-state">暂无 Agent 编排</div>;
+    }
+
+    const manifest = buildAgentManifest(selectedAgent);
+    const channelManifest = buildChannelManifest(selectedChannelAdapter);
+    const activeCount = agentSpecs.filter((agent) => agent.status === "active").length;
+    const activeChannelCount = channelAdapters.filter((adapter) => adapter.status === "active").length;
+
+    return (
+      <div className="agents-console">
+        <section className="agent-hero panel">
+          <div>
+            <span className="eyebrow">Hotel Travel Agent OS</span>
+            <h2>酒店文旅行业大 Agent</h2>
+            <p>以 pi-style AgentSession 为运行骨架，用 OpenClaw-style channel/skill/agent registry 管理接入，再参考微信 AI 的 AGENTS.md + SKILL + mcp.json + context/followUp 方式把业务能力原子化。</p>
+          </div>
+          <div className="agent-architecture-strip">
+            <span>AgentSession</span>
+            <span>Skill Registry</span>
+            <span>External Connectors</span>
+            <span>Policy Gate</span>
+            <span>Artifact UI</span>
+          </div>
+        </section>
+
+        <section className="agents-list panel">
+          <div className="panel-header">
+            <div>
+              <span>Agent Registry</span>
+              <small>{agentSpecs.length} 个 Agent · {activeCount} 个 active</small>
             </div>
-            <div className="agent-meta">
-              <span>模型</span>
-              <strong>{agent.model}</strong>
-            </div>
-            <div className="tool-grid">
-              {agent.tools.map((tool) => (
-                <span key={tool}>{tool}</span>
-              ))}
-            </div>
-            <button className="icon-text-button">
-              <Workflow size={16} />
-              <span>打开编排</span>
+            <button className="icon-text-button" onClick={resetAgentSpecs} title="恢复默认行业模板">
+              <RefreshCw size={16} />
+              <span>重置</span>
             </button>
-          </section>
-        ))}
+          </div>
+          <div className="agent-stack">
+            {agentSpecs.map((agent) => (
+              <button
+                className={selectedAgent.id === agent.id ? `agent-row active ${agent.accent}` : `agent-row ${agent.accent}`}
+                key={agent.id}
+                onClick={() => setSelectedAgentId(agent.id)}
+              >
+                <span className={`status-dot ${agent.status === "active" ? "done" : agent.status === "ready" ? "running" : "waiting"}`} />
+                <span>
+                  <strong>{agent.name}</strong>
+                  <small>{agent.scope}</small>
+                </span>
+                <code>{agent.policy}</code>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="agent-editor panel">
+          <div className="panel-header">
+            <div>
+              <span>Agent 编排配置</span>
+              <small>可修改角色、系统提示词、工具、Skill、外部系统和阶段</small>
+            </div>
+            <button className="primary-button" onClick={() => useAgentInWorkbench(selectedAgent)}>
+              <Workflow size={16} />
+              <span>用于任务</span>
+            </button>
+          </div>
+
+          <div className="agent-editor-grid">
+            <label className="agent-editor-field">
+              <span>名称</span>
+              <input value={selectedAgent.name} onChange={(event) => updateAgentSpec(selectedAgent.id, { name: event.target.value })} />
+            </label>
+            <label className="agent-editor-field">
+              <span>状态</span>
+              <select value={selectedAgent.status} onChange={(event) => updateAgentSpec(selectedAgent.id, { status: event.target.value as AgentSpec["status"] })}>
+                <option value="active">active</option>
+                <option value="ready">ready</option>
+                <option value="draft">draft</option>
+              </select>
+            </label>
+            <label className="agent-editor-field">
+              <span>模型</span>
+              <input value={selectedAgent.model} onChange={(event) => updateAgentSpec(selectedAgent.id, { model: event.target.value })} />
+            </label>
+            <label className="agent-editor-field">
+              <span>Policy</span>
+              <select value={selectedAgent.policy} onChange={(event) => updateAgentSpec(selectedAgent.id, { policy: event.target.value as PermissionMode })}>
+                {permissionOptions.map((option) => (
+                  <option value={option.id} key={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="agent-editor-field">
+            <span>业务范围</span>
+            <input value={selectedAgent.scope} onChange={(event) => updateAgentSpec(selectedAgent.id, { scope: event.target.value })} />
+          </label>
+          <label className="agent-editor-field">
+            <span>目标</span>
+            <textarea value={selectedAgent.objective} onChange={(event) => updateAgentSpec(selectedAgent.id, { objective: event.target.value })} rows={3} />
+          </label>
+          <label className="agent-editor-field">
+            <span>系统提示词 / AGENTS.md 片段</span>
+            <textarea value={selectedAgent.systemPrompt} onChange={(event) => updateAgentSpec(selectedAgent.id, { systemPrompt: event.target.value })} rows={4} />
+          </label>
+
+          <div className="agent-field-columns">
+            {renderAgentListEditor(selectedAgent, "triggers", "触发入口")}
+            {renderAgentListEditor(selectedAgent, "systems", "外部系统")}
+            {renderAgentListEditor(selectedAgent, "tools", "原子工具")}
+            {renderAgentListEditor(selectedAgent, "skills", "Skills")}
+            {renderAgentListEditor(selectedAgent, "channels", "通道")}
+            {renderAgentListEditor(selectedAgent, "metrics", "业务指标")}
+          </div>
+
+          <div className="agent-stage-header">
+            <div>
+              <strong>编排阶段</strong>
+              <span>{"参考 pi agent loop：context -> tool plan -> policy -> tool result -> followUp"}</span>
+            </div>
+            <button className="icon-text-button" onClick={() => addAgentStage(selectedAgent.id)}>
+              <Plus size={16} />
+              <span>阶段</span>
+            </button>
+          </div>
+          <div className="agent-stage-list">
+            {selectedAgent.stages.map((stage, index) => (
+              <div className="agent-stage-card" key={`${selectedAgent.id}-${index}`}>
+                <div className="agent-stage-number">{index + 1}</div>
+                <div className="agent-stage-fields">
+                  <input value={stage.name} onChange={(event) => updateAgentStage(selectedAgent.id, index, { name: event.target.value })} aria-label="阶段名称" />
+                  <input value={stage.owner} onChange={(event) => updateAgentStage(selectedAgent.id, index, { owner: event.target.value })} aria-label="负责人" />
+                  <textarea value={stage.trigger} onChange={(event) => updateAgentStage(selectedAgent.id, index, { trigger: event.target.value })} aria-label="触发条件" rows={2} />
+                  <textarea value={stage.action} onChange={(event) => updateAgentStage(selectedAgent.id, index, { action: event.target.value })} aria-label="执行动作" rows={2} />
+                  <textarea value={stage.output} onChange={(event) => updateAgentStage(selectedAgent.id, index, { output: event.target.value })} aria-label="输出" rows={2} />
+                </div>
+                <button className="icon-button ghost" onClick={() => removeAgentStage(selectedAgent.id, index)} title="删除阶段" disabled={selectedAgent.stages.length <= 1}>
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="agent-preview panel">
+          <div className="panel-header">
+            <div>
+              <span>Channel Adapters</span>
+              <small>{channelAdapters.length} 个 adapter · {activeChannelCount} 个 active · 当前 {activeChannelAdapter?.name || "未选择"}</small>
+            </div>
+            <button className="icon-text-button" onClick={resetChannelAdapters} title="恢复默认 Channel adapters">
+              <RefreshCw size={16} />
+              <span>重置</span>
+            </button>
+          </div>
+          <div className="agent-stack">
+            {channelAdapters.map((adapter) => (
+              <button
+                className={selectedChannelAdapter.id === adapter.id ? "agent-row active blue" : "agent-row blue"}
+                key={adapter.id}
+                onClick={() => setSelectedChannelAdapterId(adapter.id)}
+              >
+                <span className={`status-dot ${adapter.status === "active" ? "done" : adapter.status === "ready" ? "running" : "waiting"}`} />
+                <span>
+                  <strong>{adapter.name}</strong>
+                  <small>{adapter.description}</small>
+                </span>
+                <code>{adapter.channelType === "wechat-miniprogram-ai" ? "wechat" : "desktop"}</code>
+              </button>
+            ))}
+          </div>
+
+          <div className="agent-editor-grid">
+            <label className="agent-editor-field">
+              <span>名称</span>
+              <input value={selectedChannelAdapter.name} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { name: event.target.value })} />
+            </label>
+            <label className="agent-editor-field">
+              <span>状态</span>
+              <select value={selectedChannelAdapter.status} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { status: event.target.value as ChannelAdapterSpec["status"] })}>
+                <option value="active">active</option>
+                <option value="ready">ready</option>
+                <option value="draft">draft</option>
+              </select>
+            </label>
+            <label className="agent-editor-field">
+              <span>传输层</span>
+              <input value={selectedChannelAdapter.transport} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { transport: event.target.value })} />
+            </label>
+            <label className="agent-editor-field">
+              <span>会话键</span>
+              <input value={selectedChannelAdapter.sessionKeyStrategy} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { sessionKeyStrategy: event.target.value })} />
+            </label>
+          </div>
+
+          <label className="agent-editor-field">
+            <span>描述</span>
+            <textarea value={selectedChannelAdapter.description} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { description: event.target.value })} rows={3} />
+          </label>
+          <label className="agent-editor-field">
+            <span>入口协议</span>
+            <input value={selectedChannelAdapter.entrypoint} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { entrypoint: event.target.value })} />
+          </label>
+          <label className="agent-editor-field">
+            <span>通道系统提示词</span>
+            <textarea value={selectedChannelAdapter.systemPrompt} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { systemPrompt: event.target.value })} rows={4} />
+          </label>
+          <label className="agent-editor-field">
+            <span>followUp 规则</span>
+            <textarea value={selectedChannelAdapter.followUpPolicy} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { followUpPolicy: event.target.value })} rows={3} />
+          </label>
+
+          <div className="agent-field-columns">
+            {renderChannelListEditor(selectedChannelAdapter, "capabilities", "通道能力")}
+            {renderChannelListEditor(selectedChannelAdapter, "contextSources", "上下文来源")}
+            {renderChannelListEditor(selectedChannelAdapter, "outputModes", "输出形态")}
+            {renderChannelListEditor(selectedChannelAdapter, "agentBindings", "绑定业务 Agent")}
+          </div>
+
+          <div className="agent-stage-header">
+            <div>
+              <strong>Channel Manifest</strong>
+              <span>{"横向底座：channel -> context -> route bias -> followUp -> reply contract"}</span>
+            </div>
+            <button className="primary-button" onClick={() => activateChannelAdapter(selectedChannelAdapter.id)}>
+              <MessageSquare size={16} />
+              <span>设为当前通道</span>
+            </button>
+          </div>
+          <div className="agent-manifest channel-manifest">
+            <pre>{channelManifest}</pre>
+          </div>
+
+          <div className="panel-header">
+            <div>
+              <span>Skill Manifest</span>
+              <small>AGENTS.md / SKILL.md / mcp.json 草案</small>
+            </div>
+            <button className="icon-text-button" onClick={() => copyText(manifest)}>
+              <Copy size={16} />
+              <span>复制</span>
+            </button>
+          </div>
+          <div className="agent-kpi-grid">
+            {selectedAgent.metrics.slice(0, 4).map((metric) => (
+              <div className="agent-kpi" key={metric}>
+                <span>{metric}</span>
+              </div>
+            ))}
+          </div>
+          <div className="agent-manifest">
+            <pre>{manifest}</pre>
+          </div>
+        </section>
       </div>
     );
   }
@@ -3277,6 +5153,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
 
   function renderSettings() {
     const policyRows = [
+      ["web.fetch_url", "外部文档读取", "读取用户消息中的 URL，并作为 pi transformContext 外部上下文。"],
       ["workspace.scan", "Workspace 扫描", "读取文件列表和安全文本片段，构建 coding 上下文。"],
       ["workspace.write_manifest", "文件写入", "模型返回 file manifest 后写入当前 workspace。"],
       ["shell.exec", "Shell 命令", "执行 bash/npm/git 等本地命令。"],
@@ -3393,7 +5270,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
         <div className="terminal-tabs">
           <button className="terminal-tab active">
             <Terminal size={15} />
-            <span>Fiitx</span>
+            <span>{PRODUCT_NAME}</span>
           </button>
           <button className="terminal-tab plus" title="新建终端">
             <Plus size={15} />
@@ -3404,7 +5281,7 @@ Fiitx 可以把附件作为 artifact 输入源处理：
         </div>
         <div className="terminal-body">
           <span className="terminal-cursor">▌</span>
-          <code>(base) botbotbot@botbotmac Fiitx %</code>
+          <code>(base) botbotbot@botbotmac {PRODUCT_NAME} %</code>
         </div>
       </section>
     );
@@ -3413,22 +5290,6 @@ Fiitx 可以把附件作为 artifact 输入源处理：
   function renderEdgeHotspots() {
     return (
       <>
-        <button
-          className="edge-hotspot sidebar-hotspot"
-          title={visiblePanels.sidebar ? "收起左侧导航" : "展开左侧导航"}
-          onClick={() => togglePanel("sidebar")}
-        >
-          {visiblePanels.sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-        </button>
-        {activeView === "workbench" ? (
-          <button
-            className="edge-hotspot artifact-hotspot"
-            title={visiblePanels.artifact ? "收起 Artifact" : "展开 Artifact"}
-            onClick={() => togglePanel("artifact")}
-          >
-            {visiblePanels.artifact ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-          </button>
-        ) : null}
         <button
           className="edge-hotspot terminal-hotspot"
           title={visiblePanels.terminal ? "收起 Terminal" : "展开 Terminal"}

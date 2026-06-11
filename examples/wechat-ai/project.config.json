@@ -1,0 +1,15 @@
+{
+  "description": "Deepsix WeChat channel chatbox demo",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  },
+  "compileType": "miniprogram",
+  "libVersion": "latest",
+  "appid": "",
+  "projectname": "deepsix-channel-chatbox",
+  "condition": {}
+}

@@ -1,0 +1,70 @@
+<view class="page">
+  <view class="header">
+    <text class="eyebrow">WECHAT CHANNEL</text>
+    <text class="title">Deepsix 咖啡助手</text>
+    <text class="subtitle">在小程序 chatbox 里发消息，Deepsix Gateway 会返回微信卡片 payload。</text>
+  </view>
+
+  <scroll-view class="messages" scroll-y="true" scroll-into-view="{{lastMessageId}}">
+    <block wx:for="{{messages}}" wx:key="id">
+      <view id="{{item.id}}" class="message {{item.role}}">
+        <text class="author">{{item.author}}</text>
+        <text class="body">{{item.body}}</text>
+      </view>
+    </block>
+
+    <block wx:for="{{cards}}" wx:key="id">
+      <view id="{{item.id}}" class="card">
+        <view class="card-head">
+          <text class="card-kicker">微信卡片</text>
+          <text class="card-title">{{item.title}}</text>
+        </view>
+        <view class="card-row">
+          <text>组件</text>
+          <text>{{item.componentPath}}</text>
+        </view>
+        <view class="card-row">
+          <text>状态</text>
+          <text>{{item.status}}</text>
+        </view>
+        <view class="card-row">
+          <text>金额</text>
+          <text>¥{{item.totalPrice}}</text>
+        </view>
+        <view wx:if="{{item.addressText}}" class="card-row">
+          <text>地址</text>
+          <text class="card-row-value">{{item.addressText}}</text>
+        </view>
+        <button
+          wx:if="{{item.needAddress}}"
+          class="card-action"
+          loading="{{busy}}"
+          disabled="{{busy}}"
+          data-card-id="{{item.id}}"
+          bindtap="confirmAddress"
+        >
+          确认地址
+        </button>
+        <button
+          wx:if="{{item.canConfirmOrder}}"
+          class="card-action card-action-pay"
+          loading="{{busy}}"
+          disabled="{{busy}}"
+          data-card-id="{{item.id}}"
+          bindtap="confirmOrder"
+        >
+          确认下单
+        </button>
+        <view wx:if="{{item.isPaid}}" class="paid-banner">
+          <text>支付成功，预计 20 分钟内出杯</text>
+        </view>
+        <text class="card-json">{{item.preview}}</text>
+      </view>
+    </block>
+  </scroll-view>
+
+  <view class="composer">
+    <input class="input" value="{{inputValue}}" confirm-type="send" bindinput="onInput" bindconfirm="sendMessage" placeholder="例如：第一杯美式咖啡" />
+    <button class="send" loading="{{busy}}" disabled="{{busy}}" bindtap="sendMessage">发送</button>
+  </view>
+</view>

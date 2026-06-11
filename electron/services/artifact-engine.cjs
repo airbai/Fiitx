@@ -4,6 +4,14 @@ function buildWorkspaceArtifactPreview({ payload, workspace, profile, summary, m
   const snippets = workspace.snippets
     .map((snippet) => `## ${snippet.path}\n${snippet.content.slice(0, 1200)}`)
     .join("\n\n");
+  const externalDocuments = payload.externalContext?.documents || [];
+  const externalPreview = externalDocuments
+    .map((document, index) => `## ${index + 1}. ${document.title || document.url}
+- URL：${document.finalUrl || document.url}
+- HTTP：${document.status}${document.ok ? "" : "（读取异常）"}
+
+${(document.text || document.error || "没有可读取正文。").slice(0, 1600)}`)
+    .join("\n\n");
 
   return `# Coding Workspace Artifact
 
@@ -11,6 +19,7 @@ function buildWorkspaceArtifactPreview({ payload, workspace, profile, summary, m
 工作区：${workspace.root}
 模型：${profile ? `${profile.provider} / ${profile.model}` : "未配置"}
 状态：${modelError ? "模型调用失败，已回退到本地扫描" : "模型与工具链已完成首轮扫描"}
+外部文档：${externalDocuments.length} 个
 
 ## Agent 输出
 ${summary}
@@ -18,10 +27,13 @@ ${summary}
 ## 工具调用
 - list_files：${workspace.files.length} 个文件
 - read_snippets：${workspace.snippets.length} 个非敏感文本片段
+- web.fetch_url：${externalDocuments.length} 个外部文档
 - git_diff_stat：${workspace.gitDiffStat ? "已读取" : "无 diff 或非 git 仓库"}
 
 ## 文件入口
 ${workspace.files.slice(0, 40).map((file) => `- ${file.path}`).join("\n")}
+
+${externalPreview ? `## 外部文档片段\n${externalPreview}` : ""}
 
 ${snippets ? `## 关键片段\n${snippets}` : ""}`;
 }
@@ -35,6 +47,27 @@ function createWorkspaceScanArtifact({ payload, workspace, profile, summary, mod
     additions: workspace.files.length,
     deletions: 0,
     preview: buildWorkspaceArtifactPreview({ payload, workspace, profile, summary, modelError })
+  };
+}
+
+function createAgentResultArtifact({ payload, profile, summary, modelError, title = "Agent Result Artifact" }) {
+  const externalDocuments = payload.externalContext?.documents || [];
+  return {
+    path: `artifacts/${Date.now()}-agent-result.md`,
+    title,
+    language: "markdown",
+    status: "added",
+    additions: summary ? summary.split(/\r?\n/).length : 0,
+    deletions: 0,
+    preview: `# ${title}
+
+任务：${payload.prompt}
+模型：${profile ? `${profile.provider} / ${profile.model}` : "未配置"}
+状态：${modelError ? "执行异常" : "已完成"}
+外部文档：${externalDocuments.length} 个
+
+## Agent 输出
+${summary || modelError || "无输出"}`
   };
 }
 
@@ -77,6 +110,7 @@ ${relativeFiles.map((file) => `- ${path.join(projectName, file)}`).join("\n")}`;
 }
 
 module.exports = {
+  createAgentResultArtifact,
   createGeneratedProjectArtifact,
   createWorkspaceScanArtifact
 };
