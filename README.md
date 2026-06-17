@@ -19,6 +19,10 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 - 文件系统级别的 Diff 引擎与跨文件感知
 - 权限审批（企业级安全策略门控）
 
+<p align="center">
+  <video src="assets/self-intro.mp4" controls width="800" alt="Deepsix — 自迭代 AI Agent Workbench 自述视频"/>
+</p>
+
 ---
 
 ## 架构路线图
