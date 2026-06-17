@@ -20,9 +20,7 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 - 权限审批（企业级安全策略门控）
 
 <p align="center">
-  <video src="https://raw.githubusercontent.com/airbai/Fiitx/main/assets/self-intro.mp4" controls width="800" alt="Deepsix — 自迭代 AI Agent Workbench 自述视频">
-    您的浏览器不支持视频播放，请 <a href="https://github.com/airbai/Fiitx/raw/main/assets/self-intro.mp4">下载此视频</a> 查看。
-  </video>
+  <iframe width="800" height="450" src="https://www.youtube.com/embed/UMXBwSsjEgA" title="Deepsix — 自迭代 AI Agent Workbench 自述视频" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 </p>
 
 ---
