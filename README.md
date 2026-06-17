@@ -7,6 +7,10 @@
 
 ## 项目定位
 
+<p align="center">
+  <img src="assets/intro.png" alt="Deepsix — 自迭代 AI Agent Workbench" width="800"/>
+</p>
+
 Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操作系统雏形**，参考了 Pi (@earendil-works)、OpenClaw、Codex 等架构思路，实现了：
 
 - LLM 原生的 Agent 循环（不是 Chat 壳）
