@@ -19,38 +19,11 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 - 文件系统级别的 Diff 引擎与跨文件感知
 - 权限审批（企业级安全策略门控）
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=UMXBwSsjEgA" target="_blank" 
-     style="
-       display: inline-flex; 
-       justify-content: center; 
-       align-items: center; 
-       width: 560px; 
-       max-width: 100%; 
-       height: 315px; 
-       background-image: url('https://img.youtube.com/vi/UMXBwSsjEgA/hqdefault.jpg'); 
-       background-size: cover; 
-       background-position: center; 
-       border-radius: 12px; 
-       text-decoration: none; 
-       box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-     ">
-    <span style="
-      font-size: 70px; 
-      color: #fff; 
-      background: rgba(255, 0, 0, 0.85); 
-      width: 90px; 
-      height: 90px; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      border-radius: 50%; 
-      border: 4px solid #fff; 
-      box-shadow: 0 0 40px rgba(255, 0, 0, 0.5); 
-      padding-left: 8px;
-    ">▶</span>
-  </a>
-</p>
+<a href="https://www.youtube.com/watch?v=UMXBwSsjEgA" target="_blank">
+  <img src="https://img.youtube.com/vi/UMXBwSsjEgA/maxresdefault.jpg" 
+       alt="点击观看视频" 
+       style="width: 100%; max-width: 560px; border-radius: 8px;">
+</a>
 
 ---
 
