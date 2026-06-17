@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { fileURLToPath } = require("node:url");
 const artifactEngine = require("./services/artifact-engine.cjs");
 const policyEngine = require("./services/policy-engine.cjs");
 const { createAgentRuntime } = require("./services/agent-runtime.cjs");
@@ -156,6 +157,14 @@ function normalizeUserPath(userPath, basePath) {
   const trimmed = cleanUserPath(userPath);
   if (!trimmed) {
     return "";
+  }
+
+  if (/^file:\/\//i.test(trimmed)) {
+    try {
+      return fileURLToPath(trimmed);
+    } catch {
+      return "";
+    }
   }
 
   if (trimmed === "~" || trimmed.startsWith("~/")) {
@@ -345,6 +354,23 @@ app.whenReady().then(() => {
     };
   });
 
+  ipcMain.handle("path:show-in-folder", async (_event, payload) => {
+    const parsed = parsePathPayload(payload);
+    const inspected = inspectLocalPath(parsed.path, parsed.basePath);
+    if (!inspected.exists) {
+      return {
+        ok: false,
+        message: "路径不存在"
+      };
+    }
+
+    shell.showItemInFolder(inspected.path);
+    return {
+      ok: true,
+      message: "已打开所在位置"
+    };
+  });
+
   ipcMain.handle("path:preview", async (_event, payload) => {
     const parsed = parsePathPayload(payload);
     const inspected = inspectLocalPath(parsed.path, parsed.basePath);
@@ -393,6 +419,42 @@ app.whenReady().then(() => {
   ipcMain.handle("wechat-ai:invoke-skill", (_event, payload) => wechatAiSkillGateway.callApi(payload));
 
   ipcMain.handle("wechat-channel:status", () => wechatChannelServer.getStatus());
+
+  ipcMain.handle("terminal:run-command", async (_event, payload = {}) => {
+    const command = String(payload.command || "").trim();
+    const workspacePath = payload.workspacePath || workspaceManager.getFallbackRoot();
+
+    if (!command) {
+      return {
+        ok: false,
+        command: "",
+        cwd: workspacePath,
+        exitCode: 1,
+        stdout: "",
+        stderr: "请输入命令"
+      };
+    }
+
+    try {
+      const result = await toolRuntime.runShell(workspacePath, command, {
+        timeoutMs: payload.timeoutMs || 120000
+      });
+      return {
+        ok: result.exitCode === 0,
+        ...result
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "命令执行失败";
+      return {
+        ok: false,
+        command,
+        cwd: workspacePath,
+        exitCode: 1,
+        stdout: "",
+        stderr: message
+      };
+    }
+  });
 
   ipcMain.handle("agent:run-task", async (event, payload) => {
     const emitProgress = createProgressEmitter(event, payload?.taskId, payload?.threadId);
@@ -465,6 +527,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle("agent:telemetry-summary", (_event, payload = {}) => {
     return telemetryStore.summarize(payload.limit || 500);
+  });
+
+  ipcMain.handle("agent:inspect-route", (_event, payload = {}) => {
+    return agentRuntime.inspectRoute(payload);
+  });
+
+  ipcMain.handle("agent:run-eval", (_event, payload = {}) => {
+    return agentRuntime.runEval(payload);
+  });
+
+  ipcMain.handle("agent:harness-snapshot", (_event, payload = {}) => {
+    return agentRuntime.getHarnessSnapshot(payload);
   });
 
   createWindow();

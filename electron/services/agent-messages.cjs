@@ -177,6 +177,13 @@ function convertToLlm(agentMessages = []) {
         return null;
       }
       if (message.type === AGENT_MESSAGE_TYPES.TOOL_RESULT) {
+        if (!message.metadata?.preserveToolRole || !message.metadata?.toolCallId) {
+          const toolName = message.metadata?.toolName ? `（${message.metadata.toolName}）` : "";
+          return {
+            role: "user",
+            content: `历史工具结果${toolName}：\n${message.content}`
+          };
+        }
         return {
           role: "tool",
           tool_call_id: message.metadata?.toolCallId,

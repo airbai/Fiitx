@@ -5,6 +5,9 @@ const { buildChannelContextPrompt, channelRouteBoost, selectChannelAdapter } = r
 const { createConnectorRegistry } = require("./connector-registry.cjs");
 const { createSkillRegistry } = require("./skill-registry.cjs");
 const { createToolRegistry } = require("./tool-registry.cjs");
+const { extractExternalUrlsFromText } = require("./url-utils.cjs");
+const fs = require("node:fs");
+const path = require("node:path");
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,35 +34,87 @@ ${workspace.gitDiffStat || "当前没有未提交 diff stat，或该目录不是
 ${snippets || "没有可读取的文本片段。"}`;
 }
 
-function cleanUrlCandidate(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^["'`([{（【]+/, "")
-    .replace(/["'`，。；;、!！?？)\]】）]+$/g, "")
-    .replace(/((?:\.html?|\.md|\.json|\.txt|\.pdf)(?:[?#][^\s"'<>【】（）()]*)?)[\u4e00-\u9fff].*$/i, "$1");
-}
-
 function extractExternalUrls(payload) {
   const sources = [
     payload.prompt,
     ...(payload.contextMessages || []).slice(-6).map((message) => message.content)
   ];
   const urls = [];
-  const pattern = /https?:\/\/[^\s"'<>【】（）()]+/gi;
   for (const source of sources) {
-    for (const match of String(source || "").matchAll(pattern)) {
-      const candidate = cleanUrlCandidate(match[0]);
-      try {
-        const parsed = new URL(candidate);
-        if (["http:", "https:"].includes(parsed.protocol)) {
-          urls.push(parsed.toString());
-        }
-      } catch {
-        // Ignore malformed URL fragments.
-      }
-    }
+    urls.push(...extractExternalUrlsFromText(source));
   }
   return [...new Set(urls)].slice(0, 5);
+}
+
+function cleanClaimedFilePath(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^["'`【[（(]+/, "")
+    .replace(/["'`】\]）),，。；;:：]+$/g, "");
+}
+
+function resolveClaimedAbsolutePath(rawPath, workspacePath) {
+  const cleaned = cleanClaimedFilePath(rawPath);
+  if (!cleaned || /&&|\|\||[;<>]/.test(cleaned)) {
+    return null;
+  }
+
+  const expanded = cleaned.startsWith("~/")
+    ? path.join(process.env.HOME || "", cleaned.slice(2))
+    : cleaned;
+
+  if (path.isAbsolute(expanded)) {
+    return path.resolve(expanded);
+  }
+
+  if (!workspacePath) {
+    return null;
+  }
+
+  return path.resolve(workspacePath, expanded);
+}
+
+function findUnverifiedFileWriteClaims(summary, workspacePath) {
+  const text = String(summary || "");
+  const pattern = /(?:文件|文档|合同|报告|交付物)?(?:已|已经)?(?:成功)?(?:写入|保存|生成|导出)(?:到|为|：|:|\s){0,8}([`"']?((?:~\/|\/(?:Users|Volumes|tmp|var|private|opt|usr)\/)[^\s"'`，。；;]+?\.(?:docx|doc|pdf|pptx|ppt|xlsx|xls|html|md|txt|png|jpg|jpeg|webp|csv|json|py|js|ts|tsx|css|wxss|wxml))[`"']?)/gi;
+  const claims = [];
+  for (const match of text.matchAll(pattern)) {
+    const rawPath = match[2] || match[1];
+    const absolutePath = resolveClaimedAbsolutePath(rawPath, workspacePath);
+    if (!absolutePath) {
+      continue;
+    }
+    if (!fs.existsSync(absolutePath)) {
+      claims.push({
+        rawPath: cleanClaimedFilePath(rawPath),
+        absolutePath
+      });
+    }
+  }
+  const seen = new Set();
+  return claims.filter((claim) => {
+    if (seen.has(claim.absolutePath)) {
+      return false;
+    }
+    seen.add(claim.absolutePath);
+    return true;
+  }).slice(0, 5);
+}
+
+function appendUnverifiedFileClaimNotice(summary, payload) {
+  const claims = findUnverifiedFileWriteClaims(summary, payload?.workspacePath);
+  if (claims.length === 0) {
+    return summary;
+  }
+
+  return `${String(summary || "").trim()}
+
+---
+
+注意：Deepsix runtime 没有确认以下路径真实存在，因此不能把上面的“已写入/已生成”当作完成结果：
+${claims.map((claim) => `- ${claim.rawPath}`).join("\n")}
+
+需要真实文件时，应由 Coding Agent 调用 workspace_write、文件 manifest 或 bash 执行后，再以工具结果/Artifact 为准。`;
 }
 
 function buildExternalContextPrompt(externalContext) {
@@ -142,7 +197,7 @@ function scoreBusinessAgentText(agent, text, weight) {
 
 function scoreBusinessAgent(agent, payload) {
   if (!agent || agent.status === "draft") {
-    return { score: 0, matched: [], semanticScore: 0 };
+    return { score: 0, matched: [], semanticScore: 0, promptSemanticScore: 0 };
   }
 
   const prompt = String(payload?.prompt || "");
@@ -157,7 +212,7 @@ function scoreBusinessAgent(agent, payload) {
     matched.push(`channel:${payload.channelAdapter.name}`);
   }
 
-  return { score, matched: [...new Set(matched)].slice(0, 5), semanticScore };
+  return { score, matched: [...new Set(matched)].slice(0, 5), semanticScore, promptSemanticScore: promptScore.score };
 }
 
 function selectBusinessAgent(payload) {
@@ -165,7 +220,7 @@ function selectBusinessAgent(payload) {
   if (registry.length === 0) {
     return null;
   }
-  if (payload?.intent?.mode === "coding") {
+  if (payload?.intent?.mode === "coding" || ["image", "video", "audio"].includes(payload?.intent?.modality)) {
     return null;
   }
 
@@ -173,7 +228,7 @@ function selectBusinessAgent(payload) {
     .map((agent) => ({ agent, ...scoreBusinessAgent(agent, payload) }))
     .sort((a, b) => b.score - a.score);
   const best = ranked[0];
-  if (!best || best.score < 5 || best.semanticScore <= 0) {
+  if (!best || best.score < 5 || best.semanticScore <= 0 || best.promptSemanticScore <= 0) {
     return null;
   }
 
@@ -182,6 +237,24 @@ function selectBusinessAgent(payload) {
     routeScore: best.score,
     routeReason: best.matched.length ? `命中：${best.matched.join("、")}` : "业务语义匹配"
   };
+}
+
+function rankBusinessAgents(payload) {
+  const registry = Array.isArray(payload?.agentRegistry) ? payload.agentRegistry : [];
+  return registry
+    .map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      status: agent.status,
+      policy: agent.policy,
+      scope: agent.scope,
+      score: scoreBusinessAgent(agent, payload).score,
+      semanticScore: scoreBusinessAgent(agent, payload).semanticScore,
+      promptSemanticScore: scoreBusinessAgent(agent, payload).promptSemanticScore,
+      matched: scoreBusinessAgent(agent, payload).matched
+    }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 8);
 }
 
 function buildBusinessAgentContext(agent) {
@@ -329,11 +402,13 @@ ${buildRuntimeContext(payload)}
 2. 基于用户任务和 workspace 上下文工作；不要假设完整文件树已经在 prompt 中，必须按需调用工具读取。
 3. 如果只需要分析或计划，直接用中文回答。
 4. 如果 Pi turn context 显示已读取外部文档，必须优先使用这些文档内容；不要只根据 URL 字面猜测。
-5. 如果用户要求“升级/修改/实现/生成项目或小程序”，优先调用 workspace_find/workspace_ls/workspace_read 理解现状，再调用 workspace_write/workspace_edit 写入文件；不要只生成报告或说明。
-6. 如果 transformContext 的线程语义上下文指向已有项目、artifact 或文件，用户说“升级/改进/继续/这个小程序”时必须作用在该目标上。
-7. 如果 Pi turn context 注入了 channel adapter，上下文中的回复契约、followUp 规则和输出边界必须严格遵守。
-8. 可用工具包括 workspace_ls、workspace_read、workspace_write、workspace_edit、workspace_grep、workspace_find、bash。需要读取、修改、测试时直接调用工具；需要 shell 时调用 bash，不要声称已经执行未调用的命令。
-9. 如果当前模型或 provider 不支持 tool call，或者工具调用失败但仍要交付完整文件，可以在说明之后追加一个 fenced block：
+5. 如果用户给了 URL、裸域名、官网、网站或外部文档，并要求基于其内容生成 PPT/报告/代码/素材，必须先使用已注入的外部文档上下文；如果没有注入，则调用 web_fetch_url。没有外部文档上下文或工具结果时，禁止声称“已抓取/已读取网站”。
+6. 如果用户要求“升级/修改/实现/生成项目或小程序”，优先调用 workspace_find/workspace_ls/workspace_read 理解现状，再调用 workspace_write/workspace_edit 写入文件；不要只生成报告或说明。
+7. 如果 transformContext 的线程语义上下文指向已有项目、artifact 或文件，用户说“升级/改进/继续/这个小程序”时必须作用在该目标上。
+8. 如果 Pi turn context 注入了 channel adapter，上下文中的回复契约、followUp 规则和输出边界必须严格遵守。
+9. 可用工具包括 web_fetch_url、workspace_ls、workspace_read、workspace_write、workspace_edit、workspace_grep、workspace_find、bash。需要读取网页、文件、修改、测试时直接调用工具；需要 shell 时调用 bash，不要声称已经执行未调用的命令。
+10. 对 Word/docx/pdf/ppt/html/合同/报告等文件交付，必须产生真实工具结果或 Artifact。没有 workspace_write、文件 manifest、bash 执行结果或磁盘确认时，禁止写“文件已成功写入/已生成到某路径”。
+11. 如果当前模型或 provider 不支持 tool call，或者工具调用失败但仍要交付完整文件，可以在说明之后追加一个 fenced block：
 
 \`\`\`fiitx-file-manifest
 {
@@ -362,8 +437,10 @@ ${buildRuntimeContext(payload)}
 
 回答用户问题，保持清晰、直接、可执行。
 如果 Pi turn context 显示已读取外部文档，必须结合这些文档回答，并说明关键依据。
+如果用户提供 URL、裸域名、官网或网站，但 Pi turn context 没有显示“外部文档已读取”，不要声称已经抓取网页；应说明需要读取外部文档，或交给 Coding Agent 调用 web_fetch_url。
 如果 Pi turn context 注入了 channel adapter，必须遵守该通道的回复契约和上下文边界。
 不要声称已经读取或修改文件；如果用户转向开发任务，说明需要进入 Coding 模式。
+如果用户要求生成、保存、导出 Word/docx/pdf/ppt/html/合同/报告或任何本地文件，这不是纯 chat；不能声称文件已写入，应交给 Coding Agent 通过工具或文件 manifest 生成真实交付物。
 如果 intent 是 image/video/audio：
 - 只有在当前模型或工具真实返回媒体 URL、data URI 或文件路径时，才把它作为结果展示。
 - 不要用长 base64 文本或代码片段假装已经生成媒体。
@@ -688,7 +765,7 @@ function createAgentRuntime({
     }
   }
 
-  async function createSession({ payload, profile, systemPrompt, emitProgress, signal }) {
+  async function createSession({ payload, profile, systemPrompt, emitProgress }) {
     const session = await createPiAgentSession({
       payload,
       profile,
@@ -698,12 +775,215 @@ function createAgentRuntime({
       policyGate: authorizeToolAction,
       sessionLogStore,
       telemetryStore,
-      signal,
       toolRuntime,
       toolRegistry: runtimeToolRegistry
     });
     setSession(payload, session);
     return session;
+  }
+
+  function safeProfile(profile) {
+    if (!profile) {
+      return null;
+    }
+    const { encryptedApiKey, ...safe } = profile;
+    return {
+      ...safe,
+      hasApiKey: Boolean(profile.encryptedApiKey?.value)
+    };
+  }
+
+  function buildToolPlan(intent, payload = {}) {
+    const tools = [];
+    if (intent.requiresExternalContext || extractExternalUrls(payload).length > 0) {
+      tools.push("web_fetch_url");
+    }
+    if (intent.mode === "coding") {
+      tools.push("workspace_find", "workspace_ls", "workspace_read");
+      if (/写|生成|创建|实现|升级|修改|修复|替换|代码|小程序|网页|ppt|pptx|docx|word|pdf|html|文档|报告|合同|协议|导出|保存/i.test(String(payload.prompt || ""))) {
+        tools.push("workspace_write", "workspace_edit");
+      }
+      if (/npm|build|test|运行|打包|git|python|脚本|命令/i.test(String(payload.prompt || ""))) {
+        tools.push("bash");
+      }
+    }
+    if (["image", "video", "audio"].includes(intent.modality)) {
+      tools.push(`${intent.modality}_model_fallback`);
+    }
+    return [...new Set(tools)];
+  }
+
+  function buildContextPlan(payload, intent) {
+    const urls = extractExternalUrls(payload);
+    const thread = payload.threadContext || {};
+    return {
+      threadContext: Boolean(thread.activeThread || thread.currentTarget || thread.lastArtifact || thread.selectedFile),
+      channelContext: Boolean(payload.channelAdapter || payload.channelContext),
+      businessAgentContext: Boolean(payload.businessAgent),
+      externalUrls: urls,
+      requiresExternalContext: Boolean(intent.requiresExternalContext || urls.length),
+      attachments: Array.isArray(payload.attachments) ? payload.attachments.length : 0,
+      compaction: "JSONL 原始历史保留，compact summary 作为模型上下文摘要注入。"
+    };
+  }
+
+  function buildPolicyPlan(payload, tools) {
+    return tools.map((toolName) => {
+      const descriptor = runtimeToolRegistry.describe(toolName);
+      const samplePolicy = descriptor ? runtimeToolRegistry.policy(toolName, {}) : {
+        action: toolName,
+        title: toolName,
+        risk: "medium"
+      };
+      return {
+        tool: toolName,
+        label: descriptor?.label || toolName,
+        action: samplePolicy.action,
+        risk: samplePolicy.risk,
+        mode: resolvePolicyMode(payload, samplePolicy.action)
+      };
+    });
+  }
+
+  function inspectRoute(payload = {}) {
+    const inspectPayload = {
+      ...payload,
+      connectorContextPrompt: runtimeConnectorRegistry.buildContextPrompt()
+    };
+    const channelAdapter = selectChannelAdapter(inspectPayload);
+    inspectPayload.channelAdapter = channelAdapter;
+    inspectPayload.channelContext = channelAdapter?.runtimeContext || inspectPayload.channelContext || null;
+    const intent = routeIntent(inspectPayload);
+    inspectPayload.intent = intent;
+    const businessAgent = selectBusinessAgent(inspectPayload);
+    inspectPayload.businessAgent = businessAgent;
+    const preferredModel = resolveAgentModelPreference(businessAgent, inspectPayload.model);
+    const selectedProfile = modelRouter.resolveModelProfile(preferredModel, intent);
+    const modelCandidates = modelRouter.resolveModelProfiles(preferredModel, intent).slice(0, 6).map(safeProfile);
+    const toolPlan = buildToolPlan(intent, inspectPayload);
+
+    return {
+      prompt: inspectPayload.prompt || "",
+      channelAdapter: channelAdapter ? {
+        id: channelAdapter.id,
+        name: channelAdapter.name,
+        channelType: channelAdapter.channelType,
+        transport: channelAdapter.transport
+      } : null,
+      intent,
+      selectedAgent: businessAgent ? {
+        id: businessAgent.id,
+        name: businessAgent.name,
+        policy: businessAgent.policy,
+        score: businessAgent.routeScore,
+        reason: businessAgent.routeReason
+      } : null,
+      agentCandidates: rankBusinessAgents(inspectPayload),
+      selectedModel: safeProfile(selectedProfile),
+      modelCandidates,
+      toolPlan,
+      policyPlan: buildPolicyPlan(inspectPayload, toolPlan.filter((tool) => runtimeToolRegistry.describe(tool))),
+      contextPlan: buildContextPlan(inspectPayload, intent),
+      deepseekHarnessChecks: [
+        intent.requiresExternalContext ? "fetch-before-answer" : "no external fetch required",
+        intent.mode === "coding" ? "read-before-write" : "chat direct answer",
+        businessAgent ? "business-agent-context injected" : "no business-agent injection",
+        channelAdapter ? "channel-adapter-context injected" : "desktop default channel"
+      ]
+    };
+  }
+
+  function runEval(payload = {}) {
+    const defaultCases = [
+      {
+        id: "complaint-odor",
+        prompt: "这个客人投诉房间异味，帮我分级并生成补救方案。",
+        expectedMode: "chat",
+        expectedAgentId: "complaint-recovery"
+      },
+      {
+        id: "family-trip",
+        prompt: "帮住客规划北京海淀两天一晚亲子行程。",
+        expectedMode: "chat",
+        expectedAgentId: "concierge-trip"
+      },
+      {
+        id: "miniapp-code",
+        prompt: "帮我做一个微信小程序名片应用，提供完整代码。",
+        expectedMode: "coding"
+      },
+      {
+        id: "website-ppt",
+        prompt: "参考官网www.fiit.ai网站素材做一个ppt",
+        expectedMode: "coding",
+        expectsExternalContext: true
+      },
+      {
+        id: "image-generation",
+        prompt: "帮我画一个美式咖啡的图片",
+        expectedModality: "image"
+      }
+    ];
+    const cases = Array.isArray(payload.cases) && payload.cases.length ? payload.cases : defaultCases;
+    const results = cases.map((testCase) => {
+      const route = inspectRoute({
+        ...payload,
+        prompt: testCase.prompt
+      });
+      const checks = [
+        !testCase.expectedMode || route.intent.mode === testCase.expectedMode,
+        !testCase.expectedModality || route.intent.modality === testCase.expectedModality,
+        !testCase.expectedAgentId || route.selectedAgent?.id === testCase.expectedAgentId,
+        !testCase.expectsExternalContext || route.contextPlan.requiresExternalContext
+      ];
+      return {
+        id: testCase.id,
+        prompt: testCase.prompt,
+        ok: checks.every(Boolean),
+        route
+      };
+    });
+    return {
+      ok: results.every((item) => item.ok),
+      passed: results.filter((item) => item.ok).length,
+      total: results.length,
+      results
+    };
+  }
+
+  function getHarnessSnapshot(payload = {}) {
+    return {
+      tools: runtimeToolRegistry.list(),
+      toolCount: runtimeToolRegistry.list().length,
+      skills: (runtimeSkillRegistry.list?.() || []).map((skill) => ({
+        id: skill.id,
+        name: skill.name,
+        root: skill.root,
+        description: skill.description,
+        capabilities: skill.capabilities,
+        apis: skill.apis
+      })),
+      connectors: (runtimeConnectorRegistry.list?.() || []).map((connector) => ({
+        id: connector.id,
+        name: connector.name,
+        domain: connector.domain,
+        capabilities: connector.capabilities,
+        status: connector.status,
+        description: connector.description
+      })),
+      telemetry: telemetryStore?.summarize?.(payload.limit || 500) || null,
+      sessions: (sessionLogStore?.listSessions?.() || []).slice(0, 20),
+      models: modelRouter.listProfiles().map((profile) => ({
+        id: profile.id,
+        provider: profile.provider,
+        model: profile.model,
+        bestFor: profile.bestFor,
+        supportsTools: profile.supportsTools,
+        supportsVision: profile.supportsVision,
+        hasApiKey: profile.hasApiKey,
+        keyStatus: profile.keyStatus
+      }))
+    };
   }
 
   async function runAgentTaskInner(payload, emitProgress = () => undefined, runSignal) {
@@ -1020,7 +1300,7 @@ function createAgentRuntime({
 
       return {
         ok: result.ok,
-        summary: result.summary,
+        summary: appendUnverifiedFileClaimNotice(result.summary, payload),
         mode: "chat",
         model: profile.model,
         provider: profile.provider,
@@ -1177,6 +1457,8 @@ function createAgentRuntime({
         });
       }
     }
+
+    summary = appendUnverifiedFileClaimNotice(summary, payload);
 
     if (!artifact) {
       artifact = artifactEngine.createAgentResultArtifact({
@@ -1367,7 +1649,10 @@ function createAgentRuntime({
     compact,
     continueTurn,
     followUp,
+    getHarnessSnapshot,
+    inspectRoute,
     prompt,
+    runEval,
     runAgentTask,
     steer
   };

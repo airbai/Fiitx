@@ -1,4 +1,4 @@
-const { createToolCallingAgentSession } = require("./tool-agent-loop.cjs");
+const { createAgentExecutorSession, supportsNativeAgentLoop } = require("./agent-executor.cjs");
 
 const EMPTY_USAGE = {
   input: 0,
@@ -261,13 +261,20 @@ async function createPiAgentSession({
     policyGate &&
     typeof modelRouter.callChatMessages === "function"
   ) {
-    return createToolCallingAgentSession({
+    const agentLoopMode = supportsNativeAgentLoop(profile) ? "原生Agent Loop" : "外部调度框架（AgentExecutor）";
+    emitProgress({
+      status: "running",
+      title: "Agent Loop",
+      detail: `${agentLoopMode} — ${profile.provider} / ${profile.model}`
+    });
+
+    return createAgentExecutorSession({
       payload,
       profile,
       modelRouter,
       systemPrompt,
-      toolRuntime,
       toolRegistry,
+      toolRuntime,
       policyGate,
       sessionLogStore,
       telemetryStore,

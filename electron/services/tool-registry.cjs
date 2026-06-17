@@ -8,7 +8,7 @@ function sanitizeArgsForPolicy(toolName, args = {}) {
   return args;
 }
 
-function createToolDescriptor({ name, label, description, parameters, policy, execute, executionMode = "sequential", capabilities = [] }) {
+function createToolDescriptor({ name, label, description, parameters, policy, execute, executionMode = "sequential", capabilities = [], prepareArguments }) {
   return {
     name,
     label,
@@ -17,6 +17,9 @@ function createToolDescriptor({ name, label, description, parameters, policy, ex
     executionMode,
     capabilities,
     prepareArguments(args) {
+      if (typeof prepareArguments === "function") {
+        return prepareArguments(args);
+      }
       return args && typeof args === "object" ? args : {};
     },
     toOpenAiTool() {
@@ -44,6 +47,20 @@ function createToolDescriptor({ name, label, description, parameters, policy, ex
   };
 }
 
+function sanitizeToolDescriptor(tool) {
+  return {
+    name: tool.name,
+    label: tool.label || tool.name,
+    description: tool.description || "",
+    executionMode: tool.executionMode || "sequential",
+    capabilities: Array.isArray(tool.capabilities) ? tool.capabilities : [],
+    parameters: tool.parameters || {
+      type: "object",
+      properties: {}
+    }
+  };
+}
+
 function createToolRegistry({ toolRuntime }) {
   const tools = new Map();
 
@@ -56,6 +73,50 @@ function createToolRegistry({ toolRuntime }) {
   }
 
   function registerWorkspaceTools() {
+    register(createToolDescriptor({
+      name: "web_fetch_url",
+      label: "读取外部 URL",
+      description: "Fetch one or more external http/https URLs and return readable text context. Use this before answering or generating artifacts based on a website, official docs, or bare domain such as www.example.com.",
+      capabilities: ["web", "read", "context"],
+      parameters: {
+        type: "object",
+        required: ["urls"],
+        properties: {
+          urls: {
+            type: "array",
+            items: { type: "string" },
+            description: "External URLs or bare domains to fetch, for example https://example.com or www.example.com."
+          },
+          limit: { type: "number", description: "Maximum number of URLs to fetch." }
+        }
+      },
+      prepareArguments: (args) => {
+        if (typeof args === "string") {
+          return { urls: [args] };
+        }
+        if (Array.isArray(args)) {
+          return { urls: args };
+        }
+        if (args?.url && !args.urls) {
+          return { ...args, urls: [args.url] };
+        }
+        return args && typeof args === "object" ? args : {};
+      },
+      policy: (args) => ({
+        action: "web.fetch_url",
+        title: "允许读取外部文档",
+        detail: "Agent 请求读取外部 URL，并把正文作为本轮模型上下文。",
+        command: `web_fetch_url ${JSON.stringify(args)}`,
+        risk: "low"
+      }),
+      execute: ({ args, signal }) => toolRuntime.fetchUrlContext(args.urls || [], {
+        limit: args.limit || 5,
+        signal,
+        timeoutMs: args.timeoutMs || 25000,
+        maxCharsPerDocument: args.maxCharsPerDocument || 14000
+      })
+    }));
+
     register(createToolDescriptor({
       name: "workspace_ls",
       label: "列出工作区",
@@ -233,7 +294,11 @@ function createToolRegistry({ toolRuntime }) {
       return tools.get(name);
     },
     list() {
-      return [...tools.values()];
+      return [...tools.values()].map(sanitizeToolDescriptor);
+    },
+    describe(name) {
+      const tool = tools.get(name);
+      return tool ? sanitizeToolDescriptor(tool) : null;
     },
     getOpenAiTools() {
       return [...tools.values()].map((tool) => tool.toOpenAiTool());
@@ -265,5 +330,6 @@ function createToolRegistry({ toolRuntime }) {
 
 module.exports = {
   createToolDescriptor,
-  createToolRegistry
+  createToolRegistry,
+  sanitizeToolDescriptor
 };

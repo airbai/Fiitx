@@ -19,6 +19,9 @@ type FiitxModelPayload = {
 type FiitxModelProfile = Omit<FiitxModelPayload, "apiKey"> & {
   id: string;
   apiKeyRef: string;
+  hasApiKey?: boolean;
+  hasStoredApiKey?: boolean;
+  keyStatus?: "available" | "locked" | "missing";
   updatedAt: string;
 };
 
@@ -196,6 +199,61 @@ type FiitxAgentSessionResult = {
   messageCount?: number;
 };
 
+type FiitxAgentRouteInspection = {
+  prompt: string;
+  channelAdapter: unknown;
+  intent: {
+    mode: "chat" | "coding";
+    modality: string;
+    taskKind?: string;
+    confidence?: number;
+    reason?: string;
+    requiresExternalContext?: boolean;
+    externalUrls?: string[];
+  };
+  selectedAgent: null | {
+    id: string;
+    name: string;
+    policy?: string;
+    score?: number;
+    reason?: string;
+  };
+  agentCandidates: Array<{
+    id: string;
+    name: string;
+    score: number;
+    matched: string[];
+  }>;
+  selectedModel: unknown;
+  modelCandidates: unknown[];
+  toolPlan: string[];
+  policyPlan: unknown[];
+  contextPlan: unknown;
+  deepseekHarnessChecks: string[];
+};
+
+type FiitxAgentEvalResult = {
+  ok: boolean;
+  passed: number;
+  total: number;
+  results: Array<{
+    id: string;
+    prompt: string;
+    ok: boolean;
+    route: FiitxAgentRouteInspection;
+  }>;
+};
+
+type FiitxAgentHarnessSnapshot = {
+  tools: unknown[];
+  toolCount: number;
+  skills: unknown[];
+  connectors: unknown[];
+  telemetry: unknown;
+  sessions: unknown[];
+  models: unknown[];
+};
+
 type FiitxAgentProgress = {
   id: string;
   taskId: string;
@@ -312,6 +370,21 @@ type FiitxWechatChannelInbound = {
   toolEvents?: unknown[];
 };
 
+type FiitxTerminalCommandPayload = {
+  command: string;
+  workspacePath?: string;
+  timeoutMs?: number;
+};
+
+type FiitxTerminalCommandResult = {
+  ok: boolean;
+  command: string;
+  cwd: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
 interface Window {
   fiitx?: {
     getPlatform: () => Promise<{
@@ -333,6 +406,10 @@ interface Window {
       ok: boolean;
       message: string;
     }>;
+    openContainingFolder: (path: string, basePath?: string) => Promise<{
+      ok: boolean;
+      message: string;
+    }>;
     previewPath: (path: string, basePath?: string) => Promise<FiitxPathPreview>;
     listModelProfiles: () => Promise<FiitxModelProfile[]>;
     saveModelProfile: (payload: FiitxModelPayload) => Promise<FiitxModelProfile>;
@@ -350,6 +427,7 @@ interface Window {
     routeWechatAiPrompt: (payload: FiitxWechatAiGatewayPayload) => Promise<unknown>;
     invokeWechatAiSkill: (payload: FiitxWechatAiSkillInvokePayload) => Promise<unknown>;
     getWechatChannelStatus: () => Promise<FiitxWechatChannelStatus>;
+    runTerminalCommand: (payload: FiitxTerminalCommandPayload) => Promise<FiitxTerminalCommandResult>;
     onWechatChannelInbound: (callback: (payload: FiitxWechatChannelInbound) => void) => () => void;
     runAgentTask: (payload: FiitxAgentTaskPayload) => Promise<FiitxAgentTaskResult>;
     promptAgent: (payload: FiitxAgentTaskPayload) => Promise<FiitxAgentTaskResult>;
@@ -361,6 +439,9 @@ interface Window {
     getAgentSessionTree: (payload: FiitxAgentSessionCommand) => Promise<unknown>;
     replayAgentSession: (payload: FiitxAgentSessionCommand) => Promise<unknown[]>;
     getAgentTelemetrySummary: (payload?: { limit?: number }) => Promise<unknown>;
+    inspectAgentRoute: (payload: FiitxAgentTaskPayload) => Promise<FiitxAgentRouteInspection>;
+    runAgentEval: (payload: FiitxAgentTaskPayload & { cases?: unknown[] }) => Promise<FiitxAgentEvalResult>;
+    getAgentHarnessSnapshot: (payload?: { limit?: number }) => Promise<FiitxAgentHarnessSnapshot>;
     onAgentProgress: (callback: (payload: FiitxAgentProgress) => void) => () => void;
   };
 }

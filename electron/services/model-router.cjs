@@ -50,6 +50,131 @@ function audioSpeechEndpointForProfile(profile) {
   return `${baseUrl}/audio/speech`;
 }
 
+function stringifyMessageContent(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (content == null) {
+    return "";
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => part?.text || part?.content || "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return String(content);
+}
+
+function normalizeProviderToolCall(call, index, messageIndex = 0) {
+  const rawArguments = call?.function?.arguments ?? call?.arguments ?? "{}";
+  let argumentsText = "{}";
+  if (typeof rawArguments === "string") {
+    argumentsText = rawArguments || "{}";
+  } else {
+    try {
+      argumentsText = JSON.stringify(rawArguments || {});
+    } catch {
+      argumentsText = "{}";
+    }
+  }
+
+  const name = call?.function?.name || call?.name || "";
+  if (!name) {
+    return null;
+  }
+
+  return {
+    id: call?.id || `tool-call-${messageIndex}-${index}`,
+    type: "function",
+    function: {
+      name,
+      arguments: argumentsText
+    }
+  };
+}
+
+function normalizeMessagesForProvider(messages = []) {
+  const normalized = [];
+  const pendingToolCallIds = [];
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      const toolCalls = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+            .map((call, callIndex) => normalizeProviderToolCall(call, callIndex, index))
+            .filter(Boolean)
+        : [];
+      if (toolCalls.length) {
+        pendingToolCallIds.push(...toolCalls.map((call) => call.id));
+        normalized.push({
+          role: "assistant",
+          content: stringifyMessageContent(message.content),
+          tool_calls: toolCalls
+        });
+      } else {
+        normalized.push({
+          role: "assistant",
+          content: stringifyMessageContent(message.content)
+        });
+      }
+      continue;
+    }
+
+    if (message.role === "tool") {
+      let toolCallId = message.tool_call_id || message.toolCallId || "";
+      if (!toolCallId && pendingToolCallIds.length) {
+        toolCallId = pendingToolCallIds.shift();
+      } else if (toolCallId) {
+        const pendingIndex = pendingToolCallIds.indexOf(toolCallId);
+        if (pendingIndex >= 0) {
+          pendingToolCallIds.splice(pendingIndex, 1);
+        }
+      }
+
+      if (!toolCallId) {
+        const toolName = message.name ? `（${message.name}）` : "";
+        normalized.push({
+          role: "user",
+          content: `历史工具结果${toolName}：\n${stringifyMessageContent(message.content)}`
+        });
+        continue;
+      }
+
+      const toolMessage = {
+        role: "tool",
+        tool_call_id: toolCallId,
+        content: stringifyMessageContent(message.content)
+      };
+      if (message.name) {
+        toolMessage.name = message.name;
+      }
+      normalized.push(toolMessage);
+      continue;
+    }
+
+    if (["system", "user"].includes(message.role)) {
+      normalized.push({
+        role: message.role,
+        content: stringifyMessageContent(message.content)
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: "user",
+      content: stringifyMessageContent(message.content)
+    });
+  }
+
+  return normalized;
+}
+
 function extensionFromContentType(contentType, fallback = "png") {
   const normalized = String(contentType || "").toLowerCase();
   if (normalized.includes("mp4")) {
@@ -158,12 +283,81 @@ function createModelRouter({ app, safeStorage }) {
     return path.join(app.getPath("userData"), "model-profiles.json");
   }
 
-  function readProfiles() {
+  function getLegacyStorePath() {
+    return path.join(app.getPath("appData"), "fiitx-desktop", "model-profiles.json");
+  }
+
+  function readLegacyProfiles() {
     try {
-      const raw = fs.readFileSync(getStorePath(), "utf8");
+      const raw = fs.readFileSync(getLegacyStorePath(), "utf8");
       return JSON.parse(raw);
     } catch {
       return [];
+    }
+  }
+
+  function profileIdentity(profile) {
+    return `${String(profile?.provider || "").toLowerCase()}::${normalizeModelName(profile?.model || "").toLowerCase()}`;
+  }
+
+  function migrateLegacyProfileKeys(profiles) {
+    const legacyProfiles = readLegacyProfiles().filter(hasStoredApiKey);
+    if (legacyProfiles.length === 0) {
+      return { profiles, changed: false };
+    }
+
+    let changed = false;
+    const migrated = profiles.map((profile) => {
+      if (hasDecryptableApiKey(profile)) {
+        return profile;
+      }
+      const legacy =
+        legacyProfiles.find((item) => profileIdentity(item) === profileIdentity(profile) && hasDecryptableApiKey(item)) ||
+        legacyProfiles.find((item) => profileMatchesProvider(item, profile.provider) && hasDecryptableApiKey(item));
+      if (!legacy?.encryptedApiKey) {
+        return profile;
+      }
+      changed = true;
+      return {
+        ...profile,
+        encryptedApiKey: legacy.encryptedApiKey,
+        updatedAt: profile.updatedAt || new Date().toISOString(),
+        migratedFrom: "fiitx-desktop"
+      };
+    });
+
+    const known = new Set(migrated.map(profileIdentity));
+    for (const legacy of legacyProfiles) {
+      if (known.has(profileIdentity(legacy))) {
+        continue;
+      }
+      known.add(profileIdentity(legacy));
+      changed = true;
+      migrated.push({
+        ...legacy,
+        id: `legacy-${legacy.id || profileIdentity(legacy)}`,
+        migratedFrom: "fiitx-desktop"
+      });
+    }
+
+    return { profiles: migrated, changed };
+  }
+
+  function readProfiles() {
+    try {
+      const raw = fs.readFileSync(getStorePath(), "utf8");
+      const profiles = JSON.parse(raw);
+      const migrated = migrateLegacyProfileKeys(profiles);
+      if (migrated.changed) {
+        writeProfiles(migrated.profiles);
+      }
+      return migrated.profiles;
+    } catch {
+      const migrated = migrateLegacyProfileKeys([]);
+      if (migrated.changed) {
+        writeProfiles(migrated.profiles);
+      }
+      return migrated.profiles;
     }
   }
 
@@ -196,7 +390,11 @@ function createModelRouter({ app, safeStorage }) {
     }
 
     if (encryptedApiKey.encoding === "electron-safe-storage" && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(Buffer.from(encryptedApiKey.value, "base64"));
+      try {
+        return safeStorage.decryptString(Buffer.from(encryptedApiKey.value, "base64"));
+      } catch {
+        return "";
+      }
     }
 
     if (encryptedApiKey.encoding === "plain") {
@@ -206,8 +404,29 @@ function createModelRouter({ app, safeStorage }) {
     return "";
   }
 
-  function createStoredProfile(payload) {
+  function hasStoredApiKey(profile) {
+    return Boolean(profile?.encryptedApiKey?.value);
+  }
+
+  function hasDecryptableApiKey(profile) {
+    return Boolean(decryptApiKey(profile?.encryptedApiKey));
+  }
+
+  function apiKeyStatus(profile) {
+    if (hasDecryptableApiKey(profile)) {
+      return "available";
+    }
+    if (hasStoredApiKey(profile)) {
+      return "locked";
+    }
+    return "missing";
+  }
+
+  function createStoredProfile(payload, existingProfile = null) {
     const now = new Date().toISOString();
+    const encryptedApiKey = payload.apiKey
+      ? encryptApiKey(payload.apiKey)
+      : existingProfile?.encryptedApiKey || null;
     return {
       id: payload.id,
       provider: payload.provider,
@@ -221,9 +440,9 @@ function createModelRouter({ app, safeStorage }) {
       bestFor: payload.bestFor,
       toolCallStyle: payload.toolCallStyle,
       apiKeyRef: `keychain:${payload.provider}:${normalizeModelName(payload.model)}`,
-      encryptedApiKey: encryptApiKey(payload.apiKey),
+      encryptedApiKey,
       updatedAt: now,
-      createdAt: payload.createdAt || now
+      createdAt: payload.createdAt || existingProfile?.createdAt || now
     };
   }
 
@@ -247,7 +466,13 @@ function createModelRouter({ app, safeStorage }) {
 
   function sanitizeProfile(profile) {
     const { encryptedApiKey, ...safeProfile } = profile;
-    return safeProfile;
+    const keyStatus = apiKeyStatus(profile);
+    return {
+      ...safeProfile,
+      hasApiKey: keyStatus === "available",
+      hasStoredApiKey: hasStoredApiKey(profile),
+      keyStatus
+    };
   }
 
   function listProfiles() {
@@ -257,10 +482,21 @@ function createModelRouter({ app, safeStorage }) {
   function saveProfile(payload) {
     const profiles = readProfiles();
     const id = payload.id || `${payload.provider}-${payload.model}-${Date.now()}`;
+    const normalizedModel = normalizeModelName(payload.model);
+    const matchingProfiles = profiles.filter(
+      (profile) =>
+        profile.id === id ||
+        (profile.provider === payload.provider && normalizeModelName(profile.model) === normalizedModel)
+    );
+    const existingProfile =
+      matchingProfiles.find(hasDecryptableApiKey) ||
+      matchingProfiles.find(hasStoredApiKey) ||
+      matchingProfiles[0] ||
+      null;
     const storedProfile = createStoredProfile({
       ...payload,
       id
-    });
+    }, existingProfile);
 
     const next = [storedProfile].concat(profiles.filter((profile) => profile.id !== id));
     writeProfiles(next);
@@ -320,13 +556,14 @@ function createModelRouter({ app, safeStorage }) {
   function imageModelCandidates(profile) {
     const model = normalizeModelName(profile?.model || "");
     const candidates = [];
+    const isSiliconFlow = profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow");
     if (modelCapabilityHints(profile, "image")) {
       candidates.push(model);
     }
-    if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
+    if (isSiliconFlow) {
       candidates.push(...siliconFlowImageFallbackModels);
     }
-    if (model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01"].includes(String(model).toLowerCase())) {
+    if (!isSiliconFlow && model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01"].includes(String(model).toLowerCase())) {
       candidates.push(model);
     }
     return Array.from(new Set(candidates.filter(Boolean)));
@@ -335,16 +572,17 @@ function createModelRouter({ app, safeStorage }) {
   function videoModelCandidates(profile) {
     const model = normalizeModelName(profile?.model || "");
     const candidates = [];
+    const isSiliconFlow = profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow");
     if (modelCapabilityHints(profile, "video")) {
       candidates.push(model);
     }
-    if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
+    if (isSiliconFlow) {
       candidates.push(...siliconFlowVideoFallbackModels);
     }
     if (profileMatchesProvider(profile, "OpenRouter")) {
       candidates.push(...openRouterVideoFallbackModels);
     }
-    if (model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01", "openrouter/auto"].includes(String(model).toLowerCase())) {
+    if (!isSiliconFlow && model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01", "openrouter/auto"].includes(String(model).toLowerCase())) {
       candidates.push(model);
     }
     return Array.from(new Set(candidates.filter(Boolean)));
@@ -353,20 +591,17 @@ function createModelRouter({ app, safeStorage }) {
   function audioModelCandidates(profile) {
     const model = normalizeModelName(profile?.model || "");
     const candidates = [];
+    const isSiliconFlow = profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow");
     if (modelCapabilityHints(profile, "audio")) {
       candidates.push(model);
     }
-    if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
+    if (isSiliconFlow) {
       candidates.push(...siliconFlowAudioFallbackModels);
     }
-    if (model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01", "openrouter/auto"].includes(String(model).toLowerCase())) {
+    if (!isSiliconFlow && model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01", "openrouter/auto"].includes(String(model).toLowerCase())) {
       candidates.push(model);
     }
     return Array.from(new Set(candidates.filter(Boolean)));
-  }
-
-  function hasUsableApiKey(profile) {
-    return Boolean(profile?.encryptedApiKey?.value);
   }
 
   function profileRank(profile, preferredModel, intent = {}) {
@@ -387,7 +622,11 @@ function createModelRouter({ app, safeStorage }) {
   }
 
   function resolveModelProfiles(preferredModel, intent = {}) {
-    const profiles = readProfiles().filter(hasUsableApiKey);
+    const allProfiles = readProfiles().filter(hasDecryptableApiKey);
+    const profiles =
+      intent.modality && ["image", "video", "audio"].includes(intent.modality)
+        ? allProfiles.filter((profile) => profileMatchesCapability(profile, intent.modality))
+        : allProfiles;
     const sorted = profiles
       .map((profile, index) => ({
         profile,
@@ -405,23 +644,34 @@ function createModelRouter({ app, safeStorage }) {
       return false;
     }
     const bestFor = Array.isArray(profile.bestFor) ? profile.bestFor.map((item) => String(item).toLowerCase()) : [];
-    if (bestFor.includes(capability)) {
-      return true;
-    }
     if (profileMatchesProvider(profile, "OpenRouter") && normalizeModelName(profile.model) === "openrouter/auto") {
       return ["image", "video", "audio", "vision", "coding", "research"].includes(capability);
+    }
+
+    if (["image", "video", "audio"].includes(capability)) {
+      if (modelCapabilityHints(profile, capability)) {
+        return true;
+      }
+      if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
+        return bestFor.includes(capability) || (capability === "image" && (bestFor.includes("vision") || profile.supportsVision));
+      }
+      return false;
+    }
+
+    if (bestFor.includes(capability)) {
+      return true;
     }
     if (modelCapabilityHints(profile, capability)) {
       return true;
     }
-    if (capability === "image" && (bestFor.includes("vision") || profile.supportsVision)) {
+    if (capability === "vision" && (bestFor.includes("vision") || profile.supportsVision)) {
       return true;
     }
     return false;
   }
 
   function resolveModelProfile(preferredModel, intent = {}) {
-    const profiles = readProfiles().filter(hasUsableApiKey);
+    const profiles = readProfiles().filter(hasDecryptableApiKey);
     const normalizedModel = normalizeModelName(preferredModel);
     const fallback = profiles[0];
     const explicitProfile =
@@ -492,6 +742,7 @@ function createModelRouter({ app, safeStorage }) {
     if (!profile || !apiKey) {
       throw new Error("没有找到可解密的模型 API Key");
     }
+    const providerMessages = normalizeMessagesForProvider(messages);
 
     const controller = new AbortController();
     let timeoutTriggered = false;
@@ -513,7 +764,7 @@ function createModelRouter({ app, safeStorage }) {
           },
           body: JSON.stringify({
             model: normalizeModelName(profile.model),
-            messages,
+            messages: providerMessages,
             tools: options.tools?.length ? options.tools : undefined,
             tool_choice: options.tools?.length ? options.toolChoice || "auto" : undefined,
             temperature: 0.2,
@@ -544,16 +795,22 @@ function createModelRouter({ app, safeStorage }) {
       }
 
       const content = typeof message.content === "string" ? message.content.trim() : "";
+      const toolCalls = (message.tool_calls || []).map(normalizeToolCall);
       return {
         content,
         finishReason: choice?.finish_reason || "",
         message: {
           role: message.role || "assistant",
           content,
-          tool_calls: message.tool_calls || []
+          tool_calls: toolCalls.map((toolCall, index) => normalizeProviderToolCall({
+            id: toolCall.id,
+            type: toolCall.type,
+            name: toolCall.name,
+            arguments: toolCall.rawArguments
+          }, index))
         },
         rawToolCalls: message.tool_calls || [],
-        toolCalls: (message.tool_calls || []).map(normalizeToolCall),
+        toolCalls,
         raw: data
       };
     } finally {
@@ -642,13 +899,39 @@ function createModelRouter({ app, safeStorage }) {
     return raw ? JSON.parse(raw) : {};
   }
 
+  async function fetchProviderCapabilityModels(profile, apiKey, capability) {
+    if (!(profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow"))) {
+      return [];
+    }
+
+    try {
+      const baseUrl = (profile?.baseUrl || "https://api.siliconflow.cn/v1").replace(/\/+$/, "");
+      const data = await fetchJson(`${baseUrl}/models`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`
+        }
+      });
+      const models = (data.data || data.models || [])
+        .map((item) => item.id || item.name || item.model || item.slug)
+        .filter(Boolean);
+      return models.filter((model) => modelCapabilityHints({ provider: profile.provider, model }, capability));
+    } catch {
+      return [];
+    }
+  }
+
+  async function mergeDynamicCandidates(profile, apiKey, capability, staticCandidates) {
+    const dynamicCandidates = await fetchProviderCapabilityModels(profile, apiKey, capability);
+    return Array.from(new Set(dynamicCandidates.concat(staticCandidates).filter(Boolean)));
+  }
+
   async function callImage(profile, prompt, options = {}) {
     const apiKey = decryptApiKey(profile?.encryptedApiKey);
     if (!profile || !apiKey) {
       throw new Error("没有找到可用于图片生成的 API Key");
     }
 
-    const candidates = imageModelCandidates(profile);
+    const candidates = await mergeDynamicCandidates(profile, apiKey, "image", imageModelCandidates(profile));
     if (candidates.length === 0) {
       throw new Error(`${profile.provider} / ${profile.model} 不是可识别的图片生成模型，请在模型中心保存具备 image 能力的 profile。`);
     }
@@ -887,7 +1170,8 @@ function createModelRouter({ app, safeStorage }) {
 
     if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
       const errors = [];
-      for (const model of videoModelCandidates(profile)) {
+      const candidates = await mergeDynamicCandidates(profile, apiKey, "video", videoModelCandidates(profile));
+      for (const model of candidates) {
         try {
           return await callSiliconFlowVideo(profile, prompt, model, options);
         } catch (error) {
@@ -911,7 +1195,8 @@ function createModelRouter({ app, safeStorage }) {
     }
 
     const errors = [];
-    for (const model of audioModelCandidates(profile)) {
+    const candidates = await mergeDynamicCandidates(profile, apiKey, "audio", audioModelCandidates(profile));
+    for (const model of candidates) {
       try {
         const response = await fetch(audioSpeechEndpointForProfile(profile), {
           method: "POST",
@@ -959,6 +1244,11 @@ function createModelRouter({ app, safeStorage }) {
 
   async function callMediaWithFallback(intent, prompt, options = {}) {
     const profiles = resolveModelProfiles(options.preferredModel, intent);
+    const skippedKeyless = readProfiles()
+      .filter((profile) => !hasDecryptableApiKey(profile) && profileMatchesCapability(profile, intent.modality))
+      .map((profile) =>
+        `${profile.provider} / ${profile.model}${hasStoredApiKey(profile) ? "（API Key 无法解密，请重新保存）" : ""}`
+      );
     const errors = [];
     for (const profile of profiles) {
       if (options.signal?.aborted) {
@@ -983,7 +1273,10 @@ function createModelRouter({ app, safeStorage }) {
       }
     }
 
-    throw new Error(`${intent.modality} 生成没有可用结果，已尝试 ${profiles.length} 个已配置 key：${errors.join("；")}`);
+    const skippedHint = skippedKeyless.length
+      ? `；已跳过 API Key 不可用的 profile：${skippedKeyless.join("；")}`
+      : "";
+    throw new Error(`${intent.modality} 生成没有可用结果，已尝试 ${profiles.length} 个已配置 key：${errors.join("；")}${skippedHint}`);
   }
 
   async function testConnection(payload) {
@@ -1018,5 +1311,6 @@ function createModelRouter({ app, safeStorage }) {
 }
 
 module.exports = {
-  createModelRouter
+  createModelRouter,
+  normalizeMessagesForProvider
 };

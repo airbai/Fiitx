@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import css from "highlight.js/lib/languages/css";
@@ -31,8 +31,10 @@ import {
   LayoutDashboard,
   LockKeyhole,
   LucideIcon,
+  Maximize2,
   MessageSquare,
   Mic,
+  Minimize2,
   PanelLeft,
   PanelRight,
   Play,
@@ -45,6 +47,7 @@ import {
   Shield,
   ShieldCheck,
   Square,
+  SquarePen,
   SquarePlus,
   Store,
   Terminal,
@@ -216,6 +219,18 @@ type PathInfo = {
   extension?: string;
   previewable?: boolean;
   resolvedFromWorkspace?: boolean;
+};
+
+type TerminalEntry = {
+  id: string;
+  command: string;
+  cwd: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  status: "running" | "success" | "error";
+  startedAt: number;
+  finishedAt?: number;
 };
 
 type ProjectFolder = {
@@ -840,11 +855,13 @@ function buildModelPayloadFromChat(text: string, recentMessages: Message[]): Cha
   const provider = currentModel.provider || inferProviderFromText(text) || contextualModel.provider || inferProviderFromText(contextText);
   const model = currentModel.model || contextualModel.model || (provider ? providerModelDefaults[provider] : "");
   const baseUrl = inferBaseUrlFromText(text) || (providerTemplates.find((item) => item.name === provider)?.baseUrl ?? "");
-  const normalizedText = contextText.toLowerCase();
+  const normalizedText = text.toLowerCase();
   const hasConfigurationSignal = Boolean(
     apiKey ||
-      provider ||
-      model ||
+      inferBaseUrlFromText(text) ||
+      currentModel.provider ||
+      currentModel.model ||
+      inferProviderFromText(text) ||
       normalizedText.includes("api key") ||
       normalizedText.includes("apikey") ||
       normalizedText.includes("key") ||
@@ -860,6 +877,30 @@ function buildModelPayloadFromChat(text: string, recentMessages: Message[]): Cha
     apiKey,
     hasConfigurationSignal
   };
+}
+
+function hasExplicitModelConfigSignal(text: string) {
+  return Boolean(
+    text.match(apiKeyPattern)?.[0] ||
+      /(api\s*key|apikey|密钥|key|模型配置|配置模型|保存.*模型|保存.*key|profile|provider|base\s*url|baseurl|模型中心|这是.*key|这个.*key)/i.test(text)
+  );
+}
+
+function looksLikeBareModelConfigValue(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 120 || /[，。！？!?]/.test(trimmed)) {
+    return false;
+  }
+  return Boolean(
+    trimmed.match(apiKeyPattern)?.[0] ||
+      /^https?:\/\/[^\s]+$/i.test(trimmed) ||
+      inferProviderFromText(trimmed) ||
+      inferModelFromText(trimmed).model
+  );
+}
+
+function hasNaturalTaskSignal(text: string) {
+  return /(官网|网站|网页|页面|内容|抓取|抓起来|读取|文件|附件|ppt|素材|生成|画|做|写|开发|修复|分析|总结|解释|升级|html|动画|小程序|订单|行程|投诉|客人|住客)/i.test(text);
 }
 
 const defaultProfiles: FiitxModelProfile[] = [
@@ -1006,6 +1047,23 @@ function profileSummary(profile: FiitxModelProfile) {
   return flags.join(" / ");
 }
 
+function hasProfileKey(profile: FiitxModelProfile) {
+  if (profile.keyStatus) {
+    return profile.keyStatus === "available";
+  }
+  return profile.hasApiKey === true;
+}
+
+function profileKeyLabel(profile: FiitxModelProfile) {
+  if (hasProfileKey(profile)) {
+    return profile.apiKeyRef;
+  }
+  if (profile.keyStatus === "locked") {
+    return "API Key 无法解密，请重新保存";
+  }
+  return "未保存 API Key，自动路由不会调用";
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<View>("workbench");
   const [threads, setThreads] = useState(initialThreads);
@@ -1014,11 +1072,14 @@ export default function App() {
   const [approvals, setApprovals] = useState(initialApprovals);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactId>("report");
+  const [artifactMaximized, setArtifactMaximized] = useState(false);
   const [visualSourceModes, setVisualSourceModes] = useState<Record<string, "preview" | "source">>({});
   const [composer, setComposer] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileArtifact | null>(null);
   const [artifacts, setArtifacts] = useState<FileArtifact[]>(fileArtifacts);
+  const [expandedResourceGroups, setExpandedResourceGroups] = useState<Record<string, boolean>>({});
+  const [resourceContextMenu, setResourceContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
   const [activeAgentTaskId, setActiveAgentTaskId] = useState("");
   const [agentProgressEvents, setAgentProgressEvents] = useState<FiitxAgentProgress[]>([]);
   const [agentSpecs, setAgentSpecs] = useState<AgentSpec[]>(defaultAgentSpecs);
@@ -1048,6 +1109,9 @@ export default function App() {
     artifact: false,
     terminal: false
   });
+  const [terminalCommand, setTerminalCommand] = useState("");
+  const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([]);
+  const [terminalRunning, setTerminalRunning] = useState(false);
   const [workspacePath, setWorkspacePath] = useState("");
   const [profiles, setProfiles] = useState<FiitxModelProfile[]>([]);
   const [autoModelRouting, setAutoModelRouting] = useState(true);
@@ -1070,6 +1134,15 @@ export default function App() {
     toolCallStyle: "openai"
   });
   const [threadStateLoaded, setThreadStateLoaded] = useState(false);
+  const [routeLabPrompt, setRouteLabPrompt] = useState("客人投诉房间异味，帮我分级并生成补救方案。");
+  const [routeLabResult, setRouteLabResult] = useState<FiitxAgentRouteInspection | null>(null);
+  const [routeLabLoading, setRouteLabLoading] = useState(false);
+  const [evalResult, setEvalResult] = useState<FiitxAgentEvalResult | null>(null);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [harnessSnapshot, setHarnessSnapshot] = useState<FiitxAgentHarnessSnapshot | null>(null);
+  const [harnessLoading, setHarnessLoading] = useState(false);
+  const [agentAdminOpen, setAgentAdminOpen] = useState(false);
+  const [agentDebugOpen, setAgentDebugOpen] = useState(false);
 
   const activeThread = useMemo<Thread>(
     () =>
@@ -1104,6 +1177,8 @@ export default function App() {
   const latestProgress = visibleAgentProgress[visibleAgentProgress.length - 1];
   const taskScrollRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const terminalBodyRef = useRef<HTMLDivElement | null>(null);
+  const terminalInputRef = useRef<HTMLInputElement | null>(null);
 
   function isPersistableThread(threadId: string) {
     return Boolean(threadId && threadId !== DRAFT_THREAD_ID);
@@ -1435,7 +1510,7 @@ export default function App() {
         updateArtifactsForThread(threadId, (current) => [artifact, ...current.filter((item) => item.path !== artifact.path)], true);
         setThreadLastArtifact(threadId, artifact, true);
         setThreadExecutionArtifacts(threadId, [artifact], true);
-        selectFileArtifact(artifact);
+        selectFileArtifact(artifact, { openPanel: false });
       }
 
       recordAgentProgress(
@@ -1453,13 +1528,13 @@ export default function App() {
   }, [activeThreadId, threads, workspacePath]);
 
   useEffect(() => {
-    if (!agentRunning) {
+    if (!agentRunning && !terminalRunning) {
       return;
     }
 
     const timer = window.setInterval(() => setStatusNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [agentRunning]);
+  }, [agentRunning, terminalRunning]);
 
   useEffect(() => {
     if (activeView !== "workbench") {
@@ -1476,8 +1551,53 @@ export default function App() {
   }, [messages, visibleAgentProgress.length, agentRunning, executionExpanded, activeView]);
 
   useEffect(() => {
+    if (activeView !== "agents" || harnessSnapshot || harnessLoading) {
+      return;
+    }
+    void refreshHarnessSnapshot();
+  }, [activeView, harnessSnapshot, harnessLoading]);
+
+  useEffect(() => {
+    if (!visiblePanels.terminal) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      const terminalBody = terminalBodyRef.current;
+      if (terminalBody) {
+        terminalBody.scrollTop = terminalBody.scrollHeight;
+      }
+      terminalInputRef.current?.focus();
+    });
+  }, [terminalEntries, terminalRunning, visiblePanels.terminal]);
+
+  useEffect(() => {
     setPathInfoMap({});
+    setExpandedResourceGroups({});
+    setResourceContextMenu(null);
   }, [workspacePath]);
+
+  useEffect(() => {
+    if (!resourceContextMenu) {
+      return;
+    }
+
+    const closeMenu = () => setResourceContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("contextmenu", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("contextmenu", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [resourceContextMenu]);
 
   useEffect(() => {
     if (!window.fiitx?.inspectPath) {
@@ -1533,6 +1653,104 @@ export default function App() {
     setAuditLogs((current) => [log, ...current]);
   }
 
+  function getTerminalWorkspaceLabel() {
+    if (!workspacePath) {
+      return PRODUCT_NAME;
+    }
+    return workspacePath.split("/").filter(Boolean).slice(-1)[0] || PRODUCT_NAME;
+  }
+
+  function createTerminalEntry(command: string): TerminalEntry {
+    return {
+      id: `terminal-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      command,
+      cwd: workspacePath || getTerminalWorkspaceLabel(),
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      status: "running",
+      startedAt: Date.now()
+    };
+  }
+
+  function resetTerminal() {
+    setTerminalEntries([]);
+    setTerminalCommand("");
+    window.requestAnimationFrame(() => terminalInputRef.current?.focus());
+  }
+
+  async function runTerminalCommand(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    const command = terminalCommand.trim();
+    if (!command || terminalRunning) {
+      return;
+    }
+
+    if (!window.fiitx?.runTerminalCommand) {
+      const entry = {
+        ...createTerminalEntry(command),
+        status: "error" as const,
+        exitCode: 1,
+        stderr: "当前运行环境未暴露 Terminal IPC。",
+        finishedAt: Date.now()
+      };
+      setTerminalEntries((current) => current.concat(entry));
+      setTerminalCommand("");
+      addAudit("Terminal", "命令失败", command, "warn");
+      return;
+    }
+
+    const entry = createTerminalEntry(command);
+    setTerminalEntries((current) => current.concat(entry));
+    setTerminalCommand("");
+    setTerminalRunning(true);
+
+    try {
+      const result = await window.fiitx.runTerminalCommand({
+        command,
+        workspacePath,
+        timeoutMs: 120000
+      });
+      const exitCode = typeof result.exitCode === "number" ? result.exitCode : result.ok ? 0 : 1;
+      setTerminalEntries((current) =>
+        current.map((item) =>
+          item.id === entry.id
+            ? {
+                ...item,
+                cwd: result.cwd || item.cwd,
+                stdout: result.stdout || "",
+                stderr: result.stderr || "",
+                exitCode,
+                status: exitCode === 0 ? "success" : "error",
+                finishedAt: Date.now()
+              }
+            : item
+        )
+      );
+      addAudit("Terminal", exitCode === 0 ? "执行命令" : "命令失败", command, exitCode === 0 ? "success" : "warn");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "命令执行失败";
+      setTerminalEntries((current) =>
+        current.map((item) =>
+          item.id === entry.id
+            ? {
+                ...item,
+                stderr: message,
+                exitCode: 1,
+                status: "error",
+                finishedAt: Date.now()
+              }
+            : item
+        )
+      );
+      addAudit("Terminal", "命令失败", command, "warn");
+    } finally {
+      setTerminalRunning(false);
+      window.requestAnimationFrame(() => terminalInputRef.current?.focus());
+    }
+  }
+
   function cleanPathCandidate(candidate: string) {
     return candidate
       .trim()
@@ -1545,11 +1763,27 @@ export default function App() {
       return false;
     }
 
+    if (isShellCommandFragment(candidate)) {
+      return false;
+    }
+
     if (candidate.startsWith("/") || candidate.startsWith("~/") || candidate.startsWith("./") || candidate.startsWith("../")) {
       return true;
     }
 
     return /\.[A-Za-z0-9]{1,12}$/.test(candidate) || (candidate.includes("/") && candidate.endsWith("/"));
+  }
+
+  function isShellCommandFragment(candidate: string) {
+    const value = candidate.trim();
+    return (
+      /(?:^|\s)(?:cd|python3?|node|npm|pnpm|yarn|git|open|cat|mkdir|touch|bash|sh)\s/i.test(value) ||
+      /&&|\|\||[;<>]/.test(value)
+    );
+  }
+
+  function isRevealableLocalPath(candidate: string) {
+    return Boolean(candidate) && !/^(data|https?):/i.test(candidate);
   }
 
   function extractLocalPaths(text: string) {
@@ -1741,11 +1975,6 @@ export default function App() {
     return "diff";
   }
 
-  function getVisibleArtifactTabs() {
-    const target = selectedFile ? getArtifactIdForFile(selectedFile) : activeArtifact;
-    return artifactTabs.filter((tab) => tab.id === target);
-  }
-
   function formatFileSize(size = 0) {
     if (size < 1024) {
       return `${size} B`;
@@ -1796,6 +2025,20 @@ export default function App() {
   async function openLocalPath(path: string) {
     const result = await window.fiitx?.openPath?.(path, workspacePath);
     addAudit("Workspace Manager", result?.ok ? "打开路径" : "打开路径失败", path, result?.ok ? "success" : "warn");
+  }
+
+  async function openContainingFolder(path: string) {
+    if (!isRevealableLocalPath(path)) {
+      return;
+    }
+
+    const result = await window.fiitx?.openContainingFolder?.(path, workspacePath);
+    addAudit(
+      "Workspace Manager",
+      result?.ok ? "打开所在位置" : "打开所在位置失败",
+      path,
+      result?.ok ? "success" : "warn"
+    );
   }
 
   function showLocalFileArtifact(info: PathInfo, previewText?: string) {
@@ -1929,6 +2172,23 @@ export default function App() {
     return <p className="message-text">{parts}</p>;
   }
 
+  function toggleResourceGroup(groupKey: string) {
+    setExpandedResourceGroups((current) => ({ ...current, [groupKey]: !current[groupKey] }));
+  }
+
+  function openResourceContextMenu(event: ReactMouseEvent, path: string, enabled: boolean) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!enabled) {
+      return;
+    }
+    setResourceContextMenu({
+      path,
+      x: Math.min(event.clientX, window.innerWidth - 190),
+      y: Math.min(event.clientY, window.innerHeight - 56)
+    });
+  }
+
   function renderPathResourceGroup(paths: string[]) {
     if (paths.length === 0) {
       return null;
@@ -1937,6 +2197,10 @@ export default function App() {
     const existing = paths.filter((path) => pathInfoMap[path]?.exists);
     const files = paths.filter((path) => pathInfoMap[path]?.kind === "file");
     const directories = paths.filter((path) => pathInfoMap[path]?.kind === "directory");
+    const groupKey = `${paths.length}:${paths.slice(0, 6).join("|")}`;
+    const isExpanded = Boolean(expandedResourceGroups[groupKey]);
+    const visiblePaths = isExpanded ? paths : paths.slice(0, 2);
+    const hiddenCount = Math.max(paths.length - visiblePaths.length, 0);
 
     return (
       <div className="message-resource-card">
@@ -1953,34 +2217,43 @@ export default function App() {
           </div>
         </div>
         <div className="resource-list">
-          {paths.map((path) => {
+          {visiblePaths.map((path) => {
             const info = pathInfoMap[path];
             const isDirectory = info?.kind === "directory";
-            const rowAction = !info ? "检查中" : info.exists ? (isDirectory ? "打开" : "预览") : "不存在";
+            const canOpen = Boolean(info?.exists);
+            const stateLabel = !info ? "检查中" : info.exists ? getPathKindLabel(info) : "不存在";
 
             return (
-              <button
+              <div
                 className={`resource-row ${info?.exists === false ? "missing" : ""}`}
-                disabled={info?.exists === false}
                 key={path}
-                onClick={() => activateLocalPath(path)}
+                onContextMenu={(event) => openResourceContextMenu(event, info?.path || path, canOpen)}
                 title={info?.path || path}
-                type="button"
               >
-                <span className="resource-row-main">
+                <button
+                  className="resource-row-main"
+                  disabled={!canOpen}
+                  onClick={() => activateLocalPath(path)}
+                  type="button"
+                >
                   <span className="resource-row-title">
                     {isDirectory ? <FolderOpen size={16} /> : <FileText size={16} />}
                     <strong>{info?.name || getPathFallbackName(path)}</strong>
                   </span>
                   <code>{info?.path || path}</code>
-                </span>
+                </button>
                 <span className="resource-row-meta">
-                  <small>{getPathKindLabel(info)}</small>
-                  <b>{rowAction}</b>
+                  <small>{stateLabel}</small>
                 </span>
-              </button>
+              </div>
             );
           })}
+          {paths.length > 2 ? (
+            <button className="resource-list-toggle" onClick={() => toggleResourceGroup(groupKey)} type="button">
+              <span>{isExpanded ? "收起" : `再显示 ${hiddenCount} 个路径`}</span>
+              <ChevronDown size={15} />
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -2041,6 +2314,43 @@ export default function App() {
         </pre>
       </div>
     );
+  }
+
+  function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+    const nodes: ReactNode[] = [];
+    const pattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\))/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        nodes.push(text.slice(lastIndex, match.index));
+      }
+
+      const token = match[0];
+      const key = `${keyPrefix}-${match.index}`;
+      if (token.startsWith("`") && token.endsWith("`")) {
+        nodes.push(<code className="inline-code" key={key}>{token.slice(1, -1)}</code>);
+      } else if ((token.startsWith("**") && token.endsWith("**")) || (token.startsWith("__") && token.endsWith("__"))) {
+        nodes.push(<strong key={key}>{renderInlineMarkdown(token.slice(2, -2), `${key}-strong`)}</strong>);
+      } else if (match[2] && match[3]) {
+        nodes.push(
+          <a href={match[3]} key={key} rel="noreferrer" target="_blank">
+            {renderInlineMarkdown(match[2], `${key}-link`)}
+          </a>
+        );
+      } else {
+        nodes.push(token);
+      }
+
+      lastIndex = match.index + token.length;
+    }
+
+    if (lastIndex < text.length) {
+      nodes.push(text.slice(lastIndex));
+    }
+
+    return nodes;
   }
 
   function getVisualSourceMode(key: string) {
@@ -2160,7 +2470,7 @@ export default function App() {
             <thead>
               <tr>
                 {table.headers.map((header, headerIndex) => (
-                  <th key={`${header}-${headerIndex}`}>{header}</th>
+                  <th key={`${header}-${headerIndex}`}>{renderInlineMarkdown(header, `${key}-th-${headerIndex}`)}</th>
                 ))}
               </tr>
             </thead>
@@ -2168,7 +2478,9 @@ export default function App() {
               {table.rows.map((row, rowIndex) => (
                 <tr key={`row-${rowIndex}`}>
                   {table.headers.map((_, cellIndex) => (
-                    <td key={`cell-${rowIndex}-${cellIndex}`}>{row[cellIndex] || ""}</td>
+                    <td key={`cell-${rowIndex}-${cellIndex}`}>
+                      {renderInlineMarkdown(row[cellIndex] || "", `${key}-td-${rowIndex}-${cellIndex}`)}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -2307,7 +2619,13 @@ export default function App() {
         <div className="media-preview media-preview-html" key={key}>
           <div className="media-preview-header">
             <span>{title || "HTML 预览"}</span>
-            {source && !htmlContent ? <button onClick={() => openLocalPath(source)}>在浏览器打开</button> : null}
+            <div className="media-preview-actions">
+              {source && !htmlContent ? (
+                <button onClick={() => openLocalPath(source)} type="button">
+                  在浏览器打开
+                </button>
+              ) : null}
+            </div>
           </div>
           <iframe
             sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
@@ -2365,6 +2683,12 @@ export default function App() {
         continue;
       }
 
+      if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        blocks.push(<hr className="markdown-divider" key={`hr-${index}`} />);
+        index += 1;
+        continue;
+      }
+
       const splitImageAlt = /^!\[([^\]]*)\]$/.exec(line.trim());
       const splitImageSource = splitImageAlt && lines[index + 1]
         ? /^\((data:(?:image|video|audio)\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\)$/i.exec(lines[index + 1].trim())
@@ -2415,7 +2739,11 @@ export default function App() {
       if (headingMatch) {
         const level = headingMatch[1].length;
         const content = headingMatch[2];
-        blocks.push(level === 1 ? <h3 key={`h-${index}`}>{content}</h3> : <h4 key={`h-${index}`}>{content}</h4>);
+        blocks.push(
+          level === 1
+            ? <h3 key={`h-${index}`}>{renderInlineMarkdown(content, `h-${index}`)}</h3>
+            : <h4 key={`h-${index}`}>{renderInlineMarkdown(content, `h-${index}`)}</h4>
+        );
         index += 1;
         continue;
       }
@@ -2428,7 +2756,9 @@ export default function App() {
         }
         blocks.push(
           <ul key={`ul-${index}`}>
-            {items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}>{item}</li>)}
+            {items.map((item, itemIndex) => (
+              <li key={`${item}-${itemIndex}`}>{renderInlineMarkdown(item, `ul-${index}-${itemIndex}`)}</li>
+            ))}
           </ul>
         );
         continue;
@@ -2442,7 +2772,9 @@ export default function App() {
         }
         blocks.push(
           <ol key={`ol-${index}`}>
-            {items.map((item, itemIndex) => <li key={`${item}-${itemIndex}`}>{item}</li>)}
+            {items.map((item, itemIndex) => (
+              <li key={`${item}-${itemIndex}`}>{renderInlineMarkdown(item, `ol-${index}-${itemIndex}`)}</li>
+            ))}
           </ol>
         );
         continue;
@@ -2455,6 +2787,7 @@ export default function App() {
         !renderMarkdownMediaLine(lines[index], `media-probe-${index}`) &&
         !parseMarkdownTable(lines, index) &&
         !lines[index].startsWith("```") &&
+        !/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(lines[index]) &&
         !/^(#{1,3})\s+/.test(lines[index]) &&
         !/^\s*[-*]\s+/.test(lines[index]) &&
         !/^\s*\d+[.)]\s+/.test(lines[index])
@@ -2462,7 +2795,7 @@ export default function App() {
         paragraph.push(lines[index]);
         index += 1;
       }
-      blocks.push(<p key={`p-${index}`}>{paragraph.join(" ")}</p>);
+      blocks.push(<p key={`p-${index}`}>{renderInlineMarkdown(paragraph.join(" "), `p-${index}`)}</p>);
     }
 
     return blocks;
@@ -2536,19 +2869,26 @@ export default function App() {
   }
 
   function togglePanel(panel: PanelKey) {
+    if (panel === "artifact" && visiblePanels.artifact) {
+      setArtifactMaximized(false);
+    }
+
     setVisiblePanels((current) => ({
       ...current,
       [panel]: !current[panel]
     }));
   }
 
-  function selectFileArtifact(file: FileArtifact) {
+  function selectFileArtifact(file: FileArtifact, options: { openPanel?: boolean } = {}) {
+    const { openPanel = true } = options;
     setSelectedFile(file);
     setActiveArtifact(getArtifactIdForFile(file));
-    setVisiblePanels((current) => ({
-      ...current,
-      artifact: true
-    }));
+    if (openPanel) {
+      setVisiblePanels((current) => ({
+        ...current,
+        artifact: true
+      }));
+    }
     addAudit("Artifact Engine", "打开文件 artifact", file.path, "info");
   }
 
@@ -2755,10 +3095,138 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     return createLocalAgentPreview(payload);
   }
 
+  function buildAgentRuntimePayload(prompt: string, taskId = `route-lab-${Date.now()}`): FiitxAgentTaskPayload {
+    return {
+      taskId,
+      prompt,
+      workspacePath: activeThread.workspacePath || workspacePath || "",
+      model: getRuntimeModelId(),
+      permissionMode,
+      policySettings,
+      attachments,
+      threadId: activeThreadId,
+      currentDate: getCurrentDateContext(),
+      timeZone: "Asia/Shanghai",
+      channelId: activeChannelAdapterId,
+      channelContext: buildRuntimeChannelContext(activeThreadId),
+      agentRegistry: buildRuntimeAgentRegistry(),
+      channelRegistry: buildRuntimeChannelRegistry(),
+      contextMessages: buildPiContextMessages(),
+      threadContext: buildPiThreadContext(activeThread)
+    };
+  }
+
+  async function runRouteLab(prompt = routeLabPrompt) {
+    const trimmed = prompt.trim();
+    if (!trimmed || routeLabLoading) {
+      return;
+    }
+    setRouteLabLoading(true);
+    try {
+      const result = await window.fiitx?.inspectAgentRoute?.(buildAgentRuntimePayload(trimmed));
+      if (result) {
+        setRouteLabResult(result);
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setRouteLabResult({
+        prompt: trimmed,
+        channelAdapter: null,
+        intent: { mode: "chat", modality: "text", reason: detail },
+        selectedAgent: null,
+        agentCandidates: [],
+        selectedModel: null,
+        modelCandidates: [],
+        toolPlan: [],
+        policyPlan: [],
+        contextPlan: { error: detail },
+        deepseekHarnessChecks: ["route lab 调用失败"]
+      });
+    } finally {
+      setRouteLabLoading(false);
+    }
+  }
+
+  async function runAgentEvalHarness() {
+    if (evalLoading) {
+      return;
+    }
+    setEvalLoading(true);
+    try {
+      const result = await window.fiitx?.runAgentEval?.(buildAgentRuntimePayload(routeLabPrompt || "评估 Deepsix Agent 路由", `eval-${Date.now()}`));
+      if (result) {
+        setEvalResult(result);
+      }
+    } finally {
+      setEvalLoading(false);
+    }
+  }
+
+  async function refreshHarnessSnapshot() {
+    if (harnessLoading) {
+      return;
+    }
+    setHarnessLoading(true);
+    try {
+      const result = await window.fiitx?.getAgentHarnessSnapshot?.({ limit: 500 });
+      if (result) {
+        setHarnessSnapshot(result);
+      }
+    } finally {
+      setHarnessLoading(false);
+    }
+  }
+
   function inferAgentMode(prompt: string, files: string[] = []): "chat" | "coding" {
     const text = prompt.toLowerCase();
-    const signals = ["代码", "项目", "文件", "目录结构", "开发", "实现", "修复", "bug", "build", "npm", "git", "app", "小程序", "网页", "组件", "接口", "脚本"];
+    const signals = [
+      "代码",
+      "项目",
+      "文件",
+      "目录结构",
+      "开发",
+      "实现",
+      "修复",
+      "bug",
+      "build",
+      "npm",
+      "git",
+      "app",
+      "小程序",
+      "网页",
+      "组件",
+      "接口",
+      "脚本",
+      "文档",
+      "报告",
+      "合同",
+      "协议",
+      "模板",
+      "word",
+      "docx",
+      "doc",
+      "pdf",
+      "ppt",
+      "pptx",
+      "幻灯片",
+      "生成文件",
+      "写入",
+      "保存",
+      "导出"
+    ];
     return files.length > 0 || signals.some((signal) => text.includes(signal.toLowerCase())) ? "coding" : "chat";
+  }
+
+  function shouldSkipBusinessAgentForPrompt(prompt: string, files: string[] = []) {
+    if (inferAgentMode(prompt, files) === "coding") {
+      return true;
+    }
+    const text = prompt.toLowerCase();
+    const isModelCenterPrompt =
+      /(模型|model|profile|provider|api\s*key|apikey|key|base\s*url|baseurl|硅基流动|siliconflow|openrouter|deepseek-v4)/i.test(prompt) &&
+      /(配置|保存|调用|路由|生成图片|生成视频|生成音频|可用|key|profile|模型|model)/i.test(prompt);
+    const isDirectMediaPrompt = /(生成|画|做|输出).{0,16}(图片|图像|照片|视频|音频|语音)|图片生成|视频生成|音频生成/i.test(prompt);
+    return isModelCenterPrompt || isDirectMediaPrompt || text.includes("siliconflow");
   }
 
   function agentLabel(mode: "chat" | "coding" | undefined) {
@@ -2783,7 +3251,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     if (agent.status === "draft") {
       return 0;
     }
-    if (inferAgentMode(prompt) === "coding") {
+    if (shouldSkipBusinessAgentForPrompt(prompt)) {
       return 0;
     }
 
@@ -3035,6 +3503,44 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     return "done";
   }
 
+  function stripMarkdownForSummary(value?: string) {
+    return String(value || "")
+      .replace(/```[\s\S]*?```/g, " 代码块 ")
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+      .replace(/^\s*[-*]\s+/gm, "")
+      .replace(/^\s*\d+[.)]\s+/gm, "")
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/gm, " ")
+      .replace(/\|/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function clipExecutionDetail(value?: string, limit = 170) {
+    const normalized = stripMarkdownForSummary(value);
+    if (!normalized) {
+      return "";
+    }
+    return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+  }
+
+  function renderExecutionDetail(detail: string, key: string) {
+    const normalized = detail.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    return (
+      <div className="execution-detail markdown-message" key={`detail-${key}`}>
+        {renderMarkdownBlocks(normalized)}
+      </div>
+    );
+  }
+
   function getLatestEditSummary() {
     if (executionArtifacts.length === 0) {
       return null;
@@ -3061,7 +3567,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     const executionElapsed = getExecutionElapsedLabel();
     const executionStatus = getExecutionStatusLabel();
     const editSummary = getLatestEditSummary();
-    const latestDetail = latestProgress?.detail?.trim();
+    const latestDetail = clipExecutionDetail(latestProgress?.detail);
 
     return (
       <article className="execution-message" aria-live={agentRunning ? "polite" : "off"}>
@@ -3083,7 +3589,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           </button>
 
           <div className="execution-summary">
-            <div className="execution-summary-row">
+            <div className="execution-summary-row execution-live-row">
               {agentRunning ? <Brain size={15} /> : <Activity size={15} />}
               <span>{latestProgress?.title ?? (agentRunning ? "正在思考" : "执行完成")}</span>
               {latestDetail ? <small>{latestDetail}</small> : null}
@@ -3119,7 +3625,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                   <span className="execution-dot" />
                   <div>
                     <strong>{event.title}</strong>
-                    <span>{event.detail}</span>
+                    {renderExecutionDetail(event.detail, event.id)}
                   </div>
                 </div>
               ))}
@@ -3181,17 +3687,22 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       return false;
     }
 
-    const intent = buildModelPayloadFromChat(body, messages);
+    const explicitConfiguration = hasExplicitModelConfigSignal(body);
+    const bareConfigValue = looksLikeBareModelConfigValue(body);
+    const modelConfigContinuation = activeThread.kind === "Model Config" && (explicitConfiguration || bareConfigValue);
+    if (hasNaturalTaskSignal(body) && !explicitConfiguration && !modelConfigContinuation) {
+      return false;
+    }
+
+    const intent = buildModelPayloadFromChat(body, modelConfigContinuation || explicitConfiguration ? messages : []);
     const exactModelOrProvider =
       body.trim().length <= 120 &&
       Boolean(intent.provider || intent.model) &&
       !/[，。！？!?]/.test(body.trim()) &&
-      !/(介绍|回答|写|生成|开发|修复|分析|总结|解释)/.test(body);
-    const explicitConfiguration =
-      Boolean(intent.apiKey) ||
-      /(api\s*key|apikey|密钥|key|模型配置|配置模型|保存.*模型|保存.*key|profile|provider|base\s*url|baseurl|模型中心|这是.*key|这个.*key)/i.test(body);
+      bareConfigValue &&
+      !hasNaturalTaskSignal(body);
 
-    if (!intent.hasConfigurationSignal || (!explicitConfiguration && !exactModelOrProvider)) {
+    if (!intent.hasConfigurationSignal || (!explicitConfiguration && !exactModelOrProvider && !modelConfigContinuation)) {
       return false;
     }
 
@@ -3471,6 +3982,194 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     }
   }
 
+  function isContinueCommand(body: string, hasAttachments = false) {
+    if (hasAttachments) {
+      return false;
+    }
+
+    const normalized = body.trim().replace(/[。.!！?？\s]+$/g, "");
+    return /^(继续|接着|继续执行|接着做|继续完成|继续上一个|继续刚才)$/.test(normalized);
+  }
+
+  function createSummaryArtifact(title: string, summary = ""): FileArtifact {
+    const body = summary.trim() || "Agent 没有返回可展示内容。";
+    return {
+      path: `artifacts/${Date.now()}-${slug(title || "agent-result")}.md`,
+      title,
+      language: "markdown",
+      status: "added",
+      additions: body.split("\n").length,
+      deletions: 0,
+      preview: body
+    };
+  }
+
+  function appendAgentResultToWorkbench({
+    result,
+    threadId,
+    taskId,
+    agentMessageId,
+    fallbackAuthor = "Coding Agent",
+    fallbackArtifactTitle = "Agent Continue Result",
+    showArtifact = true
+  }: {
+    result: Partial<FiitxAgentTaskResult & FiitxAgentSessionResult>;
+    threadId: string;
+    taskId: string;
+    agentMessageId: string;
+    fallbackAuthor?: string;
+    fallbackArtifactTitle?: string;
+    showArtifact?: boolean;
+  }) {
+    const summary = result.summary || result.message || result.errorMessage || "Agent 没有返回可展示内容。";
+    updateMessagesForThread(threadId, (current) =>
+      current.map((message) =>
+        message.id === agentMessageId
+          ? {
+              ...message,
+              author: result.agentName ?? (result.ok ? fallbackAuthor : "Agent Runtime"),
+              body: summary
+            }
+          : message
+      )
+    , threadId === activeThreadId);
+
+    const artifact = result.artifact as FileArtifact | null | undefined;
+    const nextArtifact = artifact || (showArtifact ? createSummaryArtifact(fallbackArtifactTitle, summary) : null);
+    if (nextArtifact) {
+      updateArtifactsForThread(threadId, (current) => [nextArtifact, ...current], threadId === activeThreadId);
+      setThreadLastArtifact(threadId, nextArtifact, threadId === activeThreadId);
+      setThreadExecutionArtifacts(threadId, [nextArtifact], threadId === activeThreadId);
+      if (threadId === activeThreadId) {
+        selectFileArtifact(nextArtifact, { openPanel: false });
+      }
+    }
+
+    appendAuditEvents(result.toolEvents ?? []);
+    recordAgentProgress(
+      taskId,
+      result.ok ? "执行完成" : "执行异常",
+      nextArtifact ? `结果已生成：${nextArtifact.title}` : summary,
+      result.ok ? "success" : "warn",
+      threadId,
+      threadId === activeThreadId
+    );
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === threadId
+          ? {
+              ...thread,
+              model: result.provider && result.model ? `${result.provider} / ${result.model}` : result.model ?? thread.model,
+              kind: result.agentName ? result.agentName.replace(/\s*Agent$/i, "") : result.mode === "coding" ? "Coding" : result.mode === "chat" ? "Chat" : thread.kind,
+              status: result.approvalRequests?.length ? "waiting" : result.ok ? "done" : "waiting",
+              updatedAt: "刚刚"
+            }
+          : thread
+      )
+    );
+  }
+
+  async function continuePreviousTask(visibleBody: string) {
+    if (!isPersistableThread(activeThreadId)) {
+      return false;
+    }
+
+    const threadId = activeThreadId;
+    const taskId = `task-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const agentMessageId = `message-agent-${Date.now()}`;
+    const startedAt = Date.now();
+
+    setActiveAgentTaskId(taskId);
+    setAgentRunning(true);
+    setAbortPending(false);
+    setExecutionArtifacts([]);
+    setExecutionStartedAt(startedAt);
+    setExecutionFinishedAt(null);
+    setStatusNow(startedAt);
+    setExecutionExpanded(false);
+    updateThreadRecord(threadId, (record) => ({
+      ...record,
+      activeAgentTaskId: taskId,
+      executionArtifacts: [],
+      executionStartedAt: startedAt,
+      executionFinishedAt: null,
+      executionExpanded: false
+    }));
+    updateMessagesForThread(threadId, (current) => [
+      ...current,
+      {
+        id: `message-user-continue-${Date.now()}`,
+        role: "user",
+        author: "你",
+        body: visibleBody,
+        time: timeNow()
+      },
+      {
+        id: agentMessageId,
+        role: "agent",
+        author: "Coding Agent",
+        body: "正在从当前 AgentSession 继续上一个未完成回合。",
+        time: timeNow()
+      }
+    ], true);
+    recordAgentProgress(taskId, "继续执行", "从当前 AgentSession 恢复。", "running", threadId, true);
+    setComposer("");
+    setAttachments([]);
+    setThreads((current) =>
+      current.map((thread) => (thread.id === threadId ? { ...thread, status: "running", updatedAt: "刚刚" } : thread))
+    );
+
+    try {
+      const result = await window.fiitx?.continueAgent?.({
+        threadId,
+        taskId,
+        text: visibleBody
+      });
+      if (!result) {
+        throw new Error("continueAgent 没有返回结果。");
+      }
+      appendAgentResultToWorkbench({
+        result,
+        threadId,
+        taskId,
+        agentMessageId,
+        fallbackArtifactTitle: "Agent Continue Result"
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "继续执行失败";
+      updateMessagesForThread(threadId, (current) =>
+        current.map((item) =>
+          item.id === agentMessageId
+            ? {
+                ...item,
+                author: "Agent Runtime",
+                body: `继续执行失败：${message}`
+              }
+            : item
+        )
+      , true);
+      recordAgentProgress(taskId, "继续失败", message, "warn", threadId, true);
+      addAudit("Agent Runtime", "继续执行失败", message, "warn");
+      setThreads((current) =>
+        current.map((thread) => (thread.id === threadId ? { ...thread, status: "waiting", updatedAt: "刚刚" } : thread))
+      );
+    } finally {
+      const finishedAt = Date.now();
+      setExecutionFinishedAt(finishedAt);
+      setStatusNow(finishedAt);
+      setExecutionExpanded(false);
+      updateThreadRecord(threadId, (record) => ({
+        ...record,
+        executionFinishedAt: finishedAt,
+        executionExpanded: false
+      }));
+      setAgentRunning(false);
+      setAbortPending(false);
+    }
+
+    return true;
+  }
+
   async function abortActiveTask() {
     if (!isPersistableThread(activeThreadId) || !activeAgentTaskId || abortPending) {
       return;
@@ -3500,7 +4199,11 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       .join("\n");
 
     if (agentRunning) {
-      await abortActiveTask();
+      await steerRunningTask(visibleBody);
+      return;
+    }
+
+    if (isContinueCommand(body, attachments.length > 0) && await continuePreviousTask(visibleBody)) {
       return;
     }
 
@@ -3549,7 +4252,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     setExecutionStartedAt(startedAt);
     setExecutionFinishedAt(null);
     setStatusNow(startedAt);
-    setExecutionExpanded(true);
+    setExecutionExpanded(false);
     updateThreadRecord(runtimeThread.id, (record) => ({
       ...record,
       activeAgentTaskId: taskId,
@@ -3558,7 +4261,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       executionArtifacts: [],
       executionStartedAt: startedAt,
       executionFinishedAt: null,
-      executionExpanded: true
+      executionExpanded: false
     }));
     recordAgentProgress(taskId, "提交任务", visibleBody.slice(0, 120), "running", runtimeThread.id, true);
 
@@ -3624,7 +4327,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         updateArtifactsForThread(runtimeThread.id, (current) => [artifact, ...current], true);
         setThreadLastArtifact(runtimeThread.id, artifact, true);
         setThreadExecutionArtifacts(runtimeThread.id, [artifact], true);
-        selectFileArtifact(artifact);
+        selectFileArtifact(artifact, { openPanel: false });
       }
       recordAgentProgress(
         taskId,
@@ -3649,7 +4352,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
             ? {
                 ...thread,
                 model: result.provider && result.model ? `${result.provider} / ${result.model}` : result.model ?? AUTO_MODEL_LABEL,
-                kind: result.agentName ? result.agentName.replace(/\s*Agent$/i, "") : thread.kind,
+                kind: result.agentName ? result.agentName.replace(/\s*Agent$/i, "") : result.mode === "coding" ? "Coding" : result.mode === "chat" ? "Chat" : thread.kind,
                 status: result.approvalRequests?.length ? "waiting" : result.ok ? "done" : "waiting",
                 updatedAt: "刚刚"
               }
@@ -3712,14 +4415,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     setExecutionStartedAt(startedAt);
     setExecutionFinishedAt(null);
     setStatusNow(startedAt);
-    setExecutionExpanded(true);
+    setExecutionExpanded(false);
     updateThreadRecord(payload.threadId, (record) => ({
       ...record,
       activeAgentTaskId: taskId,
       executionArtifacts: [],
       executionStartedAt: startedAt,
       executionFinishedAt: null,
-      executionExpanded: true
+      executionExpanded: false
     }));
     recordAgentProgress(taskId, "恢复执行", approval.command, "running", payload.threadId, payload.threadId === activeThreadId);
     updateMessagesForThread(payload.threadId, (current) => [
@@ -3755,7 +4458,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         setThreadLastArtifact(payload.threadId, artifact, payload.threadId === activeThreadId);
         setThreadExecutionArtifacts(payload.threadId, [artifact], payload.threadId === activeThreadId);
         if (payload.threadId === activeThreadId) {
-          selectFileArtifact(artifact);
+          selectFileArtifact(artifact, { openPanel: false });
         }
       }
       appendAuditEvents(result.toolEvents ?? []);
@@ -3941,17 +4644,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           <button className="icon-button ghost" title="刷新状态">
             <RefreshCw size={18} />
           </button>
-          <button className="primary-button" onClick={createThread}>
-            <Plus size={17} />
-            <span>新建任务</span>
-          </button>
           {activeView === "workbench" ? renderPaneToggleButton("artifact", "topbar-pane-toggle") : null}
         </div>
       </header>
     );
   }
 
-  function renderSelectedFileToolbar() {
+  function renderSelectedFileHeaderActions() {
     if (!selectedFile) {
       return null;
     }
@@ -3959,20 +4658,16 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     const targetTab = artifactTabs.find((tab) => tab.id === getArtifactIdForFile(selectedFile)) ?? artifactTabs[2];
     const TargetIcon = targetTab.icon;
     return (
-      <div className="file-action-toolbar">
-        <button className="file-action active" onClick={() => setActiveArtifact(targetTab.id)}>
+      <>
+        <button className="icon-text-button file-header-action active" onClick={() => setActiveArtifact(targetTab.id)} type="button">
           <TargetIcon size={15} />
           <span>{targetTab.label}</span>
         </button>
-        <button className="file-action">
-          <Download size={15} />
-          <span>导出</span>
-        </button>
-        <button className="file-action" onClick={() => setSelectedFile(null)}>
+        <button className="icon-text-button file-header-action" onClick={() => setSelectedFile(null)} type="button">
           <X size={15} />
           <span>关闭</span>
         </button>
-      </div>
+      </>
     );
   }
 
@@ -4118,6 +4813,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           {renderPaneToggleButton("sidebar", "sidebar-brand-toggle")}
         </div>
 
+        <div className="sidebar-action-list">
+          <button className="sidebar-action-button" onClick={createThread} type="button">
+            <SquarePen size={18} />
+            <span>新建任务</span>
+          </button>
+        </div>
+
         {renderProjectSection()}
 
         <nav className="nav-list">
@@ -4164,7 +4866,8 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       <div
         className={[
           "workbench-grid",
-          visiblePanels.artifact ? "" : "artifact-hidden"
+          visiblePanels.artifact ? "" : "artifact-hidden",
+          artifactMaximized && visiblePanels.artifact ? "artifact-maximized" : ""
         ]
           .filter(Boolean)
           .join(" ")}
@@ -4183,25 +4886,6 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 <p>{activeThread.kind} · {activeThread.model}</p>
               </div>
               {activeThread.id !== DRAFT_THREAD_ID ? <div className={`task-status ${activeThread.status}`}>{statusLabel(activeThread.status)}</div> : null}
-            </div>
-
-            <div className="tool-timeline">
-              <div className="timeline-step done">
-                <Check size={15} />
-                <span>Workspace</span>
-              </div>
-              <div className="timeline-step done">
-                <Brain size={15} />
-                <span>Model</span>
-              </div>
-              <div className="timeline-step active">
-                <ShieldCheck size={15} />
-                <span>Approval</span>
-              </div>
-              <div className="timeline-step">
-                <PanelRight size={15} />
-                <span>Artifact</span>
-              </div>
             </div>
 
             {artifacts.length > 0 ? (
@@ -4280,11 +4964,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    if (agentRunning) {
-                      void abortActiveTask();
-                    } else {
-                      void sendMessage();
-                    }
+                    void sendMessage();
                   }
                 }}
                 placeholder="输入消息或任务"
@@ -4311,13 +4991,25 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 <button className="composer-icon-button" onClick={startVoiceInput} title="语音输入">
                   <Mic size={19} />
                 </button>
+                {agentRunning ? (
+                  <button
+                    className="composer-icon-button stop-task-button"
+                    onClick={abortActiveTask}
+                    title={abortPending ? "正在停止" : "停止当前任务"}
+                    disabled={abortPending}
+                    type="button"
+                  >
+                    <Square size={15} fill="currentColor" />
+                  </button>
+                ) : null}
                 <button
-                  className={agentRunning ? "send-button stop" : "send-button"}
-                  onClick={agentRunning ? abortActiveTask : sendMessage}
-                  title={agentRunning ? "停止当前任务" : "发送任务"}
-                  disabled={agentRunning ? abortPending : !composer.trim() && attachments.length === 0}
+                  className={agentRunning ? "send-button steering" : "send-button"}
+                  onClick={sendMessage}
+                  title={agentRunning ? "发送中途补充" : "发送任务"}
+                  disabled={!composer.trim() && attachments.length === 0}
+                  type="button"
                 >
-                  {agentRunning ? <Square size={17} fill="currentColor" /> : <Send size={18} />}
+                  <Send size={18} />
                 </button>
               </div>
             </div>
@@ -4327,32 +5019,21 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         {visiblePanels.artifact ? (
           <section className="artifact-pane panel">
             <div className="panel-header">
-              <div>
-                <span>{selectedFile ? selectedFile.title : "Artifact"}</span>
+              <div className="artifact-title-block">
+                <span title={selectedFile ? selectedFile.title : "Artifact"}>{selectedFile ? selectedFile.title : "Artifact"}</span>
                 <small>{selectedFile ? `${selectedFile.language} · ${selectedFile.status}` : "等待文件或执行结果"}</small>
               </div>
-              <button className="icon-text-button" title="导出">
-                <Download size={16} />
-                <span>导出</span>
-              </button>
-            </div>
-
-            {renderSelectedFileToolbar()}
-
-            <div className="artifact-tabs">
-              {getVisibleArtifactTabs().map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    className={activeArtifact === tab.id ? "artifact-tab active" : "artifact-tab"}
-                    onClick={() => setActiveArtifact(tab.id)}
-                  >
-                    <Icon size={16} />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
+              <div className="panel-header-actions">
+                <button
+                  className="icon-button ghost"
+                  title={artifactMaximized ? "还原 Artifact" : "放大 Artifact"}
+                  onClick={() => setArtifactMaximized((current) => !current)}
+                  type="button"
+                >
+                  {artifactMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
+                {renderSelectedFileHeaderActions()}
+              </div>
             </div>
 
             {renderArtifact()}
@@ -4383,6 +5064,26 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 ))}
             </div>
           </section>
+        ) : null}
+
+        {resourceContextMenu ? (
+          <div
+            className="resource-context-menu"
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.stopPropagation()}
+            style={{ left: resourceContextMenu.x, top: resourceContextMenu.y }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                void openContainingFolder(resourceContextMenu.path);
+                setResourceContextMenu(null);
+              }}
+            >
+              <FolderOpen size={14} />
+              <span>打开所在位置</span>
+            </button>
+          </div>
         ) : null}
       </div>
     );
@@ -4583,7 +5284,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           <div className="panel-header">
             <div>
               <span>已配置模型</span>
-              <small>{profiles.length} 个已配置 Key</small>
+              <small>{profiles.filter(hasProfileKey).length} 个已配置 Key</small>
             </div>
             <label className="model-routing-switch">
               <span>{AUTO_MODEL_LABEL}</span>
@@ -4597,14 +5298,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           </div>
           <div className="profile-list">
             {profiles.map((profile) => (
-              <div className="profile-row" key={profile.id}>
+              <div className={hasProfileKey(profile) ? "profile-row" : "profile-row missing-key"} key={profile.id}>
                 <div className="profile-icon">
                   <KeyRound size={18} />
                 </div>
                 <div>
                   <strong>{profile.model}</strong>
                   <span>{profile.provider} · {profileSummary(profile)}</span>
-                  <small>{profile.apiKeyRef}</small>
+                  <small>{profileKeyLabel(profile)}</small>
                 </div>
               </div>
             ))}
@@ -4824,6 +5525,90 @@ ${adapter.sampleEvent}
     );
   }
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value && typeof value === "object" && !Array.isArray(value));
+  }
+
+  function pickString(value: unknown, keys: string[], fallback = "未匹配") {
+    if (!isRecord(value)) {
+      return fallback;
+    }
+    for (const key of keys) {
+      const item = value[key];
+      if (typeof item === "string" && item.trim()) {
+        return item;
+      }
+    }
+    return fallback;
+  }
+
+  function modelRouteLabel(value: unknown) {
+    if (!isRecord(value)) {
+      return "未匹配模型";
+    }
+    const provider = pickString(value, ["provider"], "");
+    const model = pickString(value, ["model", "id"], "");
+    return [provider, model].filter(Boolean).join(" / ") || "未匹配模型";
+  }
+
+  function channelRouteLabel(value: unknown) {
+    if (!isRecord(value)) {
+      return "未匹配通道";
+    }
+    const name = pickString(value, ["name", "id"], "");
+    const type = pickString(value, ["channelType", "transport"], "");
+    return [name, type].filter(Boolean).join(" · ") || "未匹配通道";
+  }
+
+  function boolRouteText(value: unknown) {
+    return value ? "是" : "否";
+  }
+
+  function agentStatusText(status: AgentSpec["status"]) {
+    if (status === "active") {
+      return "已启用";
+    }
+    if (status === "ready") {
+      return "可启用";
+    }
+    return "草稿";
+  }
+
+  function testPromptForAgent(agent: AgentSpec) {
+    if (agent.id === "complaint-recovery") {
+      return "客人投诉房间有异味，帮我分级并生成补救方案。";
+    }
+    if (agent.id === "concierge-trip") {
+      return "帮住客规划北京海淀两天一晚亲子行程。";
+    }
+    if (agent.id === "revenue-manager") {
+      return "本周末入住率偏低，帮我分析是否需要调价。";
+    }
+    if (agent.id === "marketing-content") {
+      return "帮我为亲子房套餐生成一组小红书营销素材。";
+    }
+    if (agent.id === "guest-service") {
+      return "住客想续住并询问能否换到安静房间。";
+    }
+    if (agent.id === "ops-quality") {
+      return "今天客房巡检发现三间房清洁超时，帮我生成整改任务。";
+    }
+    return agent.triggers[0] || "客人投诉房间异味，帮我分级并生成补救方案。";
+  }
+
+  function editAgent(agent: AgentSpec) {
+    setSelectedAgentId(agent.id);
+    setAgentAdminOpen(true);
+  }
+
+  function testAgentRoute(agent: AgentSpec) {
+    const prompt = testPromptForAgent(agent);
+    setSelectedAgentId(agent.id);
+    setRouteLabPrompt(prompt);
+    setAgentDebugOpen(true);
+    void runRouteLab(prompt);
+  }
+
   function renderAgents() {
     if (!selectedAgent || !selectedChannelAdapter) {
       return <div className="panel empty-state">暂无 Agent 编排</div>;
@@ -4833,252 +5618,451 @@ ${adapter.sampleEvent}
     const channelManifest = buildChannelManifest(selectedChannelAdapter);
     const activeCount = agentSpecs.filter((agent) => agent.status === "active").length;
     const activeChannelCount = channelAdapters.filter((adapter) => adapter.status === "active").length;
+    const readyCount = agentSpecs.filter((agent) => agent.status !== "draft").length;
+    const routeContextPlan = isRecord(routeLabResult?.contextPlan) ? routeLabResult.contextPlan : {};
+    const routePolicyPlan = Array.isArray(routeLabResult?.policyPlan) ? routeLabResult.policyPlan : [];
+    const routeModelCandidates = Array.isArray(routeLabResult?.modelCandidates) ? routeLabResult.modelCandidates : [];
+    const failedEvalCases = evalResult?.results.filter((item) => !item.ok) ?? [];
 
     return (
-      <div className="agents-console">
-        <section className="agent-hero panel">
+      <div className="agent-management-console">
+        <section className="agent-hero agent-management-hero panel">
           <div>
-            <span className="eyebrow">Hotel Travel Agent OS</span>
-            <h2>酒店文旅行业大 Agent</h2>
-            <p>以 pi-style AgentSession 为运行骨架，用 OpenClaw-style channel/skill/agent registry 管理接入，再参考微信 AI 的 AGENTS.md + SKILL + mcp.json + context/followUp 方式把业务能力原子化。</p>
+            <span className="eyebrow">Agent Management</span>
+            <h2>行业 Agent 能力中心</h2>
+            <p>为不同业务团队配置可直接上岗的 Agent。默认只展示能解决什么问题、适合什么场景和是否启用；高级路由、工具、评测和调试信息收进下方高级区。</p>
           </div>
-          <div className="agent-architecture-strip">
-            <span>AgentSession</span>
-            <span>Skill Registry</span>
-            <span>External Connectors</span>
-            <span>Policy Gate</span>
-            <span>Artifact UI</span>
+          <div className="agent-overview-grid">
+            <div>
+              <strong>{agentSpecs.length}</strong>
+              <span>业务 Agent</span>
+            </div>
+            <div>
+              <strong>{readyCount}</strong>
+              <span>可用模板</span>
+            </div>
+            <div>
+              <strong>{activeChannelCount}</strong>
+              <span>接入通道</span>
+            </div>
+            <div>
+              <strong>{activeCount}</strong>
+              <span>已启用</span>
+            </div>
           </div>
         </section>
 
-        <section className="agents-list panel">
+        <section className="agent-catalog panel">
           <div className="panel-header">
             <div>
-              <span>Agent Registry</span>
-              <small>{agentSpecs.length} 个 Agent · {activeCount} 个 active</small>
+              <span>可用 Agent</span>
+              <small>业务用户只需要选择能力、测试效果，管理员再进入配置。</small>
             </div>
-            <button className="icon-text-button" onClick={resetAgentSpecs} title="恢复默认行业模板">
-              <RefreshCw size={16} />
-              <span>重置</span>
-            </button>
           </div>
-          <div className="agent-stack">
+          <div className="agent-card-grid">
             {agentSpecs.map((agent) => (
-              <button
-                className={selectedAgent.id === agent.id ? `agent-row active ${agent.accent}` : `agent-row ${agent.accent}`}
-                key={agent.id}
-                onClick={() => setSelectedAgentId(agent.id)}
-              >
-                <span className={`status-dot ${agent.status === "active" ? "done" : agent.status === "ready" ? "running" : "waiting"}`} />
-                <span>
-                  <strong>{agent.name}</strong>
-                  <small>{agent.scope}</small>
-                </span>
-                <code>{agent.policy}</code>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="agent-editor panel">
-          <div className="panel-header">
-            <div>
-              <span>Agent 编排配置</span>
-              <small>可修改角色、系统提示词、工具、Skill、外部系统和阶段</small>
-            </div>
-            <button className="primary-button" onClick={() => useAgentInWorkbench(selectedAgent)}>
-              <Workflow size={16} />
-              <span>用于任务</span>
-            </button>
-          </div>
-
-          <div className="agent-editor-grid">
-            <label className="agent-editor-field">
-              <span>名称</span>
-              <input value={selectedAgent.name} onChange={(event) => updateAgentSpec(selectedAgent.id, { name: event.target.value })} />
-            </label>
-            <label className="agent-editor-field">
-              <span>状态</span>
-              <select value={selectedAgent.status} onChange={(event) => updateAgentSpec(selectedAgent.id, { status: event.target.value as AgentSpec["status"] })}>
-                <option value="active">active</option>
-                <option value="ready">ready</option>
-                <option value="draft">draft</option>
-              </select>
-            </label>
-            <label className="agent-editor-field">
-              <span>模型</span>
-              <input value={selectedAgent.model} onChange={(event) => updateAgentSpec(selectedAgent.id, { model: event.target.value })} />
-            </label>
-            <label className="agent-editor-field">
-              <span>Policy</span>
-              <select value={selectedAgent.policy} onChange={(event) => updateAgentSpec(selectedAgent.id, { policy: event.target.value as PermissionMode })}>
-                {permissionOptions.map((option) => (
-                  <option value={option.id} key={option.id}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="agent-editor-field">
-            <span>业务范围</span>
-            <input value={selectedAgent.scope} onChange={(event) => updateAgentSpec(selectedAgent.id, { scope: event.target.value })} />
-          </label>
-          <label className="agent-editor-field">
-            <span>目标</span>
-            <textarea value={selectedAgent.objective} onChange={(event) => updateAgentSpec(selectedAgent.id, { objective: event.target.value })} rows={3} />
-          </label>
-          <label className="agent-editor-field">
-            <span>系统提示词 / AGENTS.md 片段</span>
-            <textarea value={selectedAgent.systemPrompt} onChange={(event) => updateAgentSpec(selectedAgent.id, { systemPrompt: event.target.value })} rows={4} />
-          </label>
-
-          <div className="agent-field-columns">
-            {renderAgentListEditor(selectedAgent, "triggers", "触发入口")}
-            {renderAgentListEditor(selectedAgent, "systems", "外部系统")}
-            {renderAgentListEditor(selectedAgent, "tools", "原子工具")}
-            {renderAgentListEditor(selectedAgent, "skills", "Skills")}
-            {renderAgentListEditor(selectedAgent, "channels", "通道")}
-            {renderAgentListEditor(selectedAgent, "metrics", "业务指标")}
-          </div>
-
-          <div className="agent-stage-header">
-            <div>
-              <strong>编排阶段</strong>
-              <span>{"参考 pi agent loop：context -> tool plan -> policy -> tool result -> followUp"}</span>
-            </div>
-            <button className="icon-text-button" onClick={() => addAgentStage(selectedAgent.id)}>
-              <Plus size={16} />
-              <span>阶段</span>
-            </button>
-          </div>
-          <div className="agent-stage-list">
-            {selectedAgent.stages.map((stage, index) => (
-              <div className="agent-stage-card" key={`${selectedAgent.id}-${index}`}>
-                <div className="agent-stage-number">{index + 1}</div>
-                <div className="agent-stage-fields">
-                  <input value={stage.name} onChange={(event) => updateAgentStage(selectedAgent.id, index, { name: event.target.value })} aria-label="阶段名称" />
-                  <input value={stage.owner} onChange={(event) => updateAgentStage(selectedAgent.id, index, { owner: event.target.value })} aria-label="负责人" />
-                  <textarea value={stage.trigger} onChange={(event) => updateAgentStage(selectedAgent.id, index, { trigger: event.target.value })} aria-label="触发条件" rows={2} />
-                  <textarea value={stage.action} onChange={(event) => updateAgentStage(selectedAgent.id, index, { action: event.target.value })} aria-label="执行动作" rows={2} />
-                  <textarea value={stage.output} onChange={(event) => updateAgentStage(selectedAgent.id, index, { output: event.target.value })} aria-label="输出" rows={2} />
+              <article className={selectedAgent.id === agent.id ? `business-agent-card selected ${agent.accent}` : `business-agent-card ${agent.accent}`} key={agent.id}>
+                <div className="agent-card-topline">
+                  <span className={`status-dot ${agent.status === "active" ? "done" : agent.status === "ready" ? "running" : "waiting"}`} />
+                  <code>{agentStatusText(agent.status)}</code>
                 </div>
-                <button className="icon-button ghost" onClick={() => removeAgentStage(selectedAgent.id, index)} title="删除阶段" disabled={selectedAgent.stages.length <= 1}>
-                  <X size={16} />
-                </button>
-              </div>
+                <h3>{agent.name}</h3>
+                <p>{agent.scope}</p>
+                <small>{agent.objective}</small>
+                <div className="agent-tag-list">
+                  {agent.triggers.slice(0, 3).map((trigger) => <span key={trigger}>{trigger}</span>)}
+                </div>
+                <div className="agent-card-actions">
+                  <button className="icon-text-button" onClick={() => testAgentRoute(agent)}>
+                    <Play size={16} />
+                    <span>测试</span>
+                  </button>
+                  <button className="icon-text-button" onClick={() => editAgent(agent)}>
+                    <SquarePen size={16} />
+                    <span>编辑</span>
+                  </button>
+                  <button className="primary-button" onClick={() => useAgentInWorkbench(agent)}>
+                    <Workflow size={16} />
+                    <span>用于任务</span>
+                  </button>
+                </div>
+              </article>
             ))}
           </div>
         </section>
 
-        <section className="agent-preview panel">
+        <section className="agent-admin panel">
           <div className="panel-header">
             <div>
-              <span>Channel Adapters</span>
-              <small>{channelAdapters.length} 个 adapter · {activeChannelCount} 个 active · 当前 {activeChannelAdapter?.name || "未选择"}</small>
+              <span>Agent 配置</span>
+              <small>{agentAdminOpen ? `正在编辑：${selectedAgent.name}` : "点击卡片里的“编辑”后配置角色、工具、审批、渠道和输出。"}</small>
             </div>
-            <button className="icon-text-button" onClick={resetChannelAdapters} title="恢复默认 Channel adapters">
-              <RefreshCw size={16} />
-              <span>重置</span>
+            <button className="icon-text-button" onClick={() => setAgentAdminOpen((open) => !open)}>
+              <Settings size={16} />
+              <span>{agentAdminOpen ? "收起配置" : "展开配置"}</span>
             </button>
           </div>
-          <div className="agent-stack">
-            {channelAdapters.map((adapter) => (
-              <button
-                className={selectedChannelAdapter.id === adapter.id ? "agent-row active blue" : "agent-row blue"}
-                key={adapter.id}
-                onClick={() => setSelectedChannelAdapterId(adapter.id)}
-              >
-                <span className={`status-dot ${adapter.status === "active" ? "done" : adapter.status === "ready" ? "running" : "waiting"}`} />
-                <span>
-                  <strong>{adapter.name}</strong>
-                  <small>{adapter.description}</small>
-                </span>
-                <code>{adapter.channelType === "wechat-miniprogram-ai" ? "wechat" : "desktop"}</code>
-              </button>
-            ))}
-          </div>
 
-          <div className="agent-editor-grid">
-            <label className="agent-editor-field">
-              <span>名称</span>
-              <input value={selectedChannelAdapter.name} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { name: event.target.value })} />
-            </label>
-            <label className="agent-editor-field">
-              <span>状态</span>
-              <select value={selectedChannelAdapter.status} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { status: event.target.value as ChannelAdapterSpec["status"] })}>
-                <option value="active">active</option>
-                <option value="ready">ready</option>
-                <option value="draft">draft</option>
-              </select>
-            </label>
-            <label className="agent-editor-field">
-              <span>传输层</span>
-              <input value={selectedChannelAdapter.transport} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { transport: event.target.value })} />
-            </label>
-            <label className="agent-editor-field">
-              <span>会话键</span>
-              <input value={selectedChannelAdapter.sessionKeyStrategy} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { sessionKeyStrategy: event.target.value })} />
-            </label>
-          </div>
+          {agentAdminOpen ? (
+            <div className="agent-admin-body">
+              <div className="agent-admin-grid">
+                <section className="agent-admin-section">
+                  <h3>基础角色</h3>
+                  <div className="agent-editor-grid">
+                    <label className="agent-editor-field">
+                      <span>名称</span>
+                      <input value={selectedAgent.name} onChange={(event) => updateAgentSpec(selectedAgent.id, { name: event.target.value })} />
+                    </label>
+                    <label className="agent-editor-field">
+                      <span>状态</span>
+                      <select value={selectedAgent.status} onChange={(event) => updateAgentSpec(selectedAgent.id, { status: event.target.value as AgentSpec["status"] })}>
+                        <option value="active">active</option>
+                        <option value="ready">ready</option>
+                        <option value="draft">draft</option>
+                      </select>
+                    </label>
+                    <label className="agent-editor-field">
+                      <span>模型</span>
+                      <input value={selectedAgent.model} onChange={(event) => updateAgentSpec(selectedAgent.id, { model: event.target.value })} />
+                    </label>
+                    <label className="agent-editor-field">
+                      <span>审批规则</span>
+                      <select value={selectedAgent.policy} onChange={(event) => updateAgentSpec(selectedAgent.id, { policy: event.target.value as PermissionMode })}>
+                        {permissionOptions.map((option) => (
+                          <option value={option.id} key={option.id}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label className="agent-editor-field">
+                    <span>能力说明</span>
+                    <input value={selectedAgent.scope} onChange={(event) => updateAgentSpec(selectedAgent.id, { scope: event.target.value })} />
+                  </label>
+                  <label className="agent-editor-field">
+                    <span>目标</span>
+                    <textarea value={selectedAgent.objective} onChange={(event) => updateAgentSpec(selectedAgent.id, { objective: event.target.value })} rows={3} />
+                  </label>
+                </section>
 
-          <label className="agent-editor-field">
-            <span>描述</span>
-            <textarea value={selectedChannelAdapter.description} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { description: event.target.value })} rows={3} />
-          </label>
-          <label className="agent-editor-field">
-            <span>入口协议</span>
-            <input value={selectedChannelAdapter.entrypoint} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { entrypoint: event.target.value })} />
-          </label>
-          <label className="agent-editor-field">
-            <span>通道系统提示词</span>
-            <textarea value={selectedChannelAdapter.systemPrompt} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { systemPrompt: event.target.value })} rows={4} />
-          </label>
-          <label className="agent-editor-field">
-            <span>followUp 规则</span>
-            <textarea value={selectedChannelAdapter.followUpPolicy} onChange={(event) => updateChannelAdapterSpec(selectedChannelAdapter.id, { followUpPolicy: event.target.value })} rows={3} />
-          </label>
-
-          <div className="agent-field-columns">
-            {renderChannelListEditor(selectedChannelAdapter, "capabilities", "通道能力")}
-            {renderChannelListEditor(selectedChannelAdapter, "contextSources", "上下文来源")}
-            {renderChannelListEditor(selectedChannelAdapter, "outputModes", "输出形态")}
-            {renderChannelListEditor(selectedChannelAdapter, "agentBindings", "绑定业务 Agent")}
-          </div>
-
-          <div className="agent-stage-header">
-            <div>
-              <strong>Channel Manifest</strong>
-              <span>{"横向底座：channel -> context -> route bias -> followUp -> reply contract"}</span>
-            </div>
-            <button className="primary-button" onClick={() => activateChannelAdapter(selectedChannelAdapter.id)}>
-              <MessageSquare size={16} />
-              <span>设为当前通道</span>
-            </button>
-          </div>
-          <div className="agent-manifest channel-manifest">
-            <pre>{channelManifest}</pre>
-          </div>
-
-          <div className="panel-header">
-            <div>
-              <span>Skill Manifest</span>
-              <small>AGENTS.md / SKILL.md / mcp.json 草案</small>
-            </div>
-            <button className="icon-text-button" onClick={() => copyText(manifest)}>
-              <Copy size={16} />
-              <span>复制</span>
-            </button>
-          </div>
-          <div className="agent-kpi-grid">
-            {selectedAgent.metrics.slice(0, 4).map((metric) => (
-              <div className="agent-kpi" key={metric}>
-                <span>{metric}</span>
+                <section className="agent-admin-section">
+                  <h3>业务知识与输出</h3>
+                  <label className="agent-editor-field">
+                    <span>角色说明 / AGENTS.md 片段</span>
+                    <textarea value={selectedAgent.systemPrompt} onChange={(event) => updateAgentSpec(selectedAgent.id, { systemPrompt: event.target.value })} rows={5} />
+                  </label>
+                  <div className="agent-field-columns">
+                    {renderAgentListEditor(selectedAgent, "skills", "业务知识 / Skills")}
+                    {renderAgentListEditor(selectedAgent, "metrics", "验收指标")}
+                  </div>
+                </section>
               </div>
-            ))}
-          </div>
-          <div className="agent-manifest">
-            <pre>{manifest}</pre>
-          </div>
+
+              <section className="agent-admin-section">
+                <h3>工具、渠道与外部系统</h3>
+                <div className="agent-field-columns">
+                  {renderAgentListEditor(selectedAgent, "tools", "可调用工具")}
+                  {renderAgentListEditor(selectedAgent, "systems", "外部系统")}
+                  {renderAgentListEditor(selectedAgent, "channels", "接入渠道")}
+                  {renderAgentListEditor(selectedAgent, "triggers", "适用场景")}
+                </div>
+                <div className="agent-channel-strip">
+                  {channelAdapters.map((adapter) => (
+                    <button
+                      className={selectedChannelAdapter.id === adapter.id ? "route-chip selected" : "route-chip"}
+                      key={adapter.id}
+                      onClick={() => setSelectedChannelAdapterId(adapter.id)}
+                    >
+                      {adapter.name} · {adapter.status}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="agent-admin-section">
+                <div className="agent-stage-header">
+                  <div>
+                    <strong>编排阶段</strong>
+                    <span>按业务流程组织：触发条件、动作、输出和负责方。</span>
+                  </div>
+                  <button className="icon-text-button" onClick={() => addAgentStage(selectedAgent.id)}>
+                    <Plus size={16} />
+                    <span>阶段</span>
+                  </button>
+                </div>
+                <div className="agent-stage-list">
+                  {selectedAgent.stages.map((stage, index) => (
+                    <div className="agent-stage-card" key={`${selectedAgent.id}-${index}`}>
+                      <div className="agent-stage-number">{index + 1}</div>
+                      <div className="agent-stage-fields">
+                        <input value={stage.name} onChange={(event) => updateAgentStage(selectedAgent.id, index, { name: event.target.value })} aria-label="阶段名称" />
+                        <input value={stage.owner} onChange={(event) => updateAgentStage(selectedAgent.id, index, { owner: event.target.value })} aria-label="负责人" />
+                        <textarea value={stage.trigger} onChange={(event) => updateAgentStage(selectedAgent.id, index, { trigger: event.target.value })} aria-label="触发条件" rows={2} />
+                        <textarea value={stage.action} onChange={(event) => updateAgentStage(selectedAgent.id, index, { action: event.target.value })} aria-label="执行动作" rows={2} />
+                        <textarea value={stage.output} onChange={(event) => updateAgentStage(selectedAgent.id, index, { output: event.target.value })} aria-label="输出" rows={2} />
+                      </div>
+                      <button className="icon-button ghost" onClick={() => removeAgentStage(selectedAgent.id, index)} title="删除阶段" disabled={selectedAgent.stages.length <= 1}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div className="agent-admin-empty">
+              <Bot size={18} />
+              <span>选择一个 Agent 并点击“编辑”，进入管理员配置。</span>
+            </div>
+          )}
+        </section>
+
+        <section className="agent-debug-panel panel">
+          <button className="agent-debug-toggle" onClick={() => setAgentDebugOpen((open) => !open)}>
+            <span>
+              <strong>高级调试</strong>
+              <small>Route Lab、Eval、Harness Snapshot、AgentSession、Skill Registry、Policy Gate</small>
+            </span>
+            <ChevronDown className={agentDebugOpen ? "rotated" : ""} size={18} />
+          </button>
+
+          {agentDebugOpen ? (
+            <div className="agent-debug-content">
+              <div className="agent-architecture-strip">
+                <span>AgentSession</span>
+                <span>Skill Registry</span>
+                <span>External Connectors</span>
+                <span>Policy Gate</span>
+                <span>Artifact UI</span>
+              </div>
+
+              <section className="agent-lab">
+                <div className="panel-header">
+                  <div>
+                    <span>Route Lab</span>
+                    <small>解释输入如何经过 channel、intent、agent、model、tool、policy、context。</small>
+                  </div>
+                  <div className="agent-lab-actions">
+                    <button className="icon-text-button" onClick={() => runRouteLab()} disabled={routeLabLoading}>
+                      <GitBranch size={16} />
+                      <span>{routeLabLoading ? "诊断中" : "诊断路由"}</span>
+                    </button>
+                    <button className="icon-text-button" onClick={runAgentEvalHarness} disabled={evalLoading}>
+                      <Activity size={16} />
+                      <span>{evalLoading ? "评估中" : "运行 Eval"}</span>
+                    </button>
+                    <button className="icon-text-button" onClick={refreshHarnessSnapshot} disabled={harnessLoading}>
+                      <Database size={16} />
+                      <span>{harnessLoading ? "刷新中" : "Harness 快照"}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="agent-lab-grid">
+                  <label className="agent-editor-field route-lab-input">
+                    <span>测试输入</span>
+                    <textarea
+                      value={routeLabPrompt}
+                      onChange={(event) => setRouteLabPrompt(event.target.value)}
+                      rows={4}
+                      placeholder="例如：客人投诉房间异味，帮我分级并生成补救方案。"
+                    />
+                  </label>
+
+                  <div className="route-lab-result">
+                    <div className="route-pill-grid">
+                      <div className="route-pill">
+                        <span>Channel</span>
+                        <strong>{routeLabResult ? channelRouteLabel(routeLabResult.channelAdapter) : activeChannelAdapter?.name || "Deepsix Workbench"}</strong>
+                      </div>
+                      <div className="route-pill">
+                        <span>Intent</span>
+                        <strong>{routeLabResult ? `${routeLabResult.intent.mode} / ${routeLabResult.intent.modality}` : "等待诊断"}</strong>
+                        {routeLabResult?.intent.taskKind ? <small>{routeLabResult.intent.taskKind}</small> : null}
+                      </div>
+                      <div className="route-pill">
+                        <span>Agent</span>
+                        <strong>{routeLabResult?.selectedAgent?.name || "无业务 Agent"}</strong>
+                        {routeLabResult?.selectedAgent?.reason ? <small>{routeLabResult.selectedAgent.reason}</small> : null}
+                      </div>
+                      <div className="route-pill">
+                        <span>Model</span>
+                        <strong>{routeLabResult ? modelRouteLabel(routeLabResult.selectedModel) : getRuntimeModelLabel()}</strong>
+                        <small>{routeModelCandidates.length} 个候选</small>
+                      </div>
+                    </div>
+
+                    <div className="route-detail-columns">
+                      <div>
+                        <strong>候选 Agent</strong>
+                        <div className="route-chip-list">
+                          {(routeLabResult?.agentCandidates ?? []).slice(0, 5).map((candidate) => (
+                            <span className="route-chip" key={candidate.id}>{candidate.name} · {candidate.score}</span>
+                          ))}
+                          {routeLabResult && routeLabResult.agentCandidates.length === 0 ? <span className="route-muted">无命中</span> : null}
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Tool Plan</strong>
+                        <div className="route-chip-list">
+                          {(routeLabResult?.toolPlan ?? []).map((tool) => <span className="route-chip" key={tool}>{tool}</span>)}
+                          {routeLabResult && routeLabResult.toolPlan.length === 0 ? <span className="route-muted">无需工具</span> : null}
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Context</strong>
+                        <div className="route-context-list">
+                          <span>线程：{boolRouteText(routeContextPlan.threadContext ?? routeContextPlan.hasThreadContext)}</span>
+                          <span>通道：{boolRouteText(routeContextPlan.channelContext ?? routeContextPlan.hasChannelContext)}</span>
+                          <span>
+                            外部资料：{String(Array.isArray(routeContextPlan.externalUrls) ? routeContextPlan.externalUrls.length : routeContextPlan.externalUrlCount ?? 0)} 个
+                          </span>
+                          <span>附件：{String(routeContextPlan.attachments ?? routeContextPlan.attachmentCount ?? 0)} 个</span>
+                        </div>
+                      </div>
+                      <div>
+                        <strong>Policy</strong>
+                        <div className="route-chip-list">
+                          {routePolicyPlan.slice(0, 4).map((item, index) => {
+                            const record = isRecord(item) ? item : {};
+                            return (
+                              <span className="route-chip" key={`${pickString(record, ["name", "action"], "policy")}-${index}`}>
+                                {pickString(record, ["name", "action"], "policy")} · {pickString(record, ["mode", "risk"], "ask")}
+                              </span>
+                            );
+                          })}
+                          {routePolicyPlan.length === 0 ? <span className="route-muted">无工具策略</span> : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {routeLabResult?.deepseekHarnessChecks?.length ? (
+                      <div className="route-harness-checks">
+                        {routeLabResult.deepseekHarnessChecks.map((check) => <span key={check}>{check}</span>)}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="agent-eval-card">
+                    <div>
+                      <strong>Eval Harness</strong>
+                      <span>{evalResult ? `${evalResult.passed}/${evalResult.total} 通过` : "覆盖投诉、行程、小程序、外部文档、媒体路由"}</span>
+                    </div>
+                    {evalResult ? (
+                      <div className="eval-case-list">
+                        {evalResult.results.map((item) => (
+                          <span className={item.ok ? "pass" : "fail"} key={item.id}>
+                            {item.ok ? "通过" : "失败"} · {item.id}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {failedEvalCases.length ? (
+                      <small>失败用例：{failedEvalCases.map((item) => item.id).join("、")}</small>
+                    ) : null}
+                  </div>
+
+                  <div className="agent-eval-card">
+                    <div>
+                      <strong>Harness Snapshot</strong>
+                      <span>{harnessSnapshot ? `${harnessSnapshot.toolCount} 个工具 · ${harnessSnapshot.models.length} 个模型 · ${harnessSnapshot.sessions.length} 个 session` : "查看当前 runtime 暴露能力"}</span>
+                    </div>
+                    {harnessSnapshot ? (
+                      <div className="route-chip-list">
+                        {harnessSnapshot.tools.slice(0, 6).map((tool, index) => (
+                          <span className="route-chip" key={`${pickString(tool, ["name", "label"], "tool")}-${index}`}>{pickString(tool, ["name", "label"], "tool")}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+
+              <section className="agent-debug-grid">
+                <div className="agents-list">
+                  <div className="panel-header">
+                    <div>
+                      <span>Skill Registry</span>
+                      <small>{agentSpecs.length} 个 Agent · {activeCount} 个 active</small>
+                    </div>
+                    <button className="icon-text-button" onClick={resetAgentSpecs} title="恢复默认行业模板">
+                      <RefreshCw size={16} />
+                      <span>重置</span>
+                    </button>
+                  </div>
+                  <div className="agent-stack">
+                    {agentSpecs.map((agent) => (
+                      <button
+                        className={selectedAgent.id === agent.id ? `agent-row active ${agent.accent}` : `agent-row ${agent.accent}`}
+                        key={agent.id}
+                        onClick={() => setSelectedAgentId(agent.id)}
+                      >
+                        <span className={`status-dot ${agent.status === "active" ? "done" : agent.status === "ready" ? "running" : "waiting"}`} />
+                        <span>
+                          <strong>{agent.name}</strong>
+                          <small>{agent.scope}</small>
+                        </span>
+                        <code>{agent.policy}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="agent-preview">
+                  <div className="panel-header">
+                    <div>
+                      <span>Channel Adapters</span>
+                      <small>{channelAdapters.length} 个 adapter · {activeChannelCount} 个 active · 当前 {activeChannelAdapter?.name || "未选择"}</small>
+                    </div>
+                    <button className="icon-text-button" onClick={resetChannelAdapters} title="恢复默认 Channel adapters">
+                      <RefreshCw size={16} />
+                      <span>重置</span>
+                    </button>
+                  </div>
+                  <div className="agent-stack">
+                    {channelAdapters.map((adapter) => (
+                      <button
+                        className={selectedChannelAdapter.id === adapter.id ? "agent-row active blue" : "agent-row blue"}
+                        key={adapter.id}
+                        onClick={() => setSelectedChannelAdapterId(adapter.id)}
+                      >
+                        <span className={`status-dot ${adapter.status === "active" ? "done" : adapter.status === "ready" ? "running" : "waiting"}`} />
+                        <span>
+                          <strong>{adapter.name}</strong>
+                          <small>{adapter.description}</small>
+                        </span>
+                        <code>{adapter.channelType === "wechat-miniprogram-ai" ? "wechat" : "desktop"}</code>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="agent-stage-header">
+                    <div>
+                      <strong>Channel Manifest</strong>
+                      <span>{"横向底座：channel -> context -> route bias -> followUp -> reply contract"}</span>
+                    </div>
+                    <button className="primary-button" onClick={() => activateChannelAdapter(selectedChannelAdapter.id)}>
+                      <MessageSquare size={16} />
+                      <span>设为当前通道</span>
+                    </button>
+                  </div>
+                  <div className="agent-manifest channel-manifest">
+                    <pre>{channelManifest}</pre>
+                  </div>
+                  <div className="panel-header">
+                    <div>
+                      <span>Agent Manifest</span>
+                      <small>AGENTS.md / SKILL.md / mcp.json 草案</small>
+                    </div>
+                    <button className="icon-text-button" onClick={() => copyText(manifest)}>
+                      <Copy size={16} />
+                      <span>复制</span>
+                    </button>
+                  </div>
+                  <div className="agent-manifest">
+                    <pre>{manifest}</pre>
+                  </div>
+                </div>
+              </section>
+            </div>
+          ) : null}
         </section>
       </div>
     );
@@ -5265,6 +6249,8 @@ ${adapter.sampleEvent}
   }
 
   function renderTerminalPanel() {
+    const promptLabel = `(base) botbotbot@botbotmac ${getTerminalWorkspaceLabel()} %`;
+
     return (
       <section className="terminal-panel">
         <div className="terminal-tabs">
@@ -5272,16 +6258,61 @@ ${adapter.sampleEvent}
             <Terminal size={15} />
             <span>{PRODUCT_NAME}</span>
           </button>
-          <button className="terminal-tab plus" title="新建终端">
+          <button className="terminal-tab plus" title="新建终端" onClick={resetTerminal}>
             <Plus size={15} />
           </button>
           <button className="terminal-close" title="关闭 Terminal" onClick={() => togglePanel("terminal")}>
             <X size={16} />
           </button>
         </div>
-        <div className="terminal-body">
-          <span className="terminal-cursor">▌</span>
-          <code>(base) botbotbot@botbotmac {PRODUCT_NAME} %</code>
+        <div className="terminal-body" ref={terminalBodyRef}>
+          {terminalEntries.length === 0 ? (
+            <div className="terminal-empty">
+              <Terminal size={16} />
+              <span>在当前工作区执行命令，适合运行构建、脚本和文件检查。</span>
+            </div>
+          ) : (
+            <div className="terminal-output-list">
+              {terminalEntries.map((entry) => {
+                const elapsed = formatElapsed((entry.finishedAt || statusNow) - entry.startedAt);
+                const entryWorkspaceLabel = entry.cwd.split("/").filter(Boolean).slice(-1)[0] || getTerminalWorkspaceLabel();
+                const entryPromptLabel = `(base) botbotbot@botbotmac ${entryWorkspaceLabel} %`;
+                return (
+                  <div className={`terminal-entry ${entry.status}`} key={entry.id}>
+                    <div className="terminal-line">
+                      <code className="terminal-prompt">{entryPromptLabel}</code>
+                      <code className="terminal-command-text">{entry.command}</code>
+                      <span className="terminal-command-status">
+                        {entry.status === "running" ? "执行中" : `exit ${entry.exitCode ?? 0}`} · {elapsed}
+                      </span>
+                    </div>
+                    {entry.stdout ? <pre className="terminal-output">{entry.stdout}</pre> : null}
+                    {entry.stderr ? <pre className="terminal-output stderr">{entry.stderr}</pre> : null}
+                    {!entry.stdout && !entry.stderr && entry.status === "running" ? (
+                      <div className="terminal-running-line">
+                        <span className="terminal-cursor">▌</span>
+                        <span>等待命令输出...</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <form className="terminal-input-form" onSubmit={runTerminalCommand}>
+            <code className="terminal-prompt">{promptLabel}</code>
+            <input
+              ref={terminalInputRef}
+              className="terminal-input"
+              value={terminalCommand}
+              onChange={(event) => setTerminalCommand(event.target.value)}
+              placeholder="输入 shell 命令，按 Enter 执行"
+              spellCheck={false}
+            />
+            <button className="terminal-run-button" type="submit" disabled={!terminalCommand.trim() || terminalRunning} title="执行命令">
+              {terminalRunning ? <Square size={14} /> : <Send size={14} />}
+            </button>
+          </form>
         </div>
       </section>
     );

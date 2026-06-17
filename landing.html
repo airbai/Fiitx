@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fiitx — BYOM Enterprise Agent Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1175FD;
+      --primary-dark: #0D5FDD;
+      --primary-light: #6BA3FE;
+      --primary-glow: rgba(17, 117, 253, 0.25);
+      --accent: #05C74E;
+      --accent-dark: #04A03E;
+      --bg-dark: #0b0d17;
+      --bg-card: #111327;
+      --bg-card-hover: #1a1d35;
+      --bg-section: #0f1120;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border: #1e2235;
+      --border-light: #2a2f45;
+      --gradient-hero: linear-gradient(135deg, #0b0d17 0%, #111327 50%, #0f1120 100%);
+      --gradient-primary: linear-gradient(135deg, #1175FD, #05C74E);
+      --gradient-text: linear-gradient(135deg, #6BA3FE, #67e8f9);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-lg: 24px;
+      --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+      --shadow-glow: 0 0 40px rgba(17, 117, 253, 0.15);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    a { color: var(--primary-light); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #fff; }
+    img { max-width: 100%; }
+    ::selection { background: var(--primary); color: #fff; }
+
+    /* ===== Scrollbar ===== */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-dark); }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* ===== Container ===== */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    /* ===== Noise Overlay ===== */
+    .noise {
+      position: fixed; inset: 0; z-index: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    /* ===== Grid Background ===== */
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(17, 117, 253, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(17, 117, 253, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+
+    /* ===== Navbar ===== */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 16px 0;
+      background: rgba(11, 13, 23, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid transparent;
+      transition: all 0.3s;
+    }
+    .navbar.scrolled {
+      border-bottom-color: var(--border);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+    }
+    .navbar .container {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 20px; font-weight: 700; color: #fff;
+    }
+    .navbar-brand .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--gradient-primary);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 16px; color: #fff;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 32px; }
+    .navbar-links a {
+      font-size: 14px; font-weight: 500; color: var(--text-secondary);
+      transition: color 0.2s;
+    }
+    .navbar-links a:hover { color: #fff; }
+    .nav-cta {
+      padding: 8px 20px;
+      background: var(--gradient-primary);
+      border-radius: 8px;
+      font-weight: 600; font-size: 13px; color: #fff !important;
+    }
+    .nav-cta:hover { opacity: 0.9; }
+
+    .hamburger { display: none; flex-direction: column; cursor: pointer; gap: 5px; background: none; border: none; }
+    .hamburger span { width: 24px; height: 2px; background: var(--text-primary); border-radius: 2px; }
+
+    /* ===== Hero ===== */
+    .hero {
+      position: relative; z-index: 1;
+      min-height: 100vh;
+      display: flex; align-items: center;
+      padding: 120px 0 80px;
+      background: var(--gradient-hero);
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: radial-gradient(ellipse at 30% 50%, rgba(17, 117, 253, 0.08) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 50%, rgba(6, 182, 212, 0.06) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero .container { position: relative; z-index: 1; }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px;
+      background: rgba(17, 117, 253, 0.15);
+      border: 1px solid rgba(17, 117, 253, 0.25);
+      border-radius: 50px;
+      font-size: 13px; font-weight: 500; color: var(--primary-light);
+      margin-bottom: 24px;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #22c55e;
+      animation: pulse-dot 2s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .hero-title {
+      font-size: clamp(40px, 5vw, 68px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .hero-title .gradient-text {
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 36px;
+    }
+    .hero-actions {
+      display: flex; gap: 16px; flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 15px; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--gradient-primary);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(17, 117, 253, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(17, 117, 253, 0.4);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-primary);
+      border: 1.5px solid var(--border-light);
+    }
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      background: rgba(17, 117, 253, 0.08);
+      transform: translateY(-2px);
+    }
+    .hero-visual {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hero-mockup {
+      width: 100%;
+      max-width: 560px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+      transform: perspective(1000px) rotateY(-5deg) rotateX(2deg);
+      transition: transform 0.5s;
+    }
+    .hero-mockup:hover {
+      transform: perspective(1000px) rotateY(-2deg) rotateX(1deg);
+    }
+    .mockup-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .mockup-dot.red { background: #ef4444; }
+    .mockup-dot.yellow { background: #eab308; }
+    .mockup-dot.green { background: #22c55e; }
+    .mockup-title {
+      font-size: 12px; color: var(--text-muted); margin-left: 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .mockup-body { padding: 24px; }
+    .mockup-sidebar {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .mockup-avatar {
+      width: 48px; height: 48px;
+      background: var(--gradient-primary);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 18px; color: #fff;
+    }
+    .mockup-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .mockup-info p { font-size: 12px; color: var(--text-muted); }
+    .mockup-agent-list { display: flex; flex-direction: column; gap: 8px; }
+    .mockup-agent-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+    .mockup-agent-item:hover { background: rgba(17, 117, 253, 0.08); border-color: rgba(17, 117, 253, 0.2); }
+    .mockup-agent-icon {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .mockup-agent-icon.blue { background: rgba(79, 107, 254, 0.2); }
+    .mockup-agent-icon.cyan { background: rgba(6, 182, 212, 0.2); }
+    .mockup-agent-icon.green { background: rgba(34, 197, 94, 0.2); }
+    .mockup-agent-icon.orange { background: rgba(249, 115, 22, 0.2); }
+    .mockup-agent-item .name { flex: 1; font-size: 13px; font-weight: 500; }
+    .mockup-agent-item .status {
+      font-size: 11px; padding: 2px 8px; border-radius: 50px;
+      background: rgba(34, 197, 94, 0.15); color: #4ade80;
+    }
+
+    /* Floating elements */
+    .float-el {
+      position: absolute;
+      border-radius: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      padding: 10px 16px;
+      font-size: 12px; font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      animation: float 6s ease-in-out infinite;
+    }
+    .float-el:nth-child(2) { top: 10%; right: -10%; animation-delay: -2s; }
+    .float-el:nth-child(3) { bottom: 20%; left: -8%; animation-delay: -4s; }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
+    }
+
+    /* ===== Section Common ===== */
+    section { position: relative; z-index: 1; padding: 100px 0; }
+    .section-label {
+      display: inline-block;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--primary-light);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(32px, 3.5vw, 48px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      line-height: 1.7;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+    .section-header .section-sub { margin: 0 auto; }
+
+    /* ===== Features ===== */
+    .features { background: var(--bg-section); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--gradient-primary);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .feature-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-light);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      margin-bottom: 20px;
+    }
+    .feature-icon.purple { background: rgba(17, 117, 253, 0.15); }
+    .feature-icon.cyan { background: rgba(6, 182, 212, 0.15); }
+    .feature-icon.green { background: rgba(34, 197, 94, 0.15); }
+    .feature-icon.orange { background: rgba(249, 115, 22, 0.15); }
+    .feature-icon.pink { background: rgba(236, 72, 153, 0.15); }
+    .feature-icon.yellow { background: rgba(234, 179, 8, 0.15); }
+    .feature-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 10px; }
+    .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+
+    /* ===== Architecture ===== */
+    .architecture { background: var(--bg-dark); }
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .arch-layer {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      text-align: center;
+    }
+    .arch-layer .layer-icon {
+      font-size: 36px; margin-bottom: 16px;
+    }
+    .arch-layer h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    .arch-layer p { font-size: 13px; color: var(--text-secondary); }
+    .arch-arrow {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; color: var(--primary);
+    }
+
+    /* Connectors strip */
+    .connectors-strip {
+      display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+      margin-top: 28px;
+    }
+    .connector-tag {
+      padding: 6px 16px;
+      background: rgba(17, 117, 253, 0.08);
+      border: 1px solid rgba(17, 117, 253, 0.15);
+      border-radius: 50px;
+      font-size: 12px; font-weight: 500; color: var(--primary-light);
+    }
+
+    /* ===== Channels ===== */
+    .channels { background: var(--bg-section); }
+    .channels-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+    }
+    .channel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      text-align: center;
+      transition: all 0.3s;
+    }
+    .channel-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--border-light);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    }
+    .channel-card .emoji { font-size: 36px; margin-bottom: 12px; }
+    .channel-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .channel-card p { font-size: 13px; color: var(--text-secondary); }
+
+    /* ===== Agent Ecosystem ===== */
+    .agents { background: var(--bg-dark); }
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .agent-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: all 0.3s;
+    }
+    .agent-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-light);
+    }
+    .agent-card .a-icon {
+      width: 42px; height: 42px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .agent-card .a-icon.purple { background: rgba(17, 117, 253, 0.15); }
+    .agent-card .a-icon.cyan { background: rgba(6, 182, 212, 0.15); }
+    .agent-card .a-icon.green { background: rgba(34, 197, 94, 0.15); }
+    .agent-card .a-icon.orange { background: rgba(249, 115, 22, 0.15); }
+    .agent-card .a-icon.pink { background: rgba(236, 72, 153, 0.15); }
+    .agent-card .a-icon.yellow { background: rgba(234, 179, 8, 0.15); }
+    .agent-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .agent-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ===== Stats ===== */
+    .stats {
+      background: var(--bg-section);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      text-align: center;
+    }
+    .stat-item .stat-num {
+      font-size: 42px; font-weight: 800;
+      background: var(--gradient-text);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .stat-item .stat-label {
+      font-size: 14px; color: var(--text-secondary); margin-top: 4px;
+    }
+
+    /* ===== CTA Section ===== */
+    .cta-section {
+      background: var(--bg-dark);
+      padding: 120px 0;
+      text-align: center;
+    }
+    .cta-box {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 64px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta-box::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, rgba(79, 107, 254, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-box h2 { font-size: 36px; font-weight: 700; margin-bottom: 16px; position: relative; }
+    .cta-box p { font-size: 17px; color: var(--text-secondary); margin-bottom: 32px; position: relative; }
+    .cta-box .btn-group { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; position: relative; }
+
+    /* ===== Footer ===== */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 48px 0;
+      background: var(--bg-dark);
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 48px;
+    }
+    .footer-brand .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--gradient-primary);
+      border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 14px; color: #fff;
+      margin-bottom: 12px;
+    }
+    .footer-brand p { font-size: 14px; color: var(--text-muted); max-width: 280px; }
+    .footer-col h5 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px; color: var(--text-secondary); }
+    .footer-col a { display: block; font-size: 14px; color: var(--text-muted); margin-bottom: 10px; }
+    .footer-col a:hover { color: var(--text-primary); }
+    .footer-bottom {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; color: var(--text-muted);
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 1024px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+      .hero-visual { order: -1; }
+      .hero-mockup { transform: none; max-width: 480px; margin: 0 auto; }
+      .hero-mockup:hover { transform: none; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .agents-grid { grid-template-columns: repeat(2, 1fr); }
+      .channels-grid { grid-template-columns: repeat(2, 1fr); }
+      .footer-grid { grid-template-columns: repeat(2, 1fr); }
+      .float-el { display: none; }
+    }
+    @media (max-width: 768px) {
+      .navbar-links { display: none; }
+      .hamburger { display: flex; }
+      .hero { padding: 100px 0 60px; }
+      .hero-title { font-size: 36px; }
+      .hero-sub { font-size: 16px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .agents-grid { grid-template-columns: 1fr; }
+      .channels-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+      .arch-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .cta-box { padding: 40px 24px; }
+      .cta-box h2 { font-size: 28px; }
+      .section-title { font-size: 28px; }
+    }
+
+    /* ===== Animations ===== */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate { animation: fadeInUp 0.6s ease-out forwards; }
+    .animate-delay-1 { animation-delay: 0.1s; }
+    .animate-delay-2 { animation-delay: 0.2s; }
+    .animate-delay-3 { animation-delay: 0.3s; }
+    .animate-delay-4 { animation-delay: 0.4s; }
+    .animate-delay-5 { animation-delay: 0.5s; }
+
+    /* scroll reveal */
+    .reveal {
+      opacity: 0; transform: translateY(30px);
+      transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <div class="noise"></div>
+  <div class="grid-bg"></div>
+
+  <!-- ===== Navbar ===== -->
+  <nav class="navbar" id="navbar">
+    <div class="container">
+      <div class="navbar-brand">
+        <div class="logo-icon">F</div>
+        <span>Fiitx</span>
+      </div>
+      <div class="navbar-links">
+        <a href="#features">功能</a>
+        <a href="#architecture">架构</a>
+        <a href="#agents">Agent</a>
+        <a href="#channels">渠道</a>
+        <a href="#cta" class="nav-cta">开始使用</a>
+      </div>
+      <button class="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-content">
+          <div class="hero-badge animate">
+            <span class="dot"></span>
+            v0.1.0 · BYOM Enterprise Platform
+          </div>
+          <h1 class="hero-title animate animate-delay-1">
+            企业级<br/>
+            <span class="gradient-text">AI Agent</span><br/>
+            工作台
+          </h1>
+          <p class="hero-sub animate animate-delay-2">
+            Fiitx 是一款面向企业的 BYOM（Bring Your Own Model）智能体工作台。
+            连接你的专属模型与数据，通过多 Agent 编排和多渠道接入，
+            让 AI 真正进入企业业务流程。
+          </p>
+          <div class="hero-actions animate animate-delay-3">
+            <a href="#cta" class="btn btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              立即体验
+            </a>
+            <a href="#features" class="btn btn-secondary">
+              了解更多
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="hero-visual animate animate-delay-4">
+          <div class="hero-mockup">
+            <div class="mockup-header">
+              <span class="mockup-dot red"></span>
+              <span class="mockup-dot yellow"></span>
+              <span class="mockup-dot green"></span>
+              <span class="mockup-title">Fiitx Desktop</span>
+            </div>
+            <div class="mockup-body">
+              <div class="mockup-sidebar">
+                <div class="mockup-avatar">F</div>
+                <div class="mockup-info">
+                  <h4>Fiitx Agent Workbench</h4>
+                  <p>已连接 · BYOM 模式 · 企业环境</p>
+                </div>
+              </div>
+              <div class="mockup-agent-list">
+                <div class="mockup-agent-item">
+                  <div class="mockup-agent-icon blue">🧠</div>
+                  <span class="name">Hotel Orchestrator</span>
+                  <span class="status">● 在线</span>
+                </div>
+                <div class="mockup-agent-item">
+                  <div class="mockup-agent-icon cyan">📊</div>
+                  <span class="name">Revenue Manager</span>
+                  <span class="status">● 在线</span>
+                </div>
+                <div class="mockup-agent-item">
+                  <div class="mockup-agent-icon green">👤</div>
+                  <span class="name">Guest Service</span>
+                  <span class="status">● 在线</span>
+                </div>
+                <div class="mockup-agent-item">
+                  <div class="mockup-agent-icon orange">🛠</div>
+                  <span class="name">Ops Quality</span>
+                  <span class="status">● 在线</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="float-el" style="top: 5%; right: -5%;">🔌 多渠道接入</div>
+          <div class="float-el" style="bottom: 15%; left: -6%;">🛡️ Enterprise Security</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Features ===== -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">核心能力</span>
+        <h2 class="section-title">为什么选择 Fiitx</h2>
+        <p class="section-sub">一套完整的 AI Agent 基础设施，从模型接入到业务交付，端到端覆盖企业智能化需求。</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card reveal">
+          <div class="feature-icon purple">🔄</div>
+          <h3>BYOM 自有模型</h3>
+          <p>接入你的私有或第三方大模型，API Key 经由 Electron safeStorage 加密存储，数据安全由你掌控。</p>
+        </div>
+        <div class="feature-card reveal">
+          <div class="feature-icon cyan">🧩</div>
+          <h3>多 Agent 编排</h3>
+          <p>Hotel Orchestrator、Revenue Manager、Guest Service 等专业 Agent 按需组合，协同完成复杂业务流程。</p>
+        </div>
+        <div class="feature-card reveal">
+          <div class="feature-icon green">🔌</div>
+          <h3>连接器生态</h3>
+          <p>预置 PMS、CRM、支付、微信小程序等连接器，灵活扩展外部系统，快速对接企业现有基础设施。</p>
+        </div>
+        <div class="feature-card reveal">
+          <div class="feature-icon orange">📱</div>
+          <h3>多渠道触达</h3>
+          <p>桌面工作台 + 微信小程序双通道，内部运营与终端客户双向覆盖，消息、卡片、回调全链路打通。</p>
+        </div>
+        <div class="feature-card reveal">
+          <div class="feature-icon pink">🛡️</div>
+          <h3>企业级安全</h3>
+          <p>API Key 加密存储、Policy Gate 审批流、操作审计追踪，满足企业合规与安全管控要求。</p>
+        </div>
+        <div class="feature-card reveal">
+          <div class="feature-icon yellow">⚡</div>
+          <h3>低代码扩展</h3>
+          <p>基于 pi-agent-core 框架，通过编排配置即可定义 Agent 行为与对话策略，无需从零开发。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Architecture ===== -->
+  <section class="architecture" id="architecture">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">系统架构</span>
+        <h2 class="section-title">四层架构 · 解耦灵活</h2>
+        <p class="section-sub">从 AI 模型到用户触达，每一层都可独立扩展与替换。</p>
+      </div>
+      <div class="arch-grid reveal">
+        <div class="arch-layer">
+          <div class="layer-icon">🧠</div>
+          <h4>AI 模型层</h4>
+          <p>BYOM 机制，支持 GPT、Claude、开源模型及企业私有模型，统一推理接口。</p>
+        </div>
+        <div class="arch-layer">
+          <div class="layer-icon">🤖</div>
+          <h4>Agent 层</h4>
+          <p>业务 Agent 集群，编排引擎、意图路由、工具调用、上下文管理。</p>
+        </div>
+        <div class="arch-layer">
+          <div class="layer-icon">🔌</div>
+          <h4>连接器层</h4>
+          <p>PMS · CRM · 支付 · 消息 · 工单，标准化 Connector 契约，即插即用。</p>
+        </div>
+        <div class="arch-layer">
+          <div class="layer-icon">📡</div>
+          <h4>渠道层</h4>
+          <p>Desktop UI · 微信小程序 · Webhook，多渠道适配，统一对话上下文。</p>
+        </div>
+        <div class="arch-layer">
+          <div class="layer-icon">🛡️</div>
+          <h4>安全与治理</h4>
+          <p>Policy Gate 审批 · 加密存储 · 审计日志 · 租户隔离，贯穿全栈。</p>
+        </div>
+        <div class="arch-layer">
+          <div class="layer-icon">📊</div>
+          <h4>运维观测</h4>
+          <p>Agent 执行时间线、Token 用量监控、错误追踪、性能分析。</p>
+        </div>
+      </div>
+      <div class="connectors-strip reveal">
+        <span class="connector-tag">Hotel PMS Mock</span>
+        <span class="connector-tag">Hotel CRM Mock</span>
+        <span class="connector-tag">Payment Mock</span>
+        <span class="connector-tag">WeChat Miniapp</span>
+        <span class="connector-tag">Agent Orchestrator</span>
+        <span class="connector-tag">Intent Router</span>
+        <span class="connector-tag">Policy Gate</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Agent Ecosystem ===== -->
+  <section class="agents" id="agents">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">Agent 生态</span>
+        <h2 class="section-title">开箱即用的专业 Agent</h2>
+        <p class="section-sub">覆盖酒店业务全场景的智能体集群，协同完成从预订到售后的完整闭环。</p>
+      </div>
+      <div class="agents-grid">
+        <div class="agent-card reveal">
+          <div class="a-icon purple">🏨</div>
+          <div>
+            <h4>Hotel Orchestrator</h4>
+            <p>总控 Agent，统筹协调各子 Agent，处理跨部门复杂请求。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon cyan">📈</div>
+          <div>
+            <h4>Revenue Manager</h4>
+            <p>收益管理 Agent，实时分析房价与入住率，辅助动态定价决策。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon green">👤</div>
+          <div>
+            <h4>Guest Service</h4>
+            <p>宾客服务 Agent，处理预订查询、入住指引、客诉响应。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon orange">💬</div>
+          <div>
+            <h4>Complaint Recovery</h4>
+            <p>投诉恢复 Agent，智能识别客诉等级并自动触发补偿方案。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon pink">📝</div>
+          <div>
+            <h4>Marketing Content</h4>
+            <p>营销内容 Agent，生成推广文案、优惠策略与多渠道投放。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon yellow">✈️</div>
+          <div>
+            <h4>Concierge Trip</h4>
+            <p>旅行管家 Agent，协助行程规划、本地推荐与交通安排。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal">
+          <div class="a-icon purple">🔍</div>
+          <div>
+            <h4>Ops Quality</h4>
+            <p>运营质检 Agent，监控服务质量、巡检运营指标。</p>
+          </div>
+        </div>
+        <div class="agent-card reveal" style="border-style: dashed; border-color: var(--border-light);">
+          <div class="a-icon cyan">＋</div>
+          <div>
+            <h4>自定义 Agent</h4>
+            <p>基于 pi-agent-core 框架，快速构建你的专属业务 Agent。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Channels ===== -->
+  <section class="channels" id="channels">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="section-label">多渠道覆盖</span>
+        <h2 class="section-title">一个平台 · 全域触达</h2>
+        <p class="section-sub">同一套 Agent 逻辑，无缝适配不同终端场景。</p>
+      </div>
+      <div class="channels-grid">
+        <div class="channel-card reveal">
+          <div class="emoji">🖥️</div>
+          <h4>桌面工作台</h4>
+          <p>基于 Electron + React 的原生 Mac 应用，提供完整的 Agent 管理、编排与监控界面。</p>
+        </div>
+        <div class="channel-card reveal">
+          <div class="emoji">💬</div>
+          <h4>微信小程序</h4>
+          <p>面向终端用户的轻量入口，对话交互、卡片渲染、客服消息无缝对接。</p>
+        </div>
+        <div class="channel-card reveal">
+          <div class="emoji">🔗</div>
+          <h4>API / Webhook</h4>
+          <p>开放 HTTP 接口，支持任意第三方系统集成与事件回调。</p>
+        </div>
+        <div class="channel-card reveal">
+          <div class="emoji">📋</div>
+          <h4>工单系统</h4>
+          <p>Agent 自动创建与更新工单，与 CRM 联动，实现服务闭环。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Stats ===== -->
+  <section class="stats">
+    <div class="container">
+      <div class="stats-grid reveal">
+        <div class="stat-item">
+          <div class="stat-num">7+</div>
+          <div class="stat-label">预置业务 Agent</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">4</div>
+          <div class="stat-label">渠道终端</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">4+</div>
+          <div class="stat-label">企业连接器</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">100%</div>
+          <div class="stat-label">数据自主可控</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CTA ===== -->
+  <section class="cta-section" id="cta">
+    <div class="container">
+      <div class="cta-box reveal">
+        <h2>准备好构建你的<br/>AI Agent 工作台了吗？</h2>
+        <p>Fiitx 开源可自建，支持企业私有化部署。<br/>从开发到生产，让你的 AI 真正产生业务价值。</p>
+        <div class="btn-group">
+          <a href="https://github.com" target="_blank" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub
+          </a>
+          <a href="#" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            查看文档
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <div class="logo-icon">F</div>
+          <p>Fiitx — BYOM Enterprise Agent Workbench。<br/>在 Mac 上构建、编排和部署你的企业 AI Agent。</p>
+        </div>
+        <div class="footer-col">
+          <h5>产品</h5>
+          <a href="#features">功能</a>
+          <a href="#architecture">架构</a>
+          <a href="#agents">Agent</a>
+          <a href="#channels">渠道</a>
+        </div>
+        <div class="footer-col">
+          <h5>资源</h5>
+          <a href="#">文档</a>
+          <a href="#">API 参考</a>
+          <a href="#">示例项目</a>
+          <a href="#">更新日志</a>
+        </div>
+        <div class="footer-col">
+          <h5>关于</h5>
+          <a href="#">团队</a>
+          <a href="#">GitHub</a>
+          <a href="#">联系我们</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 Fiitx. All rights reserved.</span>
+        <span>Built with Electron + React + TypeScript</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Navbar scroll effect
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 40);
+    });
+
+    // Scroll reveal observer
+    const revealEls = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+    revealEls.forEach((el) => observer.observe(el));
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+      anchor.addEventListener('click', function (e) {
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    // Hamburger (mobile) — simple toggle
+    const hamburger = document.querySelector('.hamburger');
+    const navLinks = document.querySelector('.navbar-links');
+    hamburger?.addEventListener('click', () => {
+      navLinks.style.display = navLinks.style.display === 'flex' ? 'none' : 'flex';
+      if (navLinks.style.display === 'flex') {
+        navLinks.style.flexDirection = 'column';
+        navLinks.style.position = 'absolute';
+        navLinks.style.top = '100%';
+        navLinks.style.left = '0';
+        navLinks.style.right = '0';
+        navLinks.style.background = 'rgba(11, 13, 23, 0.95)';
+        navLinks.style.backdropFilter = 'blur(20px)';
+        navLinks.style.padding = '20px 24px';
+        navLinks.style.borderBottom = '1px solid var(--border)';
+      }
+    });
+
+    // Close mobile menu on link click
+    document.querySelectorAll('.navbar-links a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          navLinks.style.display = 'none';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

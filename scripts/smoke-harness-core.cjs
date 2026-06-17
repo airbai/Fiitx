@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { convertToLlm, createContextMessage, createLlmMessage, createToolResultMessage, transformContext } = require("../electron/services/agent-messages.cjs");
 const { createConnectorRegistry } = require("../electron/services/connector-registry.cjs");
+const { normalizeMessagesForProvider } = require("../electron/services/model-router.cjs");
 const { createSessionLogStore } = require("../electron/services/session-log-store.cjs");
 const { createTelemetryStore } = require("../electron/services/telemetry-store.cjs");
 const { createToolRegistry } = require("../electron/services/tool-registry.cjs");
@@ -31,7 +32,30 @@ async function main() {
   ];
   const llmMessages = convertToLlm(transformContext(agentMessages));
   assert.equal(llmMessages[0].role, "system");
-  assert.ok(llmMessages.some((message) => message.role === "tool"));
+  assert.ok(!llmMessages.some((message) => message.role === "tool"));
+  assert.ok(llmMessages.some((message) => message.role === "user" && /历史工具结果/.test(message.content)));
+  const providerMessages = normalizeMessagesForProvider([
+    { role: "system", content: "system" },
+    { role: "tool", name: "workspace_ls", content: "{\"ok\":true}" },
+    {
+      role: "assistant",
+      content: "",
+      tool_calls: [
+        {
+          type: "function",
+          function: {
+            name: "workspace_read",
+            arguments: "{\"path\":\"README.md\"}"
+          }
+        }
+      ]
+    },
+    { role: "tool", content: "{\"content\":\"# Demo\"}" }
+  ]);
+  assert.equal(providerMessages[1].role, "user");
+  assert.ok(providerMessages[2].tool_calls[0].id);
+  assert.equal(providerMessages[3].role, "tool");
+  assert.equal(providerMessages[3].tool_call_id, providerMessages[2].tool_calls[0].id);
 
   const toolRuntime = {
     listDirectory: async () => ({ entries: [{ name: "README.md" }] }),

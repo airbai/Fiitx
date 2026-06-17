@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国酒店集团定价策略对标分析 | 麦肯锡风格报告</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --mck-blue: #003A70;
+    --mck-blue-light: #0066A1;
+    --mck-blue-mid: #004B87;
+    --mck-accent: #00A3E0;
+    --mck-gray: #5F5F5F;
+    --mck-gray-light: #E8E8E8;
+    --mck-bg: #F7F7F7;
+    --mck-white: #FFFFFF;
+    --mck-teal: #00968B;
+    --mck-orange: #ED8B00;
+    --mck-red: #C70032;
+    --mck-green: #2E7D32;
+    --mck-purple: #5E35B1;
+  }
+
+  body {
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #1a1a2e;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .slides-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+    background: var(--mck-bg);
+  }
+
+  .slide.active {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .slide-frame {
+    width: 96vw;
+    height: 92vh;
+    max-width: 1280px;
+    max-height: 800px;
+    background: var(--mck-white);
+    border-radius: 4px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== Slide Header (McKinsey signature blue bar) ===== */
+  .slide-header {
+    background: var(--mck-blue);
+    padding: 18px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .slide-header .title-area {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .slide-header .mck-logo {
+    font-weight: 700;
+    font-size: 14px;
+    color: white;
+    letter-spacing: 3px;
+    opacity: 0.9;
+  }
+
+  .slide-header .mck-logo span {
+    font-weight: 300;
+  }
+
+  .slide-header .divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255,255,255,0.3);
+  }
+
+  .slide-header .title {
+    color: white;
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .slide-header .page-num {
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 1px;
+  }
+
+  /* ===== Slide Body ===== */
+  .slide-body {
+    flex: 1;
+    padding: 32px 40px 24px;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .slide-body h2 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--mck-blue);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .slide-body .subtitle {
+    font-size: 15px;
+    color: var(--mck-gray);
+    font-weight: 400;
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--mck-gray-light);
+    padding-bottom: 12px;
+  }
+
+  .slide-body .section-tag {
+    display: inline-block;
+    background: var(--mck-blue);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    padding: 4px 12px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* ===== McKinsey-style grid cards ===== */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
+  .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+
+  .mck-card {
+    background: var(--mck-bg);
+    border-radius: 4px;
+    padding: 20px;
+    border-top: 3px solid var(--mck-blue);
+    transition: transform 0.2s;
+  }
+
+  .mck-card:hover { transform: translateY(-2px); }
+
+  .mck-card .card-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--mck-blue);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .mck-card .card-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 6px;
+  }
+
+  .mck-card .card-desc {
+    font-size: 13px;
+    color: var(--mck-gray);
+    line-height: 1.6;
+  }
+
+  .mck-card .card-stat {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--mck-blue);
+    line-height: 1.2;
+  }
+
+  .mck-card .card-stat-label {
+    font-size: 12px;
+    color: var(--mck-gray);
+    font-weight: 400;
+  }
+
+  .mck-card.accent-blue { border-top-color: var(--mck-accent); }
+  .mck-card.accent-teal { border-top-color: var(--mck-teal); }
+  .mck-card.accent-orange { border-top-color: var(--mck-orange); }
+  .mck-card.accent-red { border-top-color: var(--mck-red); }
+  .mck-card.accent-green { border-top-color: var(--mck-green); }
+  .mck-card.accent-purple { border-top-color: var(--mck-purple); }
+
+  /* ===== Data Table ===== */
+  .mck-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .mck-table thead th {
+    background: var(--mck-blue);
+    color: white;
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+
+  .mck-table thead th:first-child { border-radius: 4px 0 0 0; }
+  .mck-table thead th:last-child { border-radius: 0 4px 0 0; }
+
+  .mck-table tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--mck-gray-light);
+    color: #333;
+  }
+
+  .mck-table tbody tr:hover { background: #f0f4f8; }
+  .mck-table tbody tr:last-child td { border-bottom: none; }
+
+  .mck-table .highlight-cell {
+    font-weight: 700;
+    color: var(--mck-blue);
+  }
+
+  /* ===== Stats row ===== */
+  .stat-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .stat-item {
+    flex: 1;
+    background: var(--mck-bg);
+    padding: 16px 20px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .stat-item .number {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--mck-blue);
+  }
+
+  .stat-item .label {
+    font-size: 12px;
+    color: var(--mck-gray);
+    font-weight: 500;
+    margin-top: 4px;
+  }
+
+  /* ===== Insight callout ===== */
+  .insight-box {
+    background: #e8f0fe;
+    border-left: 4px solid var(--mck-blue);
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .insight-box .insight-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--mck-blue);
+    text-transform: uppercase;
+  }
+
+  .insight-box p {
+    font-size: 14px;
+    color: #222;
+    line-height: 1.6;
+    margin-top: 4px;
+  }
+
+  /* ===== Bar chart (pure CSS) ===== */
+  .bar-chart { margin: 16px 0; }
+
+  .bar-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .bar-item .bar-label {
+    width: 100px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    flex-shrink: 0;
+  }
+
+  .bar-item .bar-track {
+    flex: 1;
+    height: 28px;
+    background: var(--mck-gray-light);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bar-item .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    transition: width 1s ease;
+  }
+
+  .bar-fill.blue { background: var(--mck-blue); }
+  .bar-fill.teal { background: var(--mck-teal); }
+  .bar-fill.orange { background: var(--mck-orange); }
+  .bar-fill.red { background: var(--mck-red); }
+  .bar-fill.purple { background: var(--mck-purple); }
+  .bar-fill.green { background: var(--mck-green); }
+
+  /* ===== Footer ===== */
+  .slide-footer {
+    background: var(--mck-bg);
+    padding: 8px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--mck-gray);
+    border-top: 1px solid var(--mck-gray-light);
+    flex-shrink: 0;
+  }
+
+  .slide-footer .source {
+    color: #999;
+  }
+
+  .slide-footer .confidential {
+    letter-spacing: 2px;
+    font-weight: 500;
+    color: #bbb;
+  }
+
+  /* ===== Navigation ===== */
+  .nav-controls {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(12px);
+    padding: 10px 24px;
+    border-radius: 30px;
+    z-index: 999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .nav-controls button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 18px;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+
+  .nav-controls button:hover { background: rgba(255,255,255,0.15); }
+  .nav-controls .page-indicator {
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 60px;
+    text-align: center;
+  }
+
+  /* ===== Cover slide specific ===== */
+  .cover-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    text-align: center;
+    padding: 0 60px;
+  }
+
+  .cover-body .mck-eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    color: var(--mck-blue);
+    margin-bottom: 20px;
+  }
+
+  .cover-body h1 {
+    font-size: 42px;
+    font-weight: 800;
+    color: var(--mck-blue);
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+
+  .cover-body .cover-sub {
+    font-size: 20px;
+    font-weight: 300;
+    color: var(--mck-gray);
+    margin-bottom: 30px;
+  }
+
+  .cover-body .cover-meta {
+    font-size: 13px;
+    color: #999;
+    letter-spacing: 1px;
+  }
+
+  .cover-body .cover-line {
+    width: 80px;
+    height: 3px;
+    background: var(--mck-accent);
+    margin: 20px auto;
+  }
+
+  /* ===== End slide ===== */
+  .end-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    text-align: center;
+  }
+
+  .end-body h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--mck-blue);
+    margin-bottom: 12px;
+  }
+
+  .end-body p {
+    font-size: 16px;
+    color: var(--mck-gray);
+    max-width: 500px;
+    line-height: 1.6;
+  }
+
+  /* ===== Framework diagram ===== */
+  .framework-box {
+    border: 2px solid var(--mck-blue);
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    background: white;
+  }
+
+  .framework-box .fw-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--mck-blue);
+    margin-bottom: 8px;
+  }
+
+  .fw-row {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 8px 0;
+  }
+
+  .fw-item {
+    background: var(--mck-bg);
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #444;
+    flex: 1;
+  }
+
+  .fw-item strong { color: var(--mck-blue); display: block; font-size: 14px; margin-bottom: 4px; }
+
+  .fw-arrow { font-size: 24px; color: var(--mck-accent); line-height: 40px; }
+
+  /* ===== Dot matrix / radar style ===== */
+  .dot-matrix {
+    display: flex;
+    justify-content: space-around;
+    padding: 16px 0;
+  }
+
+  .dot-item {
+    text-align: center;
+    width: 100px;
+  }
+
+  .dot-item .dot-circle {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 8px;
+    font-size: 20px;
+    font-weight: 800;
+    color: white;
+  }
+
+  .dot-item .dot-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .dot-item .dot-sub {
+    font-size: 11px;
+    color: var(--mck-gray);
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 900px) {
+    .slide-body { padding: 20px 24px; }
+    .slide-header { padding: 12px 24px; }
+    .slide-header .title { font-size: 15px; }
+    .slide-body h2 { font-size: 22px; }
+    .grid-4 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+    .cover-body h1 { font-size: 30px; }
+    .stat-row { flex-wrap: wrap; }
+    .stat-item { min-width: 120px; }
+  }
+
+  @media (max-width: 600px) {
+    .grid-2, .grid-3, .grid-4, .grid-2-1 { grid-template-columns: 1fr; }
+    .slide-frame { width: 98vw; height: 96vh; }
+    .cover-body h1 { font-size: 24px; }
+    .bar-item { flex-direction: column; align-items: flex-start; }
+    .bar-item .bar-label { width: 100%; margin-bottom: 4px; }
+  }
+
+  /* Print support */
+  @media print {
+    body { background: white; overflow: visible; }
+    .slide { position: relative; opacity: 1 !important; visibility: visible !important; page-break-after: always; height: 100vh; }
+    .nav-controls { display: none; }
+    .slide-frame { box-shadow: none; border: 1px solid #ddd; }
+  }
+</style>
+</head>
+<body>
+
+<div class="slides-container" id="slides">
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 1: COVER -->
+  <!-- ============================================================ -->
+  <div class="slide active" data-slide="0">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+        </div>
+        <span class="page-num">CONFIDENTIAL</span>
+      </div>
+      <div class="slide-body cover-body">
+        <div class="mck-eyebrow">HOTEL PRICING STRATEGY BENCHMARK</div>
+        <div class="cover-line"></div>
+        <h1>中国酒店集团<br>定价策略对标分析</h1>
+        <p class="cover-sub">如家 · 希尔顿 · 亚朵 · 汉庭 — 四大品牌定价模型深度对比</p>
+        <p class="cover-meta">2026 年 6 月 | 麦肯锡咨询风格 · 战略对标报告</p>
+      </div>
+      <div class="slide-footer">
+        <span class="source">Deepsix Research · 公开数据汇编</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 2: EXECUTIVE SUMMARY -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="1">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">执行摘要</span>
+        </div>
+        <span class="page-num">02 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Executive Summary</div>
+        <h2>四大酒店集团采用截然不同的定价哲学</h2>
+        <p class="subtitle">从经济型到奢华型，定价策略反映了各自的品牌定位、客群结构和增长战略</p>
+
+        <div class="stat-row">
+          <div class="stat-item">
+            <div class="number">¥150-400</div>
+            <div class="label">如家 · 经济型定价带</div>
+          </div>
+          <div class="stat-item">
+            <div class="number">¥800-3,000+</div>
+            <div class="label">希尔顿 · 高端定价带</div>
+          </div>
+          <div class="stat-item">
+            <div class="number">¥400-1,200</div>
+            <div class="label">亚朵 · 中高端定价带</div>
+          </div>
+          <div class="stat-item">
+            <div class="number">¥180-500</div>
+            <div class="label">汉庭 · 经济型定价带</div>
+          </div>
+        </div>
+
+        <div class="insight-box">
+          <div class="insight-label">核心洞察</div>
+          <p>中国酒店市场呈现 <strong>"哑铃型"定价分化</strong>：经济型（如家/汉庭）以低价高频覆盖大众市场，高端（希尔顿）以品牌溢价锁定商务客群，亚朵则通过"生活方式溢价"在中端市场开辟了独特的第三赛道。</p>
+        </div>
+
+        <div class="grid-3" style="margin-top:12px;">
+          <div class="mck-card accent-blue">
+            <div class="card-label">定价驱动因素 #1</div>
+            <div class="card-title">品牌溢价</div>
+            <div class="card-desc">希尔顿凭借国际品牌影响力享有最高定价权；亚朵通过IP联名和人文调性实现中端溢价</div>
+          </div>
+          <div class="mck-card accent-teal">
+            <div class="card-label">定价驱动因素 #2</div>
+            <div class="card-title">会员体系</div>
+            <div class="card-desc">四大品牌均建立了会员忠诚度计划，通过积分兑换、房晚升级等手段影响实际支付价格</div>
+          </div>
+          <div class="mck-card accent-orange">
+            <div class="card-label">定价驱动因素 #3</div>
+            <div class="card-title">动态定价</div>
+            <div class="card-desc">从手工定价到AI驱动的收益管理系统，定价精度成为竞争分水岭</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">Deepsix Research · 公开数据汇编</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 3: MARKET OVERVIEW -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="2">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">市场格局概览</span>
+        </div>
+        <span class="page-num">03 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Market Landscape</div>
+        <h2>中国酒店市场：万亿级赛道中的四大玩家</h2>
+        <p class="subtitle">2025年中国酒店市场规模约8,700亿元，四大品牌覆盖从经济型到奢华的全价格带</p>
+
+        <div class="grid-2-1">
+          <div>
+            <table class="mck-table">
+              <thead>
+                <tr>
+                  <th>品牌</th>
+                  <th>集团归属</th>
+                  <th>门店数</th>
+                  <th>价格带 (日均)</th>
+                  <th>定位</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>如家</strong></td>
+                  <td>首旅如家</td>
+                  <td>6,200+</td>
+                  <td class="highlight-cell">¥150-400</td>
+                  <td>经济型 · 国民旅居</td>
+                </tr>
+                <tr>
+                  <td><strong>希尔顿</strong></td>
+                  <td>希尔顿集团</td>
+                  <td>500+（中国）</td>
+                  <td class="highlight-cell">¥800-3,000+</td>
+                  <td>国际高端 · 商务奢华</td>
+                </tr>
+                <tr>
+                  <td><strong>亚朵</strong></td>
+                  <td>亚朵集团</td>
+                  <td>1,100+</td>
+                  <td class="highlight-cell">¥400-1,200</td>
+                  <td>中高端 · 生活方式</td>
+                </tr>
+                <tr>
+                  <td><strong>汉庭</strong></td>
+                  <td>华住集团</td>
+                  <td>3,800+</td>
+                  <td class="highlight-cell">¥180-500</td>
+                  <td>经济型 · 极致性价比</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="insight-box" style="margin-top:14px;">
+              <div class="insight-label">关键发现</div>
+              <p>四大品牌合计占据中国连锁酒店市场 <strong>超过45%</strong> 的份额。价格带分布呈明显梯度，但中端市场（¥300-600）竞争最为激烈——亚朵与升级后的汉庭/如家在此短兵相接。</p>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card" style="height:100%;">
+              <div class="card-label">定价阶梯模型</div>
+              <div class="bar-chart">
+                <div class="bar-item">
+                  <span class="bar-label">希尔顿</span>
+                  <div class="bar-track">
+                    <div class="bar-fill blue" style="width:85%;">¥800-3,000+</div>
+                  </div>
+                </div>
+                <div class="bar-item">
+                  <span class="bar-label">亚朵</span>
+                  <div class="bar-track">
+                    <div class="bar-fill teal" style="width:55%;">¥400-1,200</div>
+                  </div>
+                </div>
+                <div class="bar-item">
+                  <span class="bar-label">汉庭</span>
+                  <div class="bar-track">
+                    <div class="bar-fill orange" style="width:28%;">¥180-500</div>
+                  </div>
+                </div>
+                <div class="bar-item">
+                  <span class="bar-label">如家</span>
+                  <div class="bar-track">
+                    <div class="bar-fill red" style="width:22%;">¥150-400</div>
+                  </div>
+                </div>
+              </div>
+              <div class="card-desc" style="margin-top:12px;">
+                <strong>价格带重叠区分析：</strong><br>
+                • ¥300-500：如家高端线 vs 汉庭升级版 vs 亚朵入门价<br>
+                • ¥600-1,000：亚朵主力 vs 希尔顿花园/惠庭<br>
+                • ¥1,000+：希尔顿独占高端溢价
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">公开财报、行业报告及官网数据汇编</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 4: RUJIA (如家) DEEP DIVE -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="3">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">如家 · 定价策略深度分析</span>
+        </div>
+        <span class="page-num">04 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Brand Deep Dive</div>
+        <h2>如家：以规模驱动的"国民定价"策略</h2>
+        <p class="subtitle">首旅如家旗下核心品牌，6,200+门店覆盖全国，定价策略以"高频低价+会员分层"为核心</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-blue">
+              <div class="card-label">定价模型</div>
+              <div class="card-title">渗透定价 + 会员分级的动态折扣</div>
+              <div class="card-desc">
+                <strong>核心机制：</strong><br>
+                • 基础房价 ¥150-400/晚（全国统一定价带）<br>
+                • 如LIFE俱乐部会员享 92折-88折 阶梯折扣<br>
+                • 提前预订折扣（Early Bird）：5%-15%<br>
+                • 连住优惠：3晚以上享 8%-12% 折扣<br>
+                • 企业协议价：签约企业享固定折扣率<br>
+                • 淡季/旺季浮动：±20%
+              </div>
+            </div>
+            <div class="mck-card accent-teal" style="margin-top:12px;">
+              <div class="card-label">收益管理</div>
+              <div class="card-title">中央定价+区域灵活</div>
+              <div class="card-desc">首旅如家自研收益管理系统（RMS），总部统一定价策略，门店有 ±10% 的自主调价权限。AI预测模型辅助出租率管理，目标OCC（出租率）维持在 75-85%。</div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-orange">
+              <div class="card-label">定价优势</div>
+              <div class="card-title">规模效应下的成本领先</div>
+              <div class="card-desc">
+                • 单房运营成本 <strong>¥80-120/晚</strong>，行业最低梯队<br>
+                • 6,200+门店的集采优势降低布草/耗材成本 15-20%<br>
+                • 低房价+高出租率模式：RevPAR稳定在 ¥120-180<br>
+                • 三线城市渗透率 45%+，享受低成本物业红利
+              </div>
+            </div>
+            <div class="mck-card accent-red" style="margin-top:12px;">
+              <div class="card-label">定价风险</div>
+              <div class="card-title">中端升级通道的挑战</div>
+              <div class="card-desc">
+                • 如家品牌认知固化在"经济型"，向上突破困难<br>
+                • 和颐/如家精选等中端子品牌定价区间 ¥300-600，与亚朵/全季正面竞争<br>
+                • 存量物业老化导致定价上行动力不足<br>
+                • 华住系的汉庭2.0/3.0升级版在同等价位提供更优产品
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">首旅如家财报、行业分析报告</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 5: HILTON DEEP DIVE -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="4">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">希尔顿 · 定价策略深度分析</span>
+        </div>
+        <span class="page-num">05 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Brand Deep Dive</div>
+        <h2>希尔顿：全球收益管理标杆的多品牌溢价策略</h2>
+        <p class="subtitle">全球领先的收益管理系统 + 多品牌矩阵（华尔道夫→希尔顿→花园→惠庭），覆盖全价格带</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-blue">
+              <div class="card-label">定价模型</div>
+              <div class="card-title">价值定价 + 全球收益管理（RMS）</div>
+              <div class="card-desc">
+                <strong>核心机制：</strong><br>
+                • 希尔顿Honors会员：标准价 vs 会员价（差 5-15%）<br>
+                • 动态定价引擎：实时调整基于需求预测、竞争房价、事件日历<br>
+                • Advance Purchase（预付价）：比标准价低 10-20%<br>
+                • BAR（Best Available Rate）策略：保证会员最低价<br>
+                • 长住折扣：7晚以上享 15-30% 折扣<br>
+                • 多品牌价格带：华尔道夫 ¥2,000+ → 希尔顿 ¥800-1,800 → 花园 ¥500-900 → 惠庭 ¥400-700
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-teal">
+              <div class="card-label">中国区本土化定价</div>
+              <div class="card-title">全球标准 x 本土灵活</div>
+              <div class="card-desc">
+                • 中国区 Hilton Honors 会员渗透率约 35%（低于北美60%），仍有增长空间<br>
+                • 希尔顿欢朋（与铂涛合作）定价 ¥350-600，直接对标中端市场<br>
+                • 与美团/携程等 OTA 的"直连定价"策略，确保官网最低价<br>
+                • 企业会议/团队定价占总收入 25-30%，B2B定价权强<br>
+                • RevPAR 中国区约 ¥350-500，远超本土品牌
+              </div>
+            </div>
+            <div class="mck-card accent-orange" style="margin-top:12px;">
+              <div class="card-label">竞争优势</div>
+              <div class="card-title">品牌金字塔定价权</div>
+              <div class="card-desc">
+                • 全球统一品牌标准支撑高端定价合理性<br>
+                • Honors 会员体系全球互通，商旅客群粘性极高<br>
+                • 收益管理系统（OnQ RMS）被行业公认为黄金标准
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">希尔顿财报、Hilton Honors 公开条款、行业分析</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 6: ATOUR (亚朵) DEEP DIVE -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="5">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">亚朵 · 定价策略深度分析</span>
+        </div>
+        <span class="page-num">06 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Brand Deep Dive</div>
+        <h2>亚朵：生活方式品牌的中高端溢价模型</h2>
+        <p class="subtitle">"人文+设计"驱动的差异化定价，在竞争最激烈的中端市场实现了高于同行的RevPAR</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-purple">
+              <div class="card-label">定价模型</div>
+              <div class="card-title">体验溢价 + 场景化定价</div>
+              <div class="card-desc">
+                <strong>核心机制：</strong><br>
+                • 基准房价 ¥400-1,200/晚，较同星级竞品溢价 15-25%<br>
+                • "亚朵生活"场景零售：床品/洗护/茶具等Room Tour商品，打破单一客房收入<br>
+                • 亚朵会员体系（ACARD）：3级权益，积分可兑换住宿/场景商品<br>
+                • IP联名房（单向空间/网易云音乐等）享 30-50% 溢价<br>
+                • 亚朵4.0/萨和等升级产品线：定价 ¥600-1,500<br>
+                • 提前预订/连住折扣：5-12%
+              </div>
+            </div>
+            <div class="mck-card accent-teal" style="margin-top:12px;">
+              <div class="card-label">非客房收入</div>
+              <div class="card-title">场景零售对定价的支撑</div>
+              <div class="card-desc">	
+                亚朵的场景零售（电商+酒店内售卖）年收入占比约 8-12%，"住宿+零售"模式提供了定价下行的缓冲空间。枕头/床垫等自有品牌商品年销售额超¥2亿。</div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-orange">
+              <div class="card-label">收益表现</div>
+              <div class="card-title">中国中高端酒店最高RevPAR之一</div>
+              <div class="card-desc">
+                <div class="bar-chart" style="margin:8px 0;">
+                  <div class="bar-item">
+                    <span class="bar-label" style="width:80px;">ADR</span>
+                    <div class="bar-track">
+                      <div class="bar-fill purple" style="width:70%;">¥600-800</div>
+                    </div>
+                  </div>
+                  <div class="bar-item">
+                    <span class="bar-label" style="width:80px;">OCC</span>
+                    <div class="bar-track">
+                      <div class="bar-fill blue" style="width:78%;">78-85%</div>
+                    </div>
+                  </div>
+                  <div class="bar-item">
+                    <span class="bar-label" style="width:80px;">RevPAR</span>
+                    <div class="bar-track">
+                      <div class="bar-fill teal" style="width:60%;">¥450-650</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mck-card accent-red" style="margin-top:12px;">
+              <div class="card-label">定价风险</div>
+              <div class="card-title">规模扩张 vs 品牌稀释</div>
+              <div class="card-desc">
+                • 从1,000+向2,000+门店扩张中，如何保持"人文调性"的稀缺性<br>
+                • 加盟店占比提升可能导致服务和定价标准参差<br>
+                • 希尔顿花园/欢朋向下挤压中端定价区间
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">亚朵集团财报、招股书、行业研究报告</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 7: HANTING (汉庭) DEEP DIVE -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="6">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">汉庭 · 定价策略深度分析</span>
+        </div>
+        <span class="page-num">07 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Brand Deep Dive</div>
+        <h2>汉庭：极致运营效率驱动的性价比定价</h2>
+        <p class="subtitle">华住集团旗下核心经济型品牌，以"高效率=低价格≠低品质"重塑经济型酒店定价逻辑</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-green">
+              <div class="card-label">定价模型</div>
+              <div class="card-title">成本领先 + 华住会会员深度折扣</div>
+              <div class="card-desc">
+                <strong>核心机制：</strong><br>
+                • 基础房价 ¥180-500/晚，价格体系极其透明<br>
+                • 华住会会员体系（5级）：金会员92折→铂金会员88折→终生会员85折<br>
+                • 华住会企业购：签约企业享专属协议价<br>
+                • 动态调价：华住自研"神灯"收益管理系统，实时价格调整<br>
+                • 预付价/灵活价双轨制：预付享额外 5-8% 折扣<br>
+                • 汉庭3.0/3.5升级版：定价提升至 ¥250-600（较老店溢价 20%）
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-blue">
+              <div class="card-label">运营效率优势</div>
+              <div class="card-title">单房成本控制行业领先</div>
+              <div class="card-desc">
+                • 单房运营成本 <strong>¥70-110/晚</strong>（行业最低）<br>
+                • 华住集团集采+标准化设计使建造成本降低 30%<br>
+                • 自助入住机+华住会APP直订减少前台人力 40%<br>
+                • 会员直销比例 75%+，降低OTA佣金支出<br>
+                • 华住会1.8亿+会员 → 复购率 55%+ → 稳定的基础出租率
+              </div>
+            </div>
+            <div class="mck-card accent-orange" style="margin-top:12px;">
+              <div class="card-label">战略动向</div>
+              <div class="card-title">从"经济型"到"国民酒店"的定价升级</div>
+              <div class="card-desc">
+                • 汉庭3.5版本：设计品质向中端看齐，但保持经济型定价<br>
+                • 目标：在¥250-400价格带做到"品质最优"<br>
+                • 存量改造计划：未来3年60%门店升级至3.0+标准<br>
+                • 与桔子/全季构成华住中端矩阵，汉庭负责"入口级"引流
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">华住集团财报、华住会公开条款</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 8: COMPARISON MATRIX -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="7">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">四品牌定价策略对标矩阵</span>
+        </div>
+        <span class="page-num">08 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Benchmark Matrix</div>
+        <h2>四大品牌定价策略全方位对比</h2>
+        <p class="subtitle">从定价模型、会员折扣、收益管理到RevPAR的全维度对标</p>
+
+        <table class="mck-table">
+          <thead>
+            <tr>
+              <th>对标维度</th>
+              <th>如家</th>
+              <th>希尔顿</th>
+              <th>亚朵</th>
+              <th>汉庭</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>定价模型</strong></td>
+              <td>渗透定价+会员分级折扣</td>
+              <td>价值定价+全球RMS</td>
+              <td>体验溢价+场景化定价</td>
+              <td>成本领先+会员深度折扣</td>
+            </tr>
+            <tr>
+              <td><strong>价格带</strong></td>
+              <td>¥150-400</td>
+              <td>¥800-3,000+</td>
+              <td>¥400-1,200</td>
+              <td>¥180-500</td>
+            </tr>
+            <tr>
+              <td><strong>会员折扣力度</strong></td>
+              <td>8-12%</td>
+              <td>5-15%</td>
+              <td>5-12%</td>
+              <td>8-15%</td>
+            </tr>
+            <tr>
+              <td><strong>预付折扣</strong></td>
+              <td>5-15%</td>
+              <td>10-20%</td>
+              <td>5-12%</td>
+              <td>5-8%</td>
+            </tr>
+            <tr>
+              <td><strong>动态调价</strong></td>
+              <td>中央RMS ±10%门店权限</td>
+              <td>全球RMS 实时调价</td>
+              <td>区域RMS + 门店灵活</td>
+              <td>"神灯"RMS 智能调价</td>
+            </tr>
+            <tr>
+              <td><strong>会员规模</strong></td>
+              <td>约8,000万（首旅如家）</td>
+              <td>1.6亿（全球Honors）</td>
+              <td>约3,500万（ACARD）</td>
+              <td>约1.8亿（华住会）</td>
+            </tr>
+            <tr>
+              <td><strong>直销比例</strong></td>
+              <td>约60%</td>
+              <td>约55%</td>
+              <td>约70%</td>
+              <td>约75%+</td>
+            </tr>
+            <tr>
+              <td><strong>RevPAR</strong></td>
+              <td>¥120-180</td>
+              <td>¥350-500</td>
+              <td>¥450-650</td>
+              <td>¥140-200</td>
+            </tr>
+            <tr>
+              <td><strong>场景零售收入占比</strong></td>
+              <td>＜3%</td>
+              <td>＜2%</td>
+              <td>8-12% 🏆</td>
+              <td>＜2%</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="insight-box" style="margin-top:14px;">
+          <div class="insight-label">对标启示</div>
+          <p><strong>亚朵</strong> 在非客房收入占比上遥遥领先，场景零售使其在同等房价下拥有更高的单客价值（LTV）；<strong>汉庭</strong> 在直销比例和会员规模上领先，将中介成本降到最低；<strong>希尔顿</strong> 的全球RMS仍是行业技术标杆；<strong>如家</strong> 在规模覆盖上占优但定价上行动力不足。</p>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">各集团财报、公开数据汇编</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 9: STRATEGIC RECOMMENDATIONS -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="8">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">战略建议与未来趋势</span>
+        </div>
+        <span class="page-num">09 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Strategic Recommendations</div>
+        <h2>中国酒店定价的下一个战场：AI驱动 + 场景生态</h2>
+        <p class="subtitle">基于对标分析，我们识别出五大战略方向和具体行动建议</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-blue">
+              <div class="card-label">战略一</div>
+              <div class="card-title">AI收益管理的全面普及</div>
+              <div class="card-desc">
+                • 希尔顿的全球RMS → 经济型品牌应加速自研或采购第三方AI收益管理工具<br>
+                • 华住"神灯"系统已实现单体酒店级实时定价，建议如家跟进<br>
+                • 预测性定价：融合天气、展会、高铁客流等外源性数据
+              </div>
+            </div>
+            <div class="mck-card accent-teal" style="margin-top:12px;">
+              <div class="card-label">战略三</div>
+              <div class="card-title">非客房收入的定价乘数效应</div>
+              <div class="card-desc">
+                • 亚朵模式验证：场景零售可提升单客LTV 15-20%<br>
+                • 建议：经济型品牌引入"基础房价+增值包"的模块化定价<br>
+                • 如家/汉庭可复制"客房+早餐+洗衣+零售"的打包定价策略
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-orange">
+              <div class="card-label">战略二</div>
+              <div class="card-title">会员体系的深度运营</div>
+              <div class="card-desc">
+                • 华住会1.8亿会员→直销比例75%→佣金省下的钱反哺房价<br>
+                • 建议：所有品牌应将会员直销比例提升至70%+<br>
+                • 企业会员定制定价：B2B协议价的系统化管理<br>
+                • 酒店+航空+出行场景的交叉积分生态
+              </div>
+            </div>
+            <div class="mck-card accent-red" style="margin-top:12px;">
+              <div class="card-label">战略四 & 五</div>
+              <div class="card-title">多品牌矩阵定价 + ESG溢价</div>
+              <div class="card-desc">
+                <strong>品牌矩阵定价：</strong>希尔顿的"华尔道夫→惠庭"金字塔结构值得借鉴，中国品牌需更清晰的子品牌价格梯度和客群区隔<br><br>
+                <strong>ESG定价：</strong>绿色酒店认证可带来 5-10% 的定价溢价（尤其对Z世代客群），如家已与蚂蚁森林合作，建议加速ESG标签化
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">Deepsix Strategic Advisory · 麦肯锡方法论框架</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- SLIDE 10: END / APPENDIX -->
+  <!-- ============================================================ -->
+  <div class="slide" data-slide="9">
+    <div class="slide-frame">
+      <div class="slide-header">
+        <div class="title-area">
+          <span class="mck-logo">McKINSEY <span>&</span> COMPANY</span>
+          <span class="divider"></span>
+          <span class="title">附录 · 方法论与数据来源</span>
+        </div>
+        <span class="page-num">10 / 10</span>
+      </div>
+      <div class="slide-body">
+        <div class="section-tag">Appendix</div>
+        <h2>研究方法与数据来源声明</h2>
+        <p class="subtitle">本报告基于公开信息汇编，采用麦肯锡MECE框架进行结构化分析</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="mck-card accent-blue">
+              <div class="card-label">分析方法论</div>
+              <div class="card-title">麦肯锡MECE框架</div>
+              <div class="card-desc">
+                <strong>定价策略分析四层模型：</strong><br>
+                1. <strong>Market</strong> — 市场规模、需求曲线、竞争格局<br>
+                2. <strong>Model</strong> — 定价机制、折扣结构、会员体系<br>
+                3. <strong>Metrics</strong> — ADR/OCC/RevPAR/POR 关键指标对标<br>
+                4. <strong>Momentum</strong> — 战略动向、投资方向、未来趋势
+              </div>
+            </div>
+            <div class="mck-card" style="margin-top:12px; border-top-color: var(--mck-gray);">
+              <div class="card-label">数据来源</div>
+              <div class="card-title">公开信息汇编</div>
+              <div class="card-desc">
+                • 各集团年度财报（2024-2025）<br>
+                • 招股说明书（亚朵集团）<br>
+                • 行业协会公开数据<br>
+                • 各品牌官网及会员计划公开条款<br>
+                • 行业研究报告（公开版本）<br><br>
+                <em>注：具体门店定价可能因城市/商圈/季节差异而不同，本报告反映品牌整体定价策略而非具体门店价格。</em>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="mck-card accent-blue" style="height:calc(100% - 8px);">
+              <div class="card-label">关键定义</div>
+              <div class="card-title">酒店定价核心指标</div>
+              <div class="card-desc">
+                <table style="width:100%; font-size:13px; border-collapse:collapse;">
+                  <tr><td style="padding:6px 0; border-bottom:1px solid #eee;"><strong>ADR</strong></td><td style="padding:6px 0; border-bottom:1px solid #eee;">已售客房平均房价</td></tr>
+                  <tr><td style="padding:6px 0; border-bottom:1px solid #eee;"><strong>OCC</strong></td><td style="padding:6px 0; border-bottom:1px solid #eee;">出租率（入住率）</td></tr>
+                  <tr><td style="padding:6px 0; border-bottom:1px solid #eee;"><strong>RevPAR</strong></td><td style="padding:6px 0; border-bottom:1px solid #eee;">每间可供房收入 = ADR × OCC</td></tr>
+                  <tr><td style="padding:6px 0; border-bottom:1px solid #eee;"><strong>POR</strong></td><td style="padding:6px 0; border-bottom:1px solid #eee;">每间入住客房成本</td></tr>
+                  <tr><td style="padding:6px 0; border-bottom:1px solid #eee;"><strong>RMS</strong></td><td style="padding:6px 0; border-bottom:1px solid #eee;">收益管理系统</td></tr>
+                  <tr><td style="padding:6px 0;"><strong>GOPPAR</strong></td><td style="padding:6px 0;">每间可供房毛利</td></tr>
+                </table>
+                <div style="margin-top:16px; padding:12px; background:#f0f4f8; border-radius:4px; text-align:center;">
+                  <span style="font-weight:700; color:var(--mck-blue);">本报告由 Deepsix AI 编码生成</span><br>
+                  <span style="font-size:12px; color:#999;">2026 年 6 月 16 日 · 麦肯锡咨询风格 · 10 页幻灯片</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="source">Deepsix Research · 2026</span>
+        <span class="confidential">CONFIDENTIAL AND PROPRIETARY</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== Navigation ===== -->
+<div class="nav-controls">
+  <button onclick="prevSlide()" title="上一页">‹</button>
+  <span class="page-indicator"><span id="currentPage">1</span> / 10</span>
+  <button onclick="nextSlide()" title="下一页">›</button>
+  <button onclick="goFullscreen()" title="全屏" style="font-size:14px; opacity:0.6;">⛶</button>
+</div>
+
+<script>
+  let currentSlide = 0;
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  const pageDisplay = document.getElementById('currentPage');
+
+  function showSlide(index) {
+    slides.forEach((s, i) => {
+      s.classList.toggle('active', i === index);
+    });
+    pageDisplay.textContent = index + 1;
+    currentSlide = index;
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides - 1) showSlide(currentSlide + 1);
+  }
+
+  function prevSlide() {
+    if (currentSlide > 0) showSlide(currentSlide - 1);
+  }
+
+  function goFullscreen() {
+    const el = document.getElementById('slides');
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key === 'f' || e.key === 'F') {
+      goFullscreen();
+    }
+  });
+
+  // Touch swipe support
+  let touchStartX = 0;
+  let touchEndX = 0;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.changedTouches[0].screenX; });
+  document.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > 60) {
+      if (diff > 0) nextSlide();
+      else prevSlide();
+    }
+  });
+</script>
+
+</body>
+</html>

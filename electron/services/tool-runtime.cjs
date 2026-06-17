@@ -2,6 +2,7 @@ const { exec, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { normalizeFetchUrl } = require("./url-utils.cjs");
 
 const execAsync = promisify(exec);
 
@@ -73,14 +74,6 @@ function extractHtmlTitle(html, fallback = "") {
   }
 
   return fallback;
-}
-
-function normalizeFetchUrl(url) {
-  const parsed = new URL(String(url || "").trim());
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error(`只支持 http/https URL：${url}`);
-  }
-  return parsed.toString();
 }
 
 function clipText(value, maxChars) {

@@ -30,6 +30,25 @@ const TOOL_DEFINITIONS = [
   {
     type: "function",
     function: {
+      name: "web_fetch_url",
+      description: "Fetch external webpages or docs by URL or bare domain, and return readable text context. Use before answering or generating artifacts based on a website.",
+      parameters: {
+        type: "object",
+        required: ["urls"],
+        properties: {
+          urls: {
+            type: "array",
+            items: { type: "string" },
+            description: "External URLs or bare domains to fetch."
+          },
+          limit: { type: "number", description: "Maximum number of URLs to fetch." }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "workspace_ls",
       description: "List files and folders inside the current workspace or a workspace-relative subdirectory.",
       parameters: {
@@ -197,6 +216,16 @@ function createContextMessages(payload) {
 }
 
 function buildToolPolicy(toolName, args) {
+  if (toolName === "web_fetch_url") {
+    return {
+      action: "web.fetch_url",
+      title: "允许读取外部文档",
+      detail: "Agent 请求读取外部 URL，并把正文作为本轮模型上下文。",
+      command: `web_fetch_url ${JSON.stringify(args)}`,
+      risk: "low"
+    };
+  }
+
   if (["workspace_ls", "workspace_read", "workspace_grep", "workspace_find"].includes(toolName)) {
     return {
       action: "workspace.scan",
@@ -227,6 +256,14 @@ function buildToolPolicy(toolName, args) {
 }
 
 async function executeTool({ toolName, args, payload, toolRuntime, signal }) {
+  if (toolName === "web_fetch_url") {
+    return toolRuntime.fetchUrlContext(args.urls || [], {
+      limit: args.limit || 5,
+      signal,
+      timeoutMs: args.timeoutMs || 25000,
+      maxCharsPerDocument: args.maxCharsPerDocument || 14000
+    });
+  }
   if (toolName === "workspace_ls") {
     return toolRuntime.listDirectory(payload.workspacePath, args.path || ".", { limit: args.limit });
   }
@@ -281,6 +318,89 @@ function latestCompactSummary(entries = []) {
   return "";
 }
 
+function replayEntriesToContextMessages(entries = []) {
+  const context = [];
+  for (const entry of entries) {
+    if (entry?.type === "message" && ["user", "assistant"].includes(entry.role) && entry.content) {
+      context.push(createLlmMessage(entry.role, entry.content, {
+        source: "session_jsonl",
+        entryId: entry.id
+      }));
+    }
+    if (entry?.type === "steer" && entry.content) {
+      context.push(createLlmMessage("user", entry.content, {
+        source: "session_jsonl",
+        kind: "steer",
+        entryId: entry.id
+      }));
+    }
+    if (entry?.type === "follow_up" && entry.content) {
+      context.push(createLlmMessage("user", `后续任务：\n${entry.content}`, {
+        source: "session_jsonl",
+        kind: "follow_up",
+        entryId: entry.id
+      }));
+    }
+    if (entry?.type === "tool_result" && entry.content) {
+      context.push(createContextMessage(AGENT_MESSAGE_TYPES.TOOL_RESULT, `工具 ${entry.toolName || "unknown"} 返回：\n${String(entry.content).slice(0, 4000)}`, {
+        source: "session_jsonl",
+        entryId: entry.id,
+        toolName: entry.toolName
+      }));
+    }
+    if (entry?.type === "pending_approval" && entry.content) {
+      context.push(createContextMessage(AGENT_MESSAGE_TYPES.APPROVAL, `未完成审批：${entry.content}`, {
+        source: "session_jsonl",
+        entryId: entry.id,
+        toolName: entry.toolName
+      }));
+    }
+    if (entry?.type === "error" && entry.content) {
+      context.push(createContextMessage(AGENT_MESSAGE_TYPES.TELEMETRY, `上次错误：${entry.content}`, {
+        source: "session_jsonl",
+        entryId: entry.id
+      }));
+    }
+    if (entry?.type === "abort" && entry.content) {
+      context.push(createContextMessage(AGENT_MESSAGE_TYPES.TELEMETRY, `上次中止：${entry.content}`, {
+        source: "session_jsonl",
+        entryId: entry.id
+      }));
+    }
+  }
+  return context.slice(-24);
+}
+
+function latestEntryOfType(entries = [], types = []) {
+  const wanted = new Set(types);
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (wanted.has(entry?.type)) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function buildContinuationPrompt(entries = [], pendingToolCalls = []) {
+  const latestUser = latestEntryOfType(entries, ["follow_up", "steer", "message"]);
+  const latestProblem = latestEntryOfType(entries, ["pending_approval", "error", "abort"]);
+  const pendingToolText = pendingToolCalls.length
+    ? `\n当前仍有 pending tool call：${pendingToolCalls.map((call) => call.name).join("、")}`
+    : "";
+  const lastUserText = latestUser?.content ? `\n最近用户补充：${latestUser.content}` : "";
+  const problemText = latestProblem?.content ? `\n上次停止点：${latestProblem.type} / ${latestProblem.content}` : "";
+
+  return [
+    "继续执行上一个未完成任务。",
+    "请使用 session JSONL 历史、compact summary、tool result 和当前线程上下文恢复进度；不要从零开始。",
+    "如果上次因为审批中断，而当前策略已经允许，则继续执行原工具和后续步骤。",
+    pendingToolText,
+    problemText,
+    lastUserText
+  ].filter(Boolean).join("\n");
+}
+
 function createToolCallingAgentSession({
   payload,
   profile,
@@ -296,9 +416,10 @@ function createToolCallingAgentSession({
 }) {
   const threadId = payload.threadId || payload.taskId || payload.sessionId || "default";
   const registry = toolRegistry || createToolRegistry({ toolRuntime });
-  const controller = new AbortController();
+  let controller = new AbortController();
   const storedEntries = sessionLogStore?.read(threadId) || [];
   const compactSummary = latestCompactSummary(storedEntries);
+  const restoredContextMessages = replayEntriesToContextMessages(storedEntries);
   signal?.addEventListener?.("abort", () => controller.abort(), { once: true });
   const initialAgentMessages = [
     createLlmMessage("system", systemPrompt, { kind: "system" }),
@@ -313,6 +434,7 @@ function createToolCallingAgentSession({
       role: message.role,
       name: message.name
     })),
+    ...restoredContextMessages,
     ...(payload.contextMessages || []).slice(-20).map((message) => fromUiContextMessage(message)).filter(Boolean)
   ];
   const messages = convertToLlm(transformContext(initialAgentMessages, { maxMessages: 28 }));
@@ -332,6 +454,14 @@ function createToolCallingAgentSession({
     if (controller.signal.aborted || signal?.aborted) {
       throw new Error("用户已停止当前 Agent 回合。");
     }
+  }
+
+  function ensureFreshController() {
+    if (!controller.signal.aborted) {
+      return;
+    }
+    controller = new AbortController();
+    signal?.addEventListener?.("abort", () => controller.abort(), { once: true });
   }
 
   function appendLog(entry) {
@@ -355,6 +485,7 @@ function createToolCallingAgentSession({
   }
 
   async function runLoop(userText, loopKind = "prompt") {
+    ensureFreshController();
     running = true;
     state.isStreaming = true;
     state.errorMessage = "";
@@ -421,6 +552,27 @@ function createToolCallingAgentSession({
         }
 
         if (!response.toolCalls.length) {
+          const queuedFollowUp = pendingFollowUps.shift();
+          if (queuedFollowUp) {
+            localMessages.push({
+              role: "user",
+              content: queuedFollowUp
+            });
+            pushTranscript("user", queuedFollowUp);
+            appendLog({
+              type: "message",
+              role: "user",
+              content: queuedFollowUp,
+              agentMessage: createLlmMessage("user", queuedFollowUp, { loopKind: "queued_follow_up" }),
+              metadata: { loopKind: "queued_follow_up" }
+            });
+            emitProgress({
+              status: "running",
+              title: "吸收中途补充",
+              detail: String(queuedFollowUp || "").slice(0, 140)
+            });
+            continue;
+          }
           break;
         }
 
@@ -617,7 +769,8 @@ function createToolCallingAgentSession({
       return runLoop(text, "prompt");
     },
     continueTurn() {
-      const text = pendingFollowUps.shift() || "继续完成上一个未完成任务。";
+      const entries = sessionLogStore?.read(threadId) || [];
+      const text = pendingFollowUps.shift() || buildContinuationPrompt(entries, state.pendingToolCalls);
       return runLoop(text, "continue");
     },
     steer(text) {

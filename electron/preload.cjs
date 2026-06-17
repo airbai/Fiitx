@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("fiitx", {
   chooseFiles: () => ipcRenderer.invoke("app:choose-files"),
   inspectPath: (path, basePath) => ipcRenderer.invoke("path:inspect", { path, basePath }),
   openPath: (path, basePath) => ipcRenderer.invoke("path:open", { path, basePath }),
+  openContainingFolder: (path, basePath) => ipcRenderer.invoke("path:show-in-folder", { path, basePath }),
   previewPath: (path, basePath) => ipcRenderer.invoke("path:preview", { path, basePath }),
   listModelProfiles: () => ipcRenderer.invoke("model:list"),
   saveModelProfile: (payload) => ipcRenderer.invoke("model:save", payload),
@@ -16,6 +17,7 @@ contextBridge.exposeInMainWorld("fiitx", {
   routeWechatAiPrompt: (payload) => ipcRenderer.invoke("wechat-ai:route-prompt", payload),
   invokeWechatAiSkill: (payload) => ipcRenderer.invoke("wechat-ai:invoke-skill", payload),
   getWechatChannelStatus: () => ipcRenderer.invoke("wechat-channel:status"),
+  runTerminalCommand: (payload) => ipcRenderer.invoke("terminal:run-command", payload),
   onWechatChannelInbound: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("wechat-channel:inbound", listener);
@@ -31,6 +33,9 @@ contextBridge.exposeInMainWorld("fiitx", {
   getAgentSessionTree: (payload) => ipcRenderer.invoke("agent:session-tree", payload),
   replayAgentSession: (payload) => ipcRenderer.invoke("agent:session-replay", payload),
   getAgentTelemetrySummary: (payload) => ipcRenderer.invoke("agent:telemetry-summary", payload),
+  inspectAgentRoute: (payload) => ipcRenderer.invoke("agent:inspect-route", payload),
+  runAgentEval: (payload) => ipcRenderer.invoke("agent:run-eval", payload),
+  getAgentHarnessSnapshot: (payload) => ipcRenderer.invoke("agent:harness-snapshot", payload),
   onAgentProgress: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("agent:progress", listener);
