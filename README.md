@@ -242,6 +242,14 @@ npm run dist
 
 应用使用 `assets/deepsix-logo.png` 作为图标，模型配置/API Key 存储在 Electron userData 目录，API Key 支持 Electron `safeStorage` 加密。
 
+### 安装使用桌面版
+<p align="center">
+  <a href="https://drive.google.com/drive/folders/1ZUEXKVIIfJ6jwLmb5pOWlyAyPy7LF7Ps" target="_blank" 
+     style="font-size: 18px; color: #1a73e8; text-decoration: none; border-bottom: 1px solid #1a73e8;">
+    📂 Mac桌面版（Google Drive 文件夹）
+  </a>
+</p>
+
 ---
 
 ## 技术栈
