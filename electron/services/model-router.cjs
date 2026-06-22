@@ -825,9 +825,7 @@ function createModelRouter({ app, safeStorage }) {
         role: "system",
         content:
           options.systemPrompt ||
-          // Fiitx branding kept for easy restore:
-          // "你是 Fiitx Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
-          "你是 Deepsix Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
+          "你是 Fiitx Coding Agent。你只能基于给定 workspace 上下文回答。不要声称已经写文件或执行 shell；需要这些动作时明确标为待审批。"
       },
       {
         role: "user",

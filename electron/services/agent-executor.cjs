@@ -39,6 +39,8 @@
 
 const { createToolRegistry } = require('./tool-registry.cjs');
 const { StructuredMemory, MEMORY_ENTRY_TYPES } = require('./structured-memory.cjs');
+const { normalizeHtmlModuleImports } = require('./html-module-imports.cjs');
+const path = require('node:path');
 
 // ============================================================
 // Native Agent Loop Bridge
@@ -127,6 +129,68 @@ class NativeLoopBridge {
 
 const MAX_TOOL_STEPS = 10;
 
+function languageFromPath(filePath) {
+  const extension = path.extname(String(filePath || '')).toLowerCase();
+  const aliases = {
+    '.cjs': 'javascript',
+    '.css': 'css',
+    '.html': 'html',
+    '.js': 'javascript',
+    '.json': 'json',
+    '.jsx': 'javascript',
+    '.md': 'markdown',
+    '.mjs': 'javascript',
+    '.py': 'python',
+    '.sh': 'shell',
+    '.ts': 'typescript',
+    '.tsx': 'typescript',
+    '.txt': 'text',
+    '.wxml': 'html',
+    '.wxss': 'css',
+    '.yaml': 'yaml',
+    '.yml': 'yaml',
+  };
+  return aliases[extension] || 'text';
+}
+
+function artifactFromToolResult(toolName, args, result) {
+  if (!['workspace_write', 'workspace_edit'].includes(toolName) || result?.ok === false) {
+    return null;
+  }
+
+  const filePath = String(result?.path || args?.path || '').trim();
+  if (!filePath) {
+    return null;
+  }
+
+  const rawContent = typeof args?.content === 'string' ? args.content : '';
+  const content = normalizeHtmlModuleImports(filePath, rawContent);
+  return {
+    path: filePath,
+    title: path.basename(filePath) || filePath,
+    language: languageFromPath(filePath),
+    status: toolName === 'workspace_edit' ? 'modified' : 'added',
+    additions: content ? content.split(/\r?\n/).length : 1,
+    deletions: 0,
+    preview: content
+  };
+}
+
+function summarizeCompletedToolRun({ finalText, artifacts, toolExecutions, reachedStepLimit }) {
+  const files = artifacts.map((artifact) => `- ${artifact.path}`).join('\n');
+  const toolLine = toolExecutions.length > 0 ? `已执行 ${toolExecutions.length} 个工具调用。` : '';
+  const fileLine = artifacts.length > 0 ? `已写入/修改 ${artifacts.length} 个文件：\n${files}` : '';
+  const parts = [
+    finalText && !/^(让我|我来|接下来|现在).{0,40}(验证|检查|测试|继续|运行)/.test(finalText.trim())
+      ? finalText.trim()
+      : '',
+    [toolLine, fileLine].filter(Boolean).join('\n\n'),
+    reachedStepLimit ? '已达到本轮工具步骤上限，以上结果来自已完成的工具执行记录。' : ''
+  ].filter(Boolean);
+
+  return parts.join('\n\n') || finalText || 'Agent 已完成。';
+}
+
 class AgentExecutor {
   /**
    * @param {Object} options
@@ -174,6 +238,8 @@ class AgentExecutor {
     };
     this.finalText = '';
     this.currentRunId = '';
+    this.artifacts = [];
+    this.toolExecutions = [];
 
     // 结构化记忆实例（替代全量消息回放）
     this.memory = new StructuredMemory({
@@ -226,6 +292,7 @@ class AgentExecutor {
     }) || '';
 
     try {
+      let completedWithoutToolCalls = false;
       for (let step = 0; step < MAX_TOOL_STEPS; step++) {
         this._throwIfAborted();
 
@@ -337,6 +404,7 @@ class AgentExecutor {
 
         // ======== Step 4: 没有 tool_calls → 结束 ========
         if (!response.toolCalls?.length) {
+          completedWithoutToolCalls = true;
           this.onStep?.({
             type: 'loop_end',
             step,
@@ -450,6 +518,18 @@ class AgentExecutor {
           }
 
           const toolContent = JSON.stringify(toolResult, null, 2);
+          this.toolExecutions.push({
+            toolName,
+            args: preparedArgs,
+            result: toolResult
+          });
+          const toolArtifact = artifactFromToolResult(toolName, preparedArgs, toolResult);
+          if (toolArtifact) {
+            this.artifacts = [
+              toolArtifact,
+              ...this.artifacts.filter((artifact) => artifact.path !== toolArtifact.path)
+            ];
+          }
 
           // 6c. 结果回填到 messages
           this.messages.push({
@@ -490,7 +570,14 @@ class AgentExecutor {
       }
 
       // ======== 循环结束 ========
+      const reachedStepLimit = !completedWithoutToolCalls && this.messages[this.messages.length - 1]?.role === 'tool';
       this.finalText = this.finalText || this._getLatestAssistantText() || 'Agent 已完成。';
+      this.finalText = summarizeCompletedToolRun({
+        finalText: this.finalText,
+        artifacts: this.artifacts,
+        toolExecutions: this.toolExecutions,
+        reachedStepLimit
+      });
 
       this.onStep?.({
         type: 'done',
@@ -509,6 +596,9 @@ class AgentExecutor {
         ok: true,
         summary: this.finalText,
         errorMessage: '',
+        artifacts: this.artifacts,
+        toolExecutions: this.toolExecutions,
+        reachedStepLimit
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Agent runtime 执行失败';
@@ -531,6 +621,8 @@ class AgentExecutor {
         ok: false,
         summary: message,
         errorMessage: message,
+        artifacts: this.artifacts,
+        toolExecutions: this.toolExecutions
       };
     } finally {
       this.state.isRunning = false;

@@ -1,0 +1,142 @@
+{
+  "name": "deepsix-vscode",
+  "displayName": "Deepsix AI Agent",
+  "description": "Deepsix AI Agent 内联 Diff 预览、代码上下文传递、文件编辑确认",
+  "version": "0.1.0",
+  "publisher": "deepsix-ai",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "deepsix",
+    "ai",
+    "agent",
+    "diff",
+    "code review"
+  ],
+  "icon": "media/icon.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "deepsix.connect",
+        "title": "Deepsix: 连接到 Deepsix 桌面应用"
+      },
+      {
+        "command": "deepsix.disconnect",
+        "title": "Deepsix: 断开连接"
+      },
+      {
+        "command": "deepsix.sendContext",
+        "title": "Deepsix: 发送当前文件上下文"
+      },
+      {
+        "command": "deepsix.sendSelection",
+        "title": "Deepsix: 发送选中代码到 Deepsix"
+      },
+      {
+        "command": "deepsix.showStatus",
+        "title": "Deepsix: 查看连接状态"
+      },
+      {
+        "command": "deepsix.acceptDiff",
+        "title": "Deepsix: 接受差异"
+      },
+      {
+        "command": "deepsix.rejectDiff",
+        "title": "Deepsix: 拒绝差异"
+      },
+      {
+        "command": "deepsix.openInEditor",
+        "title": "Deepsix: 在编辑器中打开差异文件"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "deepsix.sendSelection",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "deepsix.acceptDiff",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "deepsix:diffActive"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "deepsix.sendSelection",
+          "group": "1_modification",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "deepsix.sendContext",
+          "group": "1_modification"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "deepsix.sendContext",
+          "group": "deepsix"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Deepsix",
+      "properties": {
+        "deepsix.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Deepsix 桌面应用通道服务器地址"
+        },
+        "deepsix.port": {
+          "type": "number",
+          "default": 18767,
+          "description": "Deepsix 桌面应用通道服务器端口"
+        },
+        "deepsix.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "启动时自动连接 Deepsix 桌面应用"
+        },
+        "deepsix.enableInlineDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用内联 Diff 预览"
+        },
+        "deepsix.maxDiffFiles": {
+          "type": "number",
+          "default": 20,
+          "description": "最大 Diff 预览文件数"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package --out release/",
+    "dev": "echo 'Open VS Code, press F5 to debug extension'"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.93.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0",
+    "vsce": "^2.15.0"
+  }
+}

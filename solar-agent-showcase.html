@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>☀️ Solar Agent — 太阳能别墅勘察AI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #1a237e;
+    --primary-light: #283593;
+    --accent: #43a047;
+    --accent-light: #66bb6a;
+    --sun: #FFD700;
+    --bg: #f0f4f8;
+    --card-bg: #ffffff;
+    --text: #1a1a2e;
+    --text-muted: #666;
+    --radius: 16px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.08);
+    --shadow-hover: 0 16px 48px rgba(0,0,0,0.14);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Inter', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ─── Particles Canvas ─── */
+  #particles-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── Navigation ─── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: 16px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+  }
+  nav.scrolled { box-shadow: 0 2px 20px rgba(0,0,0,0.08); }
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--primary);
+    text-decoration: none;
+  }
+  .nav-brand span { font-size: 26px; }
+  .nav-links { display: flex; gap: 24px; align-items: center; }
+  .nav-links a {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s;
+    position: relative;
+  }
+  .nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: -4px; left: 0;
+    width: 0; height: 2px;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+  .nav-links a:hover { color: var(--primary); }
+  .nav-links a:hover::after { width: 100%; }
+  .nav-cta {
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    color: white !important;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-weight: 600 !important;
+  }
+  .nav-cta::after { display: none !important; }
+  .nav-cta:hover { transform: scale(1.05); }
+
+  /* ─── Hero ─── */
+  .hero {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 120px 24px 80px;
+    background: linear-gradient(135deg, #0d1b2a 0%, #1b2838 30%, #1a237e 70%, #283593 100%);
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle at 30% 40%, rgba(255,215,0,0.08) 0%, transparent 50%),
+                radial-gradient(circle at 70% 60%, rgba(67,160,71,0.06) 0%, transparent 50%);
+    animation: heroGlow 8s ease-in-out infinite alternate;
+  }
+  @keyframes heroGlow {
+    0% { transform: translate(0,0) rotate(0deg); }
+    100% { transform: translate(2%, -2%) rotate(3deg); }
+  }
+  .hero > * { position: relative; z-index: 1; }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 8px 20px;
+    border-radius: 20px;
+    color: rgba(255,255,255,0.8);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 32px;
+  }
+  .hero-badge .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent-light);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+  .hero h1 {
+    font-size: clamp(40px, 8vw, 80px);
+    font-weight: 900;
+    color: white;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 .highlight {
+    background: linear-gradient(135deg, #FFD700, #FFA500, #FF6F00);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero h1 .highlight-green {
+    background: linear-gradient(135deg, #66bb6a, #43a047, #2e7d32);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    font-size: clamp(16px, 2vw, 22px);
+    color: rgba(255,255,255,0.7);
+    max-width: 680px;
+    margin: 0 auto 40px;
+    font-weight: 300;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hero-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: 30px;
+    font-size: 16px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+  }
+  .hero-btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    color: white;
+    box-shadow: 0 4px 16px rgba(67,160,71,0.3);
+  }
+  .hero-btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(67,160,71,0.4);
+  }
+  .hero-btn-secondary {
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+  }
+  .hero-btn-secondary:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-3px);
+  }
+  .hero-stats {
+    display: flex;
+    gap: 40px;
+    margin-top: 60px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hero-stat { text-align: center; }
+  .hero-stat .num {
+    font-size: 36px;
+    font-weight: 800;
+    color: white;
+  }
+  .hero-stat .num span { color: var(--sun); }
+  .hero-stat .label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    margin-top: 4px;
+  }
+
+  /* ─── Pipeline ─── */
+  .section {
+    position: relative;
+    z-index: 1;
+    padding: 100px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .section-header {
+    text-align: center;
+    margin-bottom: 64px;
+  }
+  .section-header .subtitle {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+  }
+  .section-header h2 {
+    font-size: clamp(32px, 4vw, 44px);
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 16px;
+  }
+  .section-header p {
+    color: var(--text-muted);
+    font-size: 18px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 80px;
+    position: relative;
+  }
+  .pipeline::before {
+    content: '';
+    position: absolute;
+    top: 48px; left: 8%;
+    right: 8%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--accent), #FFA500, var(--accent), var(--primary));
+    z-index: 0;
+    opacity: 0.3;
+  }
+  .pipeline-step {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 24px 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    position: relative;
+    z-index: 1;
+    transition: all 0.4s ease;
+    cursor: default;
+  }
+  .pipeline-step:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--shadow-hover);
+  }
+  .pipeline-step .icon {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 16px;
+  }
+  .pipeline-step:nth-child(1) .icon { background: #e3f2fd; }
+  .pipeline-step:nth-child(2) .icon { background: #e8f5e9; }
+  .pipeline-step:nth-child(3) .icon { background: #fff3e0; }
+  .pipeline-step:nth-child(4) .icon { background: #fce4ec; }
+  .pipeline-step:nth-child(5) .icon { background: #f3e5f5; }
+  .pipeline-step .step-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .pipeline-step h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--primary);
+  }
+  .pipeline-step p {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .pipeline-step .module-tag {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 3px 12px;
+    background: #f5f7fa;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Monaco', monospace;
+    color: var(--primary);
+  }
+
+  /* ─── Architecture ─── */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    margin-bottom: 80px;
+  }
+  .arch-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 28px;
+    box-shadow: var(--shadow);
+    transition: all 0.3s ease;
+    border-top: 4px solid var(--primary);
+  }
+  .arch-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+  .arch-card:nth-child(1) { border-top-color: #42a5f5; }
+  .arch-card:nth-child(2) { border-top-color: #66bb6a; }
+  .arch-card:nth-child(3) { border-top-color: #FFA726; }
+  .arch-card:nth-child(4) { border-top-color: #ef5350; }
+  .arch-card:nth-child(5) { border-top-color: #ab47bc; }
+  .arch-card .card-icon { font-size: 32px; margin-bottom: 12px; }
+  .arch-card h3 { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+  .arch-card p { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+  .arch-card .code-block {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Monaco', monospace;
+    margin-top: 12px;
+    overflow-x: auto;
+    line-height: 1.8;
+  }
+  .arch-card .code-block .keyword { color: #c792ea; }
+  .arch-card .code-block .string { color: #c3e88d; }
+  .arch-card .code-block .comment { color: #546e7a; }
+  .arch-card .code-block .number { color: #f78c6c; }
+
+  /* ─── Results Showcase ─── */
+  .results-showcase {
+    background: linear-gradient(135deg, #0d1b2a, #1a237e);
+    padding: 100px 24px;
+    position: relative;
+    z-index: 1;
+  }
+  .results-showcase .section-header h2 { color: white; }
+  .results-showcase .section-header p { color: rgba(255,255,255,0.6); }
+
+  .results-grid {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 32px;
+  }
+  .result-card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    overflow: hidden;
+    transition: all 0.4s ease;
+  }
+  .result-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(255,255,255,0.2);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .result-card .preview {
+    height: 240px;
+    background: linear-gradient(180deg, #87CEEB 0%, #E0F7FA 40%, #90EE90 40.1%, #228B22 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .result-card .preview .sun {
+    position: absolute;
+    top: 20px; right: 40px;
+    width: 50px; height: 50px;
+    background: radial-gradient(circle, #FFD700, #FFA500);
+    border-radius: 50%;
+    box-shadow: 0 0 30px rgba(255,215,0,0.5);
+    animation: pulse 3s ease-in-out infinite;
+  }
+  .result-card .preview .house-mini {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+  }
+  .result-card .preview .house-mini .roof {
+    width: 100%;
+    height: 40px;
+    background: #8B4513;
+    clip-path: polygon(0% 100%, 10% 0%, 90% 0%, 100% 100%);
+  }
+  .result-card .preview .house-mini .body {
+    width: 90%;
+    height: 60px;
+    background: #D4A574;
+    margin: 0 auto;
+    border-radius: 0 0 4px 4px;
+  }
+  .result-card .preview .panels {
+    position: absolute;
+    bottom: 105px;
+    left: 20%;
+    width: 60%;
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+  }
+  .result-card .preview .panels .p {
+    width: 20px; height: 20px;
+    background: linear-gradient(135deg, #1a237e, #283593);
+    border: 1px solid #0d47a1;
+    border-radius: 2px;
+  }
+  .result-card .body {
+    padding: 24px;
+  }
+  .result-card .body .tag {
+    display: inline-block;
+    padding: 3px 12px;
+    background: rgba(67,160,71,0.2);
+    color: var(--accent-light);
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .result-card .body h3 {
+    font-size: 20px;
+    color: white;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .result-card .body .address {
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .result-card .body .specs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .result-card .body .specs .spec {
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+  }
+  .result-card .body .specs .spec .l {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+  }
+  .result-card .body .specs .spec .v {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sun);
+  }
+  .result-card .body .specs .spec .v.green { color: var(--accent-light); }
+  .result-card .body .quote-preview {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 16px;
+    margin-top: 8px;
+  }
+  .result-card .body .quote-preview .row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    padding: 4px 0;
+    color: rgba(255,255,255,0.7);
+  }
+  .result-card .body .quote-preview .row.total {
+    font-size: 18px;
+    font-weight: 700;
+    color: white;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    padding-top: 8px;
+    margin-top: 4px;
+  }
+  .result-card .body .email-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 8px 12px;
+    background: rgba(67,160,71,0.15);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--accent-light);
+  }
+
+  /* ─── Features ─── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+  }
+  .feature-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 32px 24px;
+    box-shadow: var(--shadow);
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .feature-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-hover); }
+  .feature-card .f-icon { font-size: 40px; margin-bottom: 16px; }
+  .feature-card h3 { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 8px; }
+  .feature-card p { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+
+  /* ─── Usage ─── */
+  .usage-section {
+    background: #1a1a2e;
+    padding: 100px 24px;
+    position: relative;
+    z-index: 1;
+  }
+  .usage-section .section-header h2 { color: white; }
+  .usage-section .section-header p { color: rgba(255,255,255,0.5); }
+
+  .usage-grid {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  .usage-terminal {
+    background: #0d1117;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #30363d;
+  }
+  .usage-terminal .bar {
+    padding: 12px 16px;
+    background: #161b22;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #30363d;
+  }
+  .usage-terminal .bar .dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+  }
+  .usage-terminal .bar .dot.red { background: #ff5f57; }
+  .usage-terminal .bar .dot.yellow { background: #febc2e; }
+  .usage-terminal .bar .dot.green { background: #28c840; }
+  .usage-terminal .bar .title {
+    color: #8b949e;
+    font-size: 13px;
+    margin-left: 8px;
+  }
+  .usage-terminal .content {
+    padding: 20px;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    color: #c9d1d9;
+    overflow-x: auto;
+  }
+  .usage-terminal .content .prompt { color: #58a6ff; }
+  .usage-terminal .content .comment { color: #8b949e; }
+  .usage-terminal .content .output { color: #7ee787; }
+  .usage-terminal .content .highlight { color: #ffa657; }
+
+  .usage-params {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .param-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s;
+  }
+  .param-card:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+  }
+  .param-card .param-name {
+    font-family: 'SF Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #58a6ff;
+    margin-bottom: 4px;
+  }
+  .param-card .param-desc {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+  }
+  .param-card .param-default {
+    font-size: 12px;
+    color: rgba(255,255,255,0.4);
+    margin-top: 4px;
+  }
+
+  /* ─── Footer ─── */
+  footer {
+    position: relative;
+    z-index: 1;
+    background: #0d1b2a;
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    font-size: 13px;
+  }
+  footer a { color: var(--accent-light); text-decoration: none; }
+  footer .footer-brand { font-size: 18px; font-weight: 700; color: white; margin-bottom: 8px; }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 1024px) {
+    .pipeline { grid-template-columns: repeat(3, 1fr); }
+    .pipeline::before { display: none; }
+    .usage-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    .pipeline { grid-template-columns: repeat(2, 1fr); }
+    nav { padding: 12px 16px; }
+    .nav-links a:not(.nav-cta) { display: none; }
+    .hero-stats { gap: 24px; }
+    .hero-stat .num { font-size: 28px; }
+  }
+  @media (max-width: 480px) {
+    .pipeline { grid-template-columns: 1fr; }
+    .section { padding: 60px 16px; }
+    .results-grid { grid-template-columns: 1fr; }
+    .arch-grid { grid-template-columns: 1fr; }
+    .features-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ─── Scroll animation ─── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<!-- Particles Canvas -->
+<canvas id="particles-canvas"></canvas>
+
+<!-- Navigation -->
+<nav id="navbar">
+  <a href="#" class="nav-brand"><span>☀️</span> Solar Agent</a>
+  <div class="nav-links">
+    <a href="#pipeline">工作流</a>
+    <a href="#architecture">架构</a>
+    <a href="#results">演示结果</a>
+    <a href="#features">特性</a>
+    <a href="#usage" class="nav-cta">快速开始</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    AI 驱动的太阳能智能勘察系统
+  </div>
+  <h1>
+    <span class="highlight">全网搜索别墅</span> →<br>
+    自动生成 <span class="highlight-green">太阳能实景图</span> &amp; <span class="highlight">报价</span>
+  </h1>
+  <p>
+    一个全自动 AI Agent，自动扫描房产网站寻找有户型图的别墅，<br>
+    分析屋顶条件、生成太阳能板安装效果图、计算报价，并一键发送邮件给房东。
+  </p>
+  <div class="hero-actions">
+    <a href="#usage" class="hero-btn hero-btn-primary">🚀 快速运行</a>
+    <a href="#results" class="hero-btn hero-btn-secondary">📊 查看演示结果</a>
+  </div>
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="num">5</div>
+      <div class="label">全自动步骤</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num"><span>3</span> 大</div>
+      <div class="label">房产数据源</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num"><span>25</span> 年</div>
+      <div class="label">太阳能板质保</div>
+    </div>
+    <div class="hero-stat">
+      <div class="num"><span>1</span> 键</div>
+      <div class="label">发送邮件</div>
+    </div>
+  </div>
+</section>
+
+<!-- Pipeline -->
+<section class="section fade-in" id="pipeline">
+  <div class="section-header">
+    <div class="subtitle">Pipeline</div>
+    <h2>⚡ 全自动 5 步工作流</h2>
+    <p>从搜索别墅到发送报价邮件，完全自动化，无需人工介入</p>
+  </div>
+  <div class="pipeline">
+    <div class="pipeline-step">
+      <div class="icon">🔍</div>
+      <div class="step-num">STEP 01</div>
+      <h3>全网搜索</h3>
+      <p>自动爬取贝壳、链家、安居客，筛选有户型图的独栋/联排别墅</p>
+      <div class="module-tag">searcher.mjs</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="icon">📐</div>
+      <div class="step-num">STEP 02</div>
+      <h3>户型分析</h3>
+      <p>分析建筑面积，估算屋顶可用面积、形状、朝向及可安装板数</p>
+      <div class="module-tag">analyzer.mjs</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="icon">🎨</div>
+      <div class="step-num">STEP 03</div>
+      <h3>实景渲染</h3>
+      <p>生成太阳能板安装后的实景效果图（HTML预览 / DALL·E 3）</p>
+      <div class="module-tag">renderer.mjs</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="icon">💰</div>
+      <div class="step-num">STEP 04</div>
+      <h3>智能报价</h3>
+      <p>基于装机容量计算含光伏板、逆变器、安装、并网的全套报价</p>
+      <div class="module-tag">pricer.mjs</div>
+    </div>
+    <div class="pipeline-step">
+      <div class="icon">📧</div>
+      <div class="step-num">STEP 05</div>
+      <h3>自动发邮件</h3>
+      <p>自动查找房东邮箱，发送带实景图和报价单的HTML邮件</p>
+      <div class="module-tag">emailer.mjs</div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture -->
+<section class="section fade-in" id="architecture">
+  <div class="section-header">
+    <div class="subtitle">Architecture</div>
+    <h2>🧩 模块架构</h2>
+    <p>每个模块职责单一，可独立运行，支持 Checkpoint 断点续跑</p>
+  </div>
+  <div class="arch-grid">
+    <div class="arch-card">
+      <div class="card-icon">🔍</div>
+      <h3>Searcher — 全网搜索器</h3>
+      <p>多数据源并行爬取，支持贝壳找房、链家、安居客三大平台。自动去重、过滤、提取户型图链接。演示模式提供高质量模拟数据。</p>
+      <div class="code-block">
+        <span class="comment">// 多渠道并行搜索</span><br>
+        <span class="keyword">const</span> keProps = <span class="keyword">await</span> this._scrapeKeCom(city, max);<br>
+        <span class="keyword">const</span> ljProps = <span class="keyword">await</span> this._scrapeLianjia(city, max);<br>
+        <span class="keyword">const</span> ajProps = <span class="keyword">await</span> this._scrapeAnjuke(city, max);
+      </div>
+    </div>
+    <div class="arch-card">
+      <div class="card-icon">📐</div>
+      <h3>Analyzer — 户型分析器</h3>
+      <p>建筑面积 → 屋顶面积估算（系数法），支持 OpenAI Vision API 进行 AI 视觉分析。输出屋顶形状、朝向、可安装板数。</p>
+      <div class="code-block">
+        <span class="comment">// 屋顶面积 ≈ 建筑面积 × 0.7</span><br>
+        <span class="keyword">const</span> roofArea = Math.<span class="keyword">round</span>(buildingArea * <span class="number">0.7</span>);<br>
+        panels = Math.<span class="keyword">floor</span>((roofArea * <span class="number">0.75</span>) / <span class="number">1.7</span>);
+      </div>
+    </div>
+    <div class="arch-card">
+      <div class="card-icon">🎨</div>
+      <h3>Renderer — 实景渲染器</h3>
+      <p>生成精美的 HTML/CSS 太阳能板安装预览图（含动画太阳、房屋模型）。真实模式调用 DALL·E 3 生成照片级效果图。</p>
+      <div class="code-block">
+        <span class="comment">// 演示：HTML+CSS 渲染</span><br>
+        <span class="keyword">return</span> this._demoRender(property, outputDir);<br>
+        <span class="comment">// 真实：DALL·E 3 AI 绘图</span><br>
+        <span class="keyword">return</span> this._aiRender(property, outputDir);
+      </div>
+    </div>
+    <div class="arch-card">
+      <div class="card-icon">💰</div>
+      <h3>Pricer — 智能报价器</h3>
+      <p>基于行业标准价格模型：光伏板 ¥1.0/Wp、逆变器 ¥0.4/Wp、安装支架 ¥1.2/Wp。支持地区光照系数，自动计算年收益与回本周期。</p>
+      <div class="code-block">
+        items = [<br>
+        &nbsp;&nbsp;{ name: <span class="string">'单晶硅太阳能板'</span>, qty: panels },<br>
+        &nbsp;&nbsp;{ name: <span class="string">'组串式逆变器'</span>, qty: inverters },<br>
+        &nbsp;&nbsp;{ name: <span class="string">'支架系统 + 安装'</span>, qty: <span class="number">1</span> }<br>
+        ];
+      </div>
+    </div>
+    <div class="arch-card">
+      <div class="card-icon">📧</div>
+      <h3>Emailer — 邮件发送器</h3>
+      <p>多渠道搜索房东邮箱，生成带实景图和报价表的精美 HTML 邮件。支持 SMTP 发送、每日限额保护、邮件预览本地保存。</p>
+      <div class="code-block">
+        <span class="comment">// 查找房东邮箱 → 构建HTML → SMTP发送</span><br>
+        <span class="keyword">const</span> email = <span class="keyword">await</span> this._findOwnerEmail(property);<br>
+        <span class="keyword">const</span> html = this._buildEmailHTML(property);<br>
+        <span class="keyword">await</span> transporter.sendMail({ to, subject, html });
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Results -->
+<section class="results-showcase fade-in" id="results">
+  <div class="section-header">
+    <div class="subtitle" style="color: var(--accent-light);">Demo Results</div>
+    <h2>🏠 演示运行结果</h2>
+    <p>在上海地区运行 demo 模式，自动处理了 2 套别墅的完整勘察流程</p>
+  </div>
+  <div class="results-grid">
+
+    <!-- 别墅 1 -->
+    <div class="result-card">
+      <div class="preview">
+        <div class="sun"></div>
+        <div class="panels">
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div>
+        </div>
+        <div class="house-mini">
+          <div class="roof"></div>
+          <div class="body"></div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="tag">🏆 独栋别墅</div>
+        <h3>上海佘山月湖山庄</h3>
+        <div class="address">📍 上海松江区佘山月湖山庄88号 · ke.com</div>
+        <div class="specs">
+          <div class="spec"><div class="l">户型面积</div><div class="v">380 ㎡</div></div>
+          <div class="spec"><div class="l">屋顶面积</div><div class="v">264 ㎡</div></div>
+          <div class="spec"><div class="l">太阳能板</div><div class="v">116 块</div></div>
+          <div class="spec"><div class="l">装机容量</div><div class="v green">46.4 kWp</div></div>
+        </div>
+        <div class="quote-preview">
+          <div class="row"><span>单晶硅太阳能板</span><span>¥464,000</span></div>
+          <div class="row"><span>组串式逆变器</span><span>¥185,600</span></div>
+          <div class="row"><span>支架+安装+并网+运维</span><span>¥1,113,600</span></div>
+          <div class="row total"><span>💰 合计</span><span>¥1,763,200</span></div>
+          <div class="row" style="font-size:12px;color:rgba(255,255,255,0.4);">
+            <span>年发电 51,040 kWh · 年收益 ¥25,903 · 回本 68.1 年</span>
+          </div>
+        </div>
+        <div class="email-status">📧 已发送至 zhang@example.com ✅</div>
+      </div>
+    </div>
+
+    <!-- 别墅 2 -->
+    <div class="result-card">
+      <div class="preview">
+        <div class="sun"></div>
+        <div class="panels">
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div><div class="p"></div>
+          <div class="p"></div><div class="p"></div>
+        </div>
+        <div class="house-mini">
+          <div class="roof"></div>
+          <div class="body"></div>
+        </div>
+      </div>
+      <div class="body">
+        <div class="tag">🏆 豪华独栋</div>
+        <h3>上海汤臣高尔夫别墅</h3>
+        <div class="address">📍 上海浦东新区汤臣高尔夫球场内 · lianjia.com</div>
+        <div class="specs">
+          <div class="spec"><div class="l">户型面积</div><div class="v">520 ㎡</div></div>
+          <div class="spec"><div class="l">屋顶面积</div><div class="v">372 ㎡</div></div>
+          <div class="spec"><div class="l">太阳能板</div><div class="v">164 块</div></div>
+          <div class="spec"><div class="l">装机容量</div><div class="v green">65.6 kWp</div></div>
+        </div>
+        <div class="quote-preview">
+          <div class="row"><span>单晶硅太阳能板</span><span>¥656,000</span></div>
+          <div class="row"><span>组串式逆变器</span><span>¥262,400</span></div>
+          <div class="row"><span>支架+安装+并网+运维</span><span>¥1,574,400</span></div>
+          <div class="row total"><span>💰 合计</span><span>¥2,492,800</span></div>
+          <div class="row" style="font-size:12px;color:rgba(255,255,255,0.4);">
+            <span>年发电 72,160 kWh · 年收益 ¥36,621 · 回本 68.1 年</span>
+          </div>
+        </div>
+        <div class="email-status">📧 已发送至 li@example.com ✅</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section fade-in" id="features">
+  <div class="section-header">
+    <div class="subtitle">Features</div>
+    <h2>✨ 核心特性</h2>
+    <p>企业级 AI Agent 设计，兼顾演示与生产环境</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="f-icon">🔋</div>
+      <h3>Checkpoint 断点续跑</h3>
+      <p>每完成一步自动保存状态。网络中断或报错后，用 <code>--resume</code> 即可从中断处继续，无需重头开始。</p>
+    </div>
+    <div class="feature-card">
+      <div class="f-icon">🌐</div>
+      <h3>多数据源并行搜索</h3>
+      <p>同时搜索贝壳找房、链家、安居客三大平台，自动去重、过滤、提取户型图链接，覆盖率最大化。</p>
+    </div>
+    <div class="feature-card">
+      <div class="f-icon">🤖</div>
+      <h3>AI 双模式渲染</h3>
+      <p>演示模式用 HTML+CSS 生成高质量预览；真实模式调用 DALL·E 3 生成照片级实景图，自动 fallback。</p>
+    </div>
+    <div class="feature-card">
+      <div class="f-icon">📊</div>
+      <h3>专业级报价模型</h3>
+      <p>基于 2025 年行业价格标准，含光伏板、逆变器、支架、安装、并网及 5 年运维，支持地区光照系数调整。</p>
+    </div>
+    <div class="feature-card">
+      <div class="f-icon">📧</div>
+      <h3>智能邮件引擎</h3>
+      <p>自动搜索房东邮箱（姓名推测+多渠道查询），生成精美 HTML 邮件，支持 SMTP 发送+每日限额保护。</p>
+    </div>
+    <div class="feature-card">
+      <div class="f-icon">🎪</div>
+      <h3>开箱即用演示模式</h3>
+      <p>无需任何 API Key 或外部服务，<code>--mode=demo</code> 即可运行完整流程，内置 3 套高质量模拟别墅数据。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Usage -->
+<section class="usage-section fade-in" id="usage">
+  <div class="section-header">
+    <div class="subtitle" style="color: var(--accent-light);">Quick Start</div>
+    <h2>🚀 快速开始</h2>
+    <p>克隆项目后，一行命令即可运行完整 Solar Agent 流程</p>
+  </div>
+  <div class="usage-grid">
+    <div class="usage-terminal">
+      <div class="bar">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green"></div>
+        <div class="title">bash — solar-agent</div>
+      </div>
+      <div class="content">
+        <span class="comment"># 安装依赖</span><br>
+        <span class="prompt">$</span> cd solar-agent<br>
+        <span class="prompt">$</span> npm install<br><br>
+
+        <span class="comment"># 🎪 演示模式（无需API，立刻体验）</span><br>
+        <span class="prompt">$</span> npm run demo<br><br>
+
+        <span class="output">☀️  Solar Agent  —  太阳能勘察官</span><br>
+        <span class="output">全网搜别墅 → 实景图 → 报价 → 发邮件</span><br>
+        <span class="output">── Step 1/5: 🔍 全网搜索有户型图的别墅 ──</span><br>
+        <span class="output">✅ 找到 2 套带户型图的别墅</span><br>
+        <span class="output">── Step 5/5: 📧 自动发送报价邮件给房东 ──</span><br>
+        <span class="output">✅ 邮件已发送 ✓</span><br>
+        <span class="output">📄 完整报告: results/report-xxxx.md</span><br><br>
+
+        <span class="comment"># 🌐 真实模式（需配置 .env）</span><br>
+        <span class="prompt">$</span> node agent.mjs --city=上海 --max=5<br><br>
+
+        <span class="comment"># 🔄 断点续跑</span><br>
+        <span class="prompt">$</span> node agent.mjs --resume<br><br>
+
+        <span class="comment"># 📖 查看全部参数</span><br>
+        <span class="prompt">$</span> node agent.mjs --help
+      </div>
+    </div>
+    <div class="usage-params">
+      <div class="param-card">
+        <div class="param-name">--mode=demo</div>
+        <div class="param-desc">🎪 演示模式 — 用内置模拟数据运行，无需任何外部 API</div>
+        <div class="param-default">默认: real</div>
+      </div>
+      <div class="param-card">
+        <div class="param-name">--city=上海</div>
+        <div class="param-desc">📍 指定搜索城市，自动匹配对应城市代码</div>
+        <div class="param-default">默认: 上海</div>
+      </div>
+      <div class="param-card">
+        <div class="param-name">--max=5</div>
+        <div class="param-desc">🎯 最多处理的别墅数量（搜索→分析→报价→发邮件）</div>
+        <div class="param-default">默认: 3</div>
+      </div>
+      <div class="param-card">
+        <div class="param-name">--resume</div>
+        <div class="param-desc">🔄 从上次 checkpoint 继续，避免中断后重新跑</div>
+        <div class="param-default">—</div>
+      </div>
+      <div class="param-card">
+        <div class="param-name">.env 环境变量</div>
+        <div class="param-desc">
+          MAIL_HOST/SMTP 配置 · OPENAI_API_KEY · SEARCH_API_KEY<br>
+          SOLAR_PRICE_PER_WP 自定义单价 · EMAIL_QUOTA_DAILY 每日限额
+        </div>
+        <div class="param-default">详见 .env.example</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-brand">☀️ Solar Agent</div>
+  <p>AI 太阳能智能勘察系统 · 全网搜别墅 → 实景图 → 报价 → 发邮件</p>
+  <p style="margin-top:8px;">
+    由 <a href="#">Deepsix Coding Agent</a> 自动生成 ·
+    项目路径: <code style="color:rgba(255,255,255,0.3);">workspace/solar-agent/</code>
+  </p>
+  <p style="margin-top:16px; font-size:11px;">
+    本页面仅用于展示 Solar Agent 的功能与架构 · 实际运行请参照终端命令
+  </p>
+</footer>
+
+<!-- Scripts -->
+<script>
+// ─── Particles ───
+(function() {
+  const canvas = document.getElementById('particles-canvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  let w, h;
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      this.x = Math.random() * w;
+      this.y = Math.random() * h;
+      this.size = Math.random() * 2 + 0.5;
+      this.speedX = (Math.random() - 0.5) * 0.3;
+      this.speedY = (Math.random() - 0.5) * 0.3;
+      this.opacity = Math.random() * 0.5 + 0.1;
+    }
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+      ctx.fill();
+    }
+  }
+
+  const count = Math.min(80, Math.floor(w * h / 15000));
+  for (let i = 0; i < count; i++) particles.push(new Particle());
+
+  function animate() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => { p.update(); p.draw(); });
+    // Draw connections
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(255, 255, 255, ${0.08 * (1 - dist/120)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+  animate();
+})();
+
+// ─── Navbar scroll effect ───
+(function() {
+  const nav = document.getElementById('navbar');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 40);
+  });
+})();
+
+// ─── Fade-in scroll animation ───
+(function() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+})();
+
+// ─── Pipeline hover step link ───
+(function() {
+  document.querySelectorAll('.pipeline-step').forEach(step => {
+    step.addEventListener('click', function() {
+      const idx = Array.from(this.parentElement.children).indexOf(this);
+      const archCards = document.querySelectorAll('.arch-card');
+      if (archCards[idx]) {
+        archCards[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        archCards[idx].style.transition = 'transform 0.3s, box-shadow 0.3s';
+        archCards[idx].style.transform = 'scale(1.03)';
+        archCards[idx].style.boxShadow = '0 16px 48px rgba(26,35,126,0.25)';
+        setTimeout(() => {
+          archCards[idx].style.transform = '';
+          archCards[idx].style.boxShadow = '';
+        }, 1500);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

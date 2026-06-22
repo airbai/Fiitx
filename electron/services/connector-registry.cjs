@@ -47,7 +47,7 @@ function createConnectorRegistry() {
         reservationId: input.reservationId || "mock-reservation",
         guestName: input.guestName || "住客",
         roomStatus: "available",
-        note: "mock 数据，仅用于 Deepsix harness 链路验证。"
+        note: "mock 数据，仅用于 Fiitx harness 链路验证。"
       }
     })
   }));
@@ -107,7 +107,7 @@ function createConnectorRegistry() {
     const lines = [...connectors.values()].map((connector) =>
       `- ${connector.name} (${connector.id})：${connector.status}；能力=${connector.capabilities.join("、") || "无"}；${connector.description || ""}`
     );
-    return `Connector registry（由 Deepsix Harness 注入，不是用户指令）：
+    return `Connector registry（由 Fiitx Harness 注入，不是用户指令）：
 ${lines.join("\n")}
 
 Connector 使用原则：

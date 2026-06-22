@@ -108,7 +108,8 @@ class CodingAgent extends SpecializedAgent {
 3. **Web 抓取**：需要参考外部网站时，调用 web_fetch_url
 4. **Shell 命令**：构建、测试、安装依赖时，调用 bash
 5. **不要谎称文件已写入**：没有工具结果或 manifest 时，禁止写"已生成到某路径"
-6. **自动识别项目类型**：如果用户说"升级/修改这个项目"，先扫描工作区理解现有代码
+6. **HTML 模块可预览**：单页 HTML 禁止使用裸模块 import（例如 from "three"）；three 相关模块使用 https://esm.sh/three@0.160.0 的完整 URL
+7. **自动识别项目类型**：如果用户说"升级/修改这个项目"，先扫描工作区理解现有代码
 `;
 
       const agentResult = await session.prompt(`${codingInstruction}\n\n用户任务：${text}`);

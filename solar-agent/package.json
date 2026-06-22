@@ -1,0 +1,24 @@
+{
+  "name": "solar-agent",
+  "version": "1.0.0",
+  "description": "全网自动搜索有户型图别墅 → 生成太阳能板实景图 → 报价 → 自动发邮件给房东",
+  "type": "module",
+  "main": "agent.mjs",
+  "scripts": {
+    "start": "node agent.mjs",
+    "dev": "node agent.mjs --mode=demo",
+    "demo": "node agent.mjs --mode=demo --city=上海 --max=2",
+    "resume": "node agent.mjs --resume"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^6.9.16",
+    "cheerio": "^1.0.0",
+    "puppeteer": "^24.0.0",
+    "sharp": "^0.33.5"
+  },
+  "optionalDependencies": {
+    "openai": "^4.73.0"
+  }
+}

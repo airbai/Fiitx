@@ -17,6 +17,7 @@ import {
   Check,
   ChevronDown,
   ClipboardCheck,
+  Code2,
   Copy,
   Database,
   Download,
@@ -55,15 +56,12 @@ import {
   Workflow,
   X
 } from "lucide-react";
-// Fiitx logo kept for easy restore:
-// import logoUrl from "../assets/fiitx-logo.png";
-import logoUrl from "../assets/deepsix-logo.png";
+import { WorkspaceIDE } from "./components/IDE/WorkspaceIDE";
+import { MessageList } from "./components/chat/MessageList";
+import logoUrl from "../assets/fiitx-logo.png";
 
-// Fiitx product name kept for easy restore:
-// const PRODUCT_NAME = "Fiitx";
-// const PRODUCT_EYEBROW = "Fiitx BYOM Agent Desktop";
-const PRODUCT_NAME = "Deepsix";
-const PRODUCT_EYEBROW = "Deepsix BYOM Agent Desktop";
+const PRODUCT_NAME = "Fiitx";
+const PRODUCT_EYEBROW = "Fiitx BYOM Agent Desktop";
 const PRODUCT_SUBTITLE = "Enterprise Agent";
 
 hljs.registerLanguage("bash", bash);
@@ -85,11 +83,12 @@ hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("html", xml);
 hljs.registerLanguage("wxml", xml);
 
-type View = "workbench" | "models" | "agents" | "approvals" | "audit" | "settings";
+type View = "workbench" | "models" | "agents" | "approvals" | "history" | "audit" | "settings";
 type ThreadStatus = "running" | "waiting" | "done";
 type ApprovalStatus = "pending" | "approved" | "denied";
 type ArtifactId = "report" | "ppt" | "diff" | "image";
 type PanelKey = "sidebar" | "artifact" | "terminal";
+type RightPaneMode = "preview" | "code";
 type PermissionMode = "ask" | "auto" | "full";
 type ToolPolicyMode = PermissionMode | "block";
 
@@ -117,6 +116,10 @@ type Message = {
   author: string;
   body: string;
   time: string;
+  taskId?: string;
+  streamBaseBody?: string;
+  streamEvents?: FiitxAgentProgress[];
+  streamStatus?: "running" | "finished";
   approvalId?: string;
 };
 
@@ -292,6 +295,7 @@ const navItems: NavItem[] = [
   { id: "models", label: "模型中心", icon: Brain },
   { id: "agents", label: "Agent", icon: Bot },
   { id: "approvals", label: "审批", icon: ClipboardCheck },
+  { id: "history", label: "历史", icon: GitBranch },
   { id: "audit", label: "审计", icon: Activity },
   { id: "settings", label: "策略", icon: Settings }
 ];
@@ -350,7 +354,7 @@ const defaultAgentSpecs: AgentSpec[] = [
       }
     ],
     metrics: ["跨系统人工查询减少 40%", "审批动作可追溯", "任务上下文可恢复", "输出质量统一"],
-    channels: ["Deepsix Workbench", "微信小程序 AI", "企业微信", "PMS 事件"],
+    channels: ["Fiitx Workbench", "微信小程序 AI", "企业微信", "PMS 事件"],
     policy: "ask",
     accent: "blue"
   },
@@ -599,7 +603,7 @@ const defaultAgentSpecs: AgentSpec[] = [
 const defaultChannelAdapters: ChannelAdapterSpec[] = [
   {
     id: "deepsix-workbench",
-    name: "Deepsix Workbench",
+    name: "Fiitx Workbench",
     channelType: "desktop-ui",
     description: "桌面工作台入口，承接 chat / coding / artifact / approval 的完整 AgentSession 生命周期。",
     transport: "Electron IPC / local session",
@@ -956,6 +960,23 @@ const videoExtensions = new Set(["mp4", "mov", "m4v", "webm", "ogv"]);
 const audioExtensions = new Set(["mp3", "m4a", "wav", "ogg", "flac", "aac"]);
 const htmlExtensions = new Set(["html", "htm"]);
 const pdfExtensions = new Set(["pdf"]);
+const artifactPreviewExtensions = new Set([
+  ...imageExtensions,
+  ...videoExtensions,
+  ...audioExtensions,
+  ...htmlExtensions,
+  ...pdfExtensions,
+  "doc",
+  "docx",
+  "key",
+  "md",
+  "markdown",
+  "ppt",
+  "pptx",
+  "rtf",
+  "txt"
+]);
+const inlineStreamEventLimit = 14;
 
 const fileArtifacts: FileArtifact[] = [];
 
@@ -1072,11 +1093,13 @@ export default function App() {
   const [approvals, setApprovals] = useState(initialApprovals);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactId>("report");
+  const [rightPaneMode, setRightPaneMode] = useState<RightPaneMode>("preview");
   const [artifactMaximized, setArtifactMaximized] = useState(false);
   const [visualSourceModes, setVisualSourceModes] = useState<Record<string, "preview" | "source">>({});
   const [composer, setComposer] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileArtifact | null>(null);
+  const [selectedWorkspaceFile, setSelectedWorkspaceFile] = useState<{ path: string; requestId: number } | null>(null);
   const [artifacts, setArtifacts] = useState<FileArtifact[]>(fileArtifacts);
   const [expandedResourceGroups, setExpandedResourceGroups] = useState<Record<string, boolean>>({});
   const [resourceContextMenu, setResourceContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
@@ -1143,6 +1166,15 @@ export default function App() {
   const [harnessLoading, setHarnessLoading] = useState(false);
   const [agentAdminOpen, setAgentAdminOpen] = useState(false);
   const [agentDebugOpen, setAgentDebugOpen] = useState(false);
+  const [historySnapshot, setHistorySnapshot] = useState<FiitxAgentHistorySnapshot | null>(null);
+  const [historyTrace, setHistoryTrace] = useState<FiitxAgentTrace | null>(null);
+  const [historyCompare, setHistoryCompare] = useState<FiitxRunCompare | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedHistoryThreadId, setSelectedHistoryThreadId] = useState("");
+  const [compareLeftThreadId, setCompareLeftThreadId] = useState("");
+  const [compareRightThreadId, setCompareRightThreadId] = useState("");
+  const [versionDiffLeftId, setVersionDiffLeftId] = useState("");
+  const [versionDiffRightId, setVersionDiffRightId] = useState("");
 
   const activeThread = useMemo<Thread>(
     () =>
@@ -1185,6 +1217,7 @@ export default function App() {
   }
 
   function snapshotCurrentThreadRecord(overrides: Partial<ThreadRecord> = {}) {
+    const existingRecord = normalizeThreadRecord(threadRecords[activeThreadId] as Partial<ThreadRecord> | undefined);
     return normalizeThreadRecord({
       messages,
       progressEvents: agentProgressEvents,
@@ -1195,6 +1228,8 @@ export default function App() {
       executionStartedAt,
       executionFinishedAt,
       executionExpanded,
+      sessionEntries: existingRecord.sessionEntries,
+      currentEntryId: existingRecord.currentEntryId,
       ...overrides
     });
   }
@@ -1421,9 +1456,11 @@ export default function App() {
       const targetThreadId = event.threadId || activeThreadId;
       if (targetThreadId === activeThreadId) {
         setAgentProgressEvents((current) => current.concat(event).slice(-64));
+        setMessages((current) => applyAgentStreamEventToMessages(current, event));
       }
       updateThreadRecord(targetThreadId, (record) => ({
         ...record,
+        messages: applyAgentStreamEventToMessages(record.messages, event),
         progressEvents: record.progressEvents.concat(event).slice(-64)
       }));
     });
@@ -1455,7 +1492,7 @@ export default function App() {
         id: threadId,
         title: buildFallbackTaskTitle(event.inbound?.text || "微信客户消息"),
         kind: "微信 ClawBot",
-        model: "deepsix-gateway",
+        model: "fiitx-gateway",
         status: "done",
         updatedAt: "刚刚",
         createdAt: Date.now(),
@@ -1500,7 +1537,7 @@ export default function App() {
         {
           id: `message-wechat-agent-${Date.now()}`,
           role: "agent",
-          author: "Deepsix Gateway",
+          author: "Fiitx Gateway",
           body: event.reply?.text || "已通过微信 Channel 处理。",
           time: receivedAt
         }
@@ -1556,6 +1593,13 @@ export default function App() {
     }
     void refreshHarnessSnapshot();
   }, [activeView, harnessSnapshot, harnessLoading]);
+
+  useEffect(() => {
+    if (activeView !== "history" || historySnapshot || historyLoading) {
+      return;
+    }
+    void refreshHistorySnapshot();
+  }, [activeView, historySnapshot, historyLoading]);
 
   useEffect(() => {
     if (!visiblePanels.terminal) {
@@ -1651,6 +1695,87 @@ export default function App() {
       level
     };
     setAuditLogs((current) => [log, ...current]);
+  }
+
+  async function refreshHistorySnapshot() {
+    if (!window.fiitx?.getAgentHistorySnapshot) {
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const snapshot = await window.fiitx.getAgentHistorySnapshot({ limit: 1500 });
+      setHistorySnapshot(snapshot);
+      const fallbackThreadId = snapshot.activeThreadId || snapshot.threads[0]?.id || "";
+      setSelectedHistoryThreadId((current) => current || fallbackThreadId);
+      setCompareLeftThreadId((current) => current || fallbackThreadId);
+      setCompareRightThreadId((current) => current || snapshot.threads.find((thread) => thread.id !== fallbackThreadId)?.id || fallbackThreadId);
+      const allVersions = [...snapshot.promptVersions, ...snapshot.policyVersions];
+      const firstVersionKey = allVersions[0] ? `${allVersions[0].id}:${allVersions[0].version}` : "";
+      const secondVersion = allVersions.find((version) => `${version.id}:${version.version}` !== firstVersionKey);
+      setVersionDiffLeftId((current) => current || firstVersionKey);
+      setVersionDiffRightId((current) => current || (secondVersion ? `${secondVersion.id}:${secondVersion.version}` : firstVersionKey));
+      if (fallbackThreadId && !historyTrace) {
+        void openHistoryTrace(fallbackThreadId);
+      }
+    } catch (error) {
+      addAudit("Agent History", "刷新失败", error instanceof Error ? error.message : "history snapshot failed", "warn");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function openHistoryTrace(threadId: string) {
+    if (!threadId || !window.fiitx?.getAgentTrace) {
+      return;
+    }
+    setSelectedHistoryThreadId(threadId);
+    setHistoryLoading(true);
+    try {
+      const trace = await window.fiitx.getAgentTrace({ threadId, limit: 1500 });
+      setHistoryTrace(trace);
+    } catch (error) {
+      addAudit("Agent History", "Trace 加载失败", error instanceof Error ? error.message : threadId, "warn");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function compareHistoryRuns() {
+    if (!compareLeftThreadId || !compareRightThreadId || !window.fiitx?.compareAgentRuns) {
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const result = await window.fiitx.compareAgentRuns({
+        leftThreadId: compareLeftThreadId,
+        rightThreadId: compareRightThreadId,
+        limit: 1500
+      });
+      setHistoryCompare(result);
+      addAudit("Agent History", "Run Compare", `${compareLeftThreadId} <-> ${compareRightThreadId}`, "info");
+    } catch (error) {
+      addAudit("Agent History", "Run Compare 失败", error instanceof Error ? error.message : "compare failed", "warn");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function exportHistoryAudit(threadId = selectedHistoryThreadId || activeThreadId) {
+    if (!threadId || !window.fiitx?.exportAgentAuditPackage) {
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const result = await window.fiitx.exportAgentAuditPackage({ threadId, limit: 1500 });
+      addAudit("Agent History", "导出审计包", result.path, result.ok ? "success" : "warn");
+      if (result.ok) {
+        void window.fiitx?.openContainingFolder?.(result.path);
+      }
+    } catch (error) {
+      addAudit("Agent History", "导出审计包失败", error instanceof Error ? error.message : threadId, "warn");
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   function getTerminalWorkspaceLabel() {
@@ -1839,7 +1964,7 @@ export default function App() {
       .slice(-14)
       .map((message) => ({
         role: message.role === "user" ? "user" as const : "assistant" as const,
-        content: message.body,
+        content: message.role === "user" ? message.body : stripAgentStreamSection(message.body),
         time: message.time
       }));
   }
@@ -1898,7 +2023,7 @@ export default function App() {
         .map((message) => ({
           role: message.role === "user" ? "user" as const : "assistant" as const,
           author: message.author,
-          content: clipThreadContext(message.body, 900),
+          content: clipThreadContext(message.role === "user" ? message.body : stripAgentStreamSection(message.body), 900),
           time: message.time
         }))
     };
@@ -2006,6 +2131,49 @@ export default function App() {
     return "路径";
   }
 
+  function normalizeFileExtension(value?: string) {
+    return String(value || "").replace(/^\./, "").toLowerCase();
+  }
+
+  function getPathInfoExtension(info: PathInfo) {
+    const fromInfo = normalizeFileExtension(info.extension);
+    if (fromInfo) {
+      return fromInfo;
+    }
+    const basename = info.path.split("?")[0].split("#")[0].split("/").pop() || "";
+    return normalizeFileExtension(basename.includes(".") ? basename.split(".").pop() : "");
+  }
+
+  function isArtifactPreviewFile(info: PathInfo) {
+    return info.exists && info.kind === "file" && artifactPreviewExtensions.has(getPathInfoExtension(info));
+  }
+
+  function isIdeOpenableFile(info: PathInfo) {
+    return info.exists && info.kind === "file" && Boolean(info.previewable);
+  }
+
+  function getActiveWorkspaceRoot() {
+    return activeThread.workspacePath || workspacePath;
+  }
+
+  function toWorkspaceRelativePath(filePath: string, rootPath = getActiveWorkspaceRoot()) {
+    const root = String(rootPath || "").replace(/\\/g, "/").replace(/\/+$/g, "");
+    const target = String(filePath || "").replace(/\\/g, "/");
+    if (!target || !root) {
+      return "";
+    }
+    if (!target.startsWith("/")) {
+      return target.replace(/^\.{1,2}\//, "").replace(/^\/+/, "");
+    }
+    if (target === root) {
+      return "";
+    }
+    if (!target.startsWith(`${root}/`)) {
+      return "";
+    }
+    return target.slice(root.length + 1);
+  }
+
   async function inspectMessagePath(path: string) {
     const cached = pathInfoMap[path];
     if (cached) {
@@ -2041,7 +2209,8 @@ export default function App() {
     );
   }
 
-  function showLocalFileArtifact(info: PathInfo, previewText?: string) {
+  function showLocalFileArtifact(info: PathInfo, previewText?: string, options: { openPanel?: boolean } = {}) {
+    const { openPanel = true } = options;
     const body = previewText || [
       `# ${info.name}`,
       "",
@@ -2063,7 +2232,7 @@ export default function App() {
     };
     updateArtifactsForThread(activeThreadId, (current) => [artifact, ...current.filter((item) => item.path !== artifact.path)], true);
     setThreadLastArtifact(activeThreadId, artifact, true);
-    selectFileArtifact(artifact);
+    selectFileArtifact(artifact, { openPanel, mode: "preview" });
   }
 
   async function previewLocalPath(path: string, knownInfo?: PathInfo) {
@@ -2093,6 +2262,77 @@ export default function App() {
     }
   }
 
+  async function openLocalPathInIde(path: string, knownInfo?: PathInfo) {
+    try {
+      const info = knownInfo ?? await inspectMessagePath(path);
+      if (!info?.exists || info.kind !== "file") {
+        addAudit("Workspace IDE", "无法打开代码", `${path}: 不是文件`, "warn");
+        return false;
+      }
+      if (!isIdeOpenableFile(info)) {
+        addAudit("Workspace IDE", "无法打开代码", `${info.path}: 当前文件类型不支持文本编辑`, "warn");
+        return false;
+      }
+
+      const relativePath = toWorkspaceRelativePath(info.path);
+      if (!relativePath) {
+        addAudit("Workspace IDE", "无法打开代码", `${info.path}: 不在当前 workspace 内`, "warn");
+        await openLocalPath(info.path);
+        return false;
+      }
+
+      setSelectedWorkspaceFile({
+        path: relativePath,
+        requestId: Date.now() + Math.random()
+      });
+      setRightPaneMode("code");
+      setVisiblePanels((current) => ({
+        ...current,
+        artifact: true
+      }));
+      addAudit("Workspace IDE", "打开代码", relativePath, "info");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "打开代码失败";
+      addAudit("Workspace IDE", "打开代码失败", `${path}: ${message}`, "warn");
+      return false;
+    }
+  }
+
+  async function previewResourcePath(path: string) {
+    try {
+      const info = await inspectMessagePath(path);
+      if (!info?.exists) {
+        addAudit("Workspace Manager", "路径不存在", path, "warn");
+        return;
+      }
+
+      if (info.kind === "directory") {
+        await openLocalPath(info.path);
+        return;
+      }
+
+      if (isArtifactPreviewFile(info)) {
+        if (info.previewable) {
+          await previewLocalPath(info.path, info);
+        } else {
+          showLocalFileArtifact(info);
+        }
+        return;
+      }
+
+      if (isIdeOpenableFile(info)) {
+        await openLocalPathInIde(info.path, info);
+        return;
+      }
+
+      showLocalFileArtifact(info);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "预览资源失败";
+      addAudit("Artifact Engine", "预览资源失败", `${path}: ${message}`, "warn");
+    }
+  }
+
   async function activateLocalPath(path: string) {
     try {
       const info = await inspectMessagePath(path);
@@ -2107,11 +2347,7 @@ export default function App() {
       }
 
       if (info.kind === "file") {
-        if (info.previewable) {
-          await previewLocalPath(path, info);
-        } else {
-          showLocalFileArtifact(info);
-        }
+        await previewResourcePath(info.path);
         return;
       }
 
@@ -2184,8 +2420,8 @@ export default function App() {
     }
     setResourceContextMenu({
       path,
-      x: Math.min(event.clientX, window.innerWidth - 190),
-      y: Math.min(event.clientY, window.innerHeight - 56)
+      x: Math.min(event.clientX, window.innerWidth - 210),
+      y: Math.min(event.clientY, window.innerHeight - 132)
     });
   }
 
@@ -2842,7 +3078,10 @@ export default function App() {
     if (message.role !== "user") {
       return (
         <>
-          <div className="markdown-message">
+          <div
+            className={message.streamStatus === "running" ? "markdown-message agent-streaming-message" : "markdown-message"}
+            aria-live={message.streamStatus === "running" ? "polite" : undefined}
+          >
             <button className="markdown-copy-button" onClick={() => copyText(message.body)} title="复制 Markdown">
               <Copy size={14} />
               <span>复制</span>
@@ -2879,10 +3118,11 @@ export default function App() {
     }));
   }
 
-  function selectFileArtifact(file: FileArtifact, options: { openPanel?: boolean } = {}) {
-    const { openPanel = true } = options;
+  function selectFileArtifact(file: FileArtifact, options: { openPanel?: boolean; mode?: RightPaneMode } = {}) {
+    const { openPanel = true, mode = "preview" } = options;
     setSelectedFile(file);
     setActiveArtifact(getArtifactIdForFile(file));
+    setRightPaneMode(mode);
     if (openPanel) {
       setVisiblePanels((current) => ({
         ...current,
@@ -3153,7 +3393,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     }
     setEvalLoading(true);
     try {
-      const result = await window.fiitx?.runAgentEval?.(buildAgentRuntimePayload(routeLabPrompt || "评估 Deepsix Agent 路由", `eval-${Date.now()}`));
+      const result = await window.fiitx?.runAgentEval?.(buildAgentRuntimePayload(routeLabPrompt || "评估 Fiitx Agent 路由", `eval-${Date.now()}`));
       if (result) {
         setEvalResult(result);
       }
@@ -3179,6 +3419,31 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
 
   function inferAgentMode(prompt: string, files: string[] = []): "chat" | "coding" {
     const text = prompt.toLowerCase();
+    const hasUrl = /https?:\/\/|(?:^|[\s，。；;])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/|\b)/i.test(prompt);
+    const creationIntent = /做|制作|生成|创建|搭建|开发|实现|复刻|仿照|设计|输出|写/.test(prompt);
+    const interactiveArtifactIntent = [
+      "小游戏",
+      "游戏",
+      "游览",
+      "漫游",
+      "导览",
+      "场景",
+      "主角",
+      "角色",
+      "npc",
+      "交互",
+      "互动",
+      "three",
+      "3d",
+      "canvas",
+      "地图",
+      "关卡",
+      "像素",
+      "动画",
+      "页面",
+      "网站"
+    ].some((signal) => text.includes(signal.toLowerCase()));
+    const referenceDeliveryIntent = hasUrl && /参考|照着|仿照|复刻|风格|类似/.test(prompt) && creationIntent;
     const signals = [
       "代码",
       "项目",
@@ -3214,7 +3479,12 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       "保存",
       "导出"
     ];
-    return files.length > 0 || signals.some((signal) => text.includes(signal.toLowerCase())) ? "coding" : "chat";
+    return files.length > 0 ||
+      referenceDeliveryIntent ||
+      (creationIntent && interactiveArtifactIntent) ||
+      signals.some((signal) => text.includes(signal.toLowerCase()))
+      ? "coding"
+      : "chat";
   }
 
   function shouldSkipBusinessAgentForPrompt(prompt: string, files: string[] = []) {
@@ -3457,9 +3727,11 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
 
     if (display) {
       setAgentProgressEvents((current) => current.concat(event).slice(-64));
+      setMessages((current) => applyAgentStreamEventToMessages(current, event));
     }
     updateThreadRecord(threadId, (record) => ({
       ...appendSessionEntryToRecord(record, "progress", event),
+      messages: applyAgentStreamEventToMessages(record.messages, event),
       progressEvents: record.progressEvents.concat(event).slice(-64)
     }));
   }
@@ -3490,6 +3762,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     if (activeThread.status === "waiting" && pendingApprovalCount > 0) {
       return "等待审批";
     }
+    if (activeThread.status === "waiting" || latestProgress?.status === "warn") {
+      return "未完成";
+    }
     return "已处理";
   }
 
@@ -3498,6 +3773,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       return "running";
     }
     if (activeThread.status === "waiting" && pendingApprovalCount > 0) {
+      return "warn";
+    }
+    if (activeThread.status === "waiting" || latestProgress?.status === "warn") {
       return "warn";
     }
     return "done";
@@ -3526,6 +3804,137 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       return "";
     }
     return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+  }
+
+  function stripAgentStreamSection(value?: string) {
+    return String(value || "")
+      .replace(/\n{0,2}---\n\n### (?:实时执行|执行过程)[\s\S]*$/m, "")
+      .trim();
+  }
+
+  function formatProgressClock(value?: string) {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(date);
+  }
+
+  function progressStatusText(status: FiitxAgentProgress["status"]) {
+    if (status === "success") {
+      return "完成";
+    }
+    if (status === "warn") {
+      return "注意";
+    }
+    if (status === "info") {
+      return "信息";
+    }
+    return "运行中";
+  }
+
+  function dedupeProgressEvents(events: FiitxAgentProgress[]) {
+    const seen = new Set<string>();
+    return events.filter((event) => {
+      const key = event.id || `${event.taskId}:${event.title}:${event.detail}:${event.time}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function formatInlineProgressEvent(event: FiitxAgentProgress) {
+    const clock = formatProgressClock(event.time);
+    const detail = clipExecutionDetail(event.detail, 130);
+    return [
+      "-",
+      clock ? `\`${clock}\`` : "",
+      `[${progressStatusText(event.status)}]`,
+      event.title || "执行中",
+      detail ? `：${detail}` : ""
+    ].filter(Boolean).join(" ");
+  }
+
+  function buildAgentStreamingBody(baseBody: string, events: FiitxAgentProgress[], status: Message["streamStatus"] = "running") {
+    const cleanBase = stripAgentStreamSection(baseBody) || "正在执行任务。";
+    const cleanEvents = dedupeProgressEvents(events).filter((event) => event.title || event.detail);
+    if (cleanEvents.length === 0) {
+      return cleanBase;
+    }
+
+    const hiddenCount = Math.max(0, cleanEvents.length - inlineStreamEventLimit);
+    const visibleEvents = cleanEvents.slice(-inlineStreamEventLimit);
+    const heading = status === "finished" ? "执行过程" : "实时执行";
+    const footer = status === "finished" ? "" : "\n结果会随执行进度继续更新。";
+
+    return [
+      cleanBase,
+      "",
+      "---",
+      "",
+      `### ${heading}`,
+      hiddenCount > 0 ? `已省略前 ${hiddenCount} 步，完整记录见下方执行时间线。` : "",
+      visibleEvents.map(formatInlineProgressEvent).join("\n"),
+      footer
+    ].filter(Boolean).join("\n");
+  }
+
+  function applyAgentStreamEventToMessages(current: Message[], event: FiitxAgentProgress) {
+    if (!event.taskId) {
+      return current;
+    }
+
+    const targetIndex = (() => {
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        const message = current[index];
+        if (message.role === "agent" && message.taskId === event.taskId) {
+          return index;
+        }
+      }
+      return -1;
+    })();
+
+    if (targetIndex < 0) {
+      return current;
+    }
+
+    return current.map((message, index) => {
+      if (index !== targetIndex) {
+        return message;
+      }
+
+      const streamEvents = dedupeProgressEvents([...(message.streamEvents || []), event]).slice(-64);
+      const baseBody = message.streamBaseBody || stripAgentStreamSection(message.body);
+      const streamStatus = message.streamStatus || "running";
+      return {
+        ...message,
+        streamBaseBody: baseBody,
+        streamEvents,
+        streamStatus,
+        body: buildAgentStreamingBody(baseBody, streamEvents, streamStatus)
+      };
+    });
+  }
+
+  function finalizeAgentStreamMessage(message: Message, body: string) {
+    const streamEvents = dedupeProgressEvents(message.streamEvents || []).slice(-64);
+    return {
+      ...message,
+      streamBaseBody: body,
+      streamEvents,
+      streamStatus: "finished" as const,
+      body: buildAgentStreamingBody(body, streamEvents, "finished")
+    };
   }
 
   function renderExecutionDetail(detail: string, key: string) {
@@ -4025,11 +4434,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     updateMessagesForThread(threadId, (current) =>
       current.map((message) =>
         message.id === agentMessageId
-          ? {
-              ...message,
-              author: result.agentName ?? (result.ok ? fallbackAuthor : "Agent Runtime"),
-              body: summary
-            }
+          ? finalizeAgentStreamMessage(
+              {
+                ...message,
+                author: result.agentName ?? (result.ok ? fallbackAuthor : "Agent Runtime")
+              },
+              summary
+            )
           : message
       )
     , threadId === activeThreadId);
@@ -4109,6 +4520,10 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         role: "agent",
         author: "Coding Agent",
         body: "正在从当前 AgentSession 继续上一个未完成回合。",
+        taskId,
+        streamBaseBody: "正在从当前 AgentSession 继续上一个未完成回合。",
+        streamEvents: [],
+        streamStatus: "running",
         time: timeNow()
       }
     ], true);
@@ -4140,11 +4555,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       updateMessagesForThread(threadId, (current) =>
         current.map((item) =>
           item.id === agentMessageId
-            ? {
-                ...item,
-                author: "Agent Runtime",
-                body: `继续执行失败：${message}`
-              }
+            ? finalizeAgentStreamMessage(
+                {
+                  ...item,
+                  author: "Agent Runtime"
+                },
+                `继续执行失败：${message}`
+              )
             : item
         )
       , true);
@@ -4263,8 +4680,6 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       executionFinishedAt: null,
       executionExpanded: false
     }));
-    recordAgentProgress(taskId, "提交任务", visibleBody.slice(0, 120), "running", runtimeThread.id, true);
-
     updateMessagesForThread(runtimeThread.id, (current) => [
       ...current,
       {
@@ -4279,9 +4694,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         role: "agent",
         author: optimisticAgentLabel,
         body: optimisticBody,
-          time: timeNow()
-        }
+        taskId,
+        streamBaseBody: optimisticBody,
+        streamEvents: [],
+        streamStatus: "running",
+        time: timeNow()
+      }
     ], true);
+    recordAgentProgress(taskId, "提交任务", visibleBody.slice(0, 120), "running", runtimeThread.id, true);
     setThreads((current) =>
       current.map((thread) =>
         thread.id === runtimeThread.id
@@ -4313,11 +4733,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       updateMessagesForThread(runtimeThread.id, (current) =>
         current.map((message) =>
           message.id === agentMessageId
-            ? {
-                ...message,
-                author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
-                body: result.summary
-              }
+            ? finalizeAgentStreamMessage(
+                {
+                  ...message,
+                  author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime")
+                },
+                result.summary
+              )
             : message
         )
       , true);
@@ -4364,11 +4786,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       updateMessagesForThread(runtimeThread.id, (current) =>
         current.map((item) =>
           item.id === agentMessageId
-            ? {
-                ...item,
-                author: "Agent Runtime",
-                body: `任务失败：${message}`
-              }
+            ? finalizeAgentStreamMessage(
+                {
+                  ...item,
+                  author: "Agent Runtime"
+                },
+                `任务失败：${message}`
+              )
             : item
         )
       , true);
@@ -4424,7 +4848,6 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       executionFinishedAt: null,
       executionExpanded: false
     }));
-    recordAgentProgress(taskId, "恢复执行", approval.command, "running", payload.threadId, payload.threadId === activeThreadId);
     updateMessagesForThread(payload.threadId, (current) => [
       ...current,
       {
@@ -4432,9 +4855,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         role: "agent",
         author: "Coding Agent",
         body: "已收到审批，继续执行任务。",
+        taskId,
+        streamBaseBody: "已收到审批，继续执行任务。",
+        streamEvents: [],
+        streamStatus: "running",
         time: timeNow()
       }
     ], payload.threadId === activeThreadId);
+    recordAgentProgress(taskId, "恢复执行", approval.command, "running", payload.threadId, payload.threadId === activeThreadId);
 
     try {
       const result = await runAgentTask(payload);
@@ -4444,11 +4872,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       updateMessagesForThread(payload.threadId, (current) =>
         current.map((message) =>
           message.id === agentMessageId
-            ? {
-                ...message,
-                author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
-                body: result.summary
-              }
+            ? finalizeAgentStreamMessage(
+                {
+                  ...message,
+                  author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime")
+                },
+                result.summary
+              )
             : message
         )
       , payload.threadId === activeThreadId);
@@ -4477,6 +4907,19 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       recordAgentProgress(taskId, result.ok ? "执行完成" : "执行异常", result.summary, result.ok ? "success" : "warn", payload.threadId, payload.threadId === activeThreadId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "审批后恢复执行失败";
+      updateMessagesForThread(payload.threadId, (current) =>
+        current.map((item) =>
+          item.id === agentMessageId
+            ? finalizeAgentStreamMessage(
+                {
+                  ...item,
+                  author: "Agent Runtime"
+                },
+                `审批后恢复执行失败：${message}`
+              )
+            : item
+        )
+      , payload.threadId === activeThreadId);
       recordAgentProgress(taskId, "恢复失败", message, "warn", payload.threadId, payload.threadId === activeThreadId);
       addAudit("Agent Runtime", "审批后恢复失败", message, "warn");
     } finally {
@@ -4786,7 +5229,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     const title =
       panel === "sidebar"
         ? isVisible ? "收起左侧导航" : "展开左侧导航"
-        : isVisible ? "收起 Artifact" : "展开 Artifact";
+        : isVisible ? "收起右侧面板" : "展开右侧面板";
 
     return (
       <button
@@ -4807,7 +5250,6 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         <div className="brand">
           <img src={logoUrl} alt={PRODUCT_NAME} />
           <div className="brand-copy">
-            <strong>{PRODUCT_NAME}</strong>
             <span>{PRODUCT_SUBTITLE}</span>
           </div>
           {renderPaneToggleButton("sidebar", "sidebar-brand-toggle")}
@@ -4917,23 +5359,11 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
               </div>
             ) : null}
 
-            <div className="message-list">
-              {messages.map((message) => (
-                <article key={message.id} className={`message ${message.role}`}>
-                  <div className="avatar">
-                    {message.role === "user" ? <UserRound size={16} /> : message.role === "agent" ? <Bot size={16} /> : <ShieldCheck size={16} />}
-                  </div>
-                  <div className="message-body">
-                    <div className="message-meta">
-                      <strong>{message.author}</strong>
-                      <span>{message.time}</span>
-                    </div>
-                    {renderMessageBody(message)}
-                  </div>
-                </article>
-              ))}
-              {renderExecutionActivity()}
-            </div>
+            <MessageList
+              messages={messages}
+              renderMessageBody={renderMessageBody}
+              renderExecutionActivity={renderExecutionActivity}
+            />
             <div className="message-end-anchor" ref={messageEndRef} />
           </div>
 
@@ -5017,53 +5447,45 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         </section>
 
         {visiblePanels.artifact ? (
-          <section className="artifact-pane panel">
-            <div className="panel-header">
-              <div className="artifact-title-block">
-                <span title={selectedFile ? selectedFile.title : "Artifact"}>{selectedFile ? selectedFile.title : "Artifact"}</span>
-                <small>{selectedFile ? `${selectedFile.language} · ${selectedFile.status}` : "等待文件或执行结果"}</small>
-              </div>
-              <div className="panel-header-actions">
-                <button
-                  className="icon-button ghost"
-                  title={artifactMaximized ? "还原 Artifact" : "放大 Artifact"}
-                  onClick={() => setArtifactMaximized((current) => !current)}
-                  type="button"
-                >
-                  {artifactMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                </button>
-                {renderSelectedFileHeaderActions()}
-              </div>
-            </div>
-
-            {renderArtifact()}
-
-            <div className="approval-strip">
-              <div className="strip-title">
-                <AlertTriangle size={16} />
-                <span>待审批动作</span>
-              </div>
-              {approvals
-                .filter((approval) => approval.status === "pending")
-                .slice(0, 2)
-                .map((approval) => (
-                  <div className="approval-mini" key={approval.id}>
-                    <div>
-                      <strong>{approval.title}</strong>
-                      <small>{approval.command}</small>
-                    </div>
-                    <div className="mini-actions">
-                      <button className="icon-button success" title="批准" onClick={() => resolveApproval(approval.id, "approved")}>
-                        <Check size={15} />
-                      </button>
-                      <button className="icon-button danger" title="拒绝" onClick={() => resolveApproval(approval.id, "denied")}>
-                        <X size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </section>
+          rightPaneMode === "code" ? (
+            <section className="ide-pane panel">
+              <WorkspaceIDE
+                workspacePath={activeThread.workspacePath || workspacePath}
+                artifacts={artifacts}
+                selectedArtifact={null}
+                selectedWorkspaceFile={selectedWorkspaceFile}
+                isMaximized={artifactMaximized}
+                onToggleMaximize={() => setArtifactMaximized((current) => !current)}
+                onChooseWorkspace={chooseWorkspace}
+                onSaved={(path, bytes) => addAudit("Workspace IDE", "保存文件", `${path} · ${bytes} bytes`, "success")}
+              />
+            </section>
+          ) : (
+            <section className="artifact-pane panel">
+              <header className="artifact-pane-header">
+                <div>
+                  <span>Artifact Preview</span>
+                  <strong>{selectedFile?.title || "预览"}</strong>
+                </div>
+                <div className="artifact-pane-actions">
+                  {renderSelectedFileHeaderActions()}
+                  <button
+                    className="icon-text-button file-header-action"
+                    onClick={() => selectedFile ? void openLocalPathInIde(selectedFile.path) : setRightPaneMode("code")}
+                    type="button"
+                  >
+                    <Code2 size={15} />
+                    <span>代码</span>
+                  </button>
+                  <button className="icon-text-button file-header-action" onClick={() => setArtifactMaximized((current) => !current)} type="button">
+                    {artifactMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                    <span>{artifactMaximized ? "还原" : "最大化"}</span>
+                  </button>
+                </div>
+              </header>
+              {renderArtifact()}
+            </section>
+          )
         ) : null}
 
         {resourceContextMenu ? (
@@ -5073,6 +5495,26 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
             onContextMenu={(event) => event.stopPropagation()}
             style={{ left: resourceContextMenu.x, top: resourceContextMenu.y }}
           >
+            <button
+              type="button"
+              onClick={() => {
+                void previewResourcePath(resourceContextMenu.path);
+                setResourceContextMenu(null);
+              }}
+            >
+              <Eye size={14} />
+              <span>预览</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void openLocalPathInIde(resourceContextMenu.path);
+                setResourceContextMenu(null);
+              }}
+            >
+              <Code2 size={14} />
+              <span>代码</span>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -5441,7 +5883,7 @@ ${JSON.stringify(
       inputSchema: {
         type: "object",
         properties: {
-          context: { type: "string", description: "业务上下文，来自 Deepsix threadContext / 外部系统事件 / 用户输入" }
+          context: { type: "string", description: "业务上下文，来自 Fiitx threadContext / 外部系统事件 / 用户输入" }
         },
         required: ["context"]
       }
@@ -5871,7 +6313,7 @@ ${adapter.sampleEvent}
                     <div className="route-pill-grid">
                       <div className="route-pill">
                         <span>Channel</span>
-                        <strong>{routeLabResult ? channelRouteLabel(routeLabResult.channelAdapter) : activeChannelAdapter?.name || "Deepsix Workbench"}</strong>
+                        <strong>{routeLabResult ? channelRouteLabel(routeLabResult.channelAdapter) : activeChannelAdapter?.name || "Fiitx Workbench"}</strong>
                       </div>
                       <div className="route-pill">
                         <span>Intent</span>
@@ -6107,6 +6549,293 @@ ${adapter.sampleEvent}
     );
   }
 
+  function formatHistoryTime(value?: string | number) {
+    if (!value) {
+      return "n/a";
+    }
+    const date = typeof value === "number" ? new Date(value) : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    return new Intl.DateTimeFormat("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date);
+  }
+
+  function historyStatusLabel(status?: string) {
+    if (status === "done" || status === "complete") {
+      return "已完成";
+    }
+    if (status === "waiting" || status === "needs-review") {
+      return "需复盘";
+    }
+    if (status === "running") {
+      return "运行中";
+    }
+    return status || "未知";
+  }
+
+  function versionDisplayName(version: FiitxAgentVersionSnapshot) {
+    return `${version.name} · ${version.version}`;
+  }
+
+  function versionSelectKey(version: FiitxAgentVersionSnapshot) {
+    return `${version.id}:${version.version}`;
+  }
+
+  function versionBody(version?: FiitxAgentVersionSnapshot | null) {
+    if (!version) {
+      return "";
+    }
+    return [
+      version.body || "",
+      JSON.stringify(version.metadata || {}, null, 2)
+    ].filter(Boolean).join("\n\n");
+  }
+
+  function buildVersionDiffRows(left?: FiitxAgentVersionSnapshot, right?: FiitxAgentVersionSnapshot) {
+    const leftLines = versionBody(left).split(/\r?\n/);
+    const rightLines = versionBody(right).split(/\r?\n/);
+    const length = Math.max(leftLines.length, rightLines.length);
+    return Array.from({ length }, (_, index) => ({
+      index: index + 1,
+      left: leftLines[index] ?? "",
+      right: rightLines[index] ?? "",
+      changed: (leftLines[index] ?? "") !== (rightLines[index] ?? "")
+    })).filter((row) => row.changed).slice(0, 80);
+  }
+
+  function renderHistory() {
+    const historyThreads = historySnapshot?.threads ?? [];
+    const telemetrySummary = (isRecord(historySnapshot?.telemetrySummary) ? historySnapshot?.telemetrySummary : {}) as Record<string, unknown>;
+    const allVersions = [
+      ...(historyTrace?.promptVersions ?? historySnapshot?.promptVersions ?? []),
+      ...(historyTrace?.policyVersions ?? historySnapshot?.policyVersions ?? [])
+    ];
+    const versionLeft = allVersions.find((version) => versionSelectKey(version) === versionDiffLeftId) ?? allVersions[0];
+    const versionRight = allVersions.find((version) => versionSelectKey(version) === versionDiffRightId) ?? allVersions.find((version) => versionSelectKey(version) !== (versionLeft ? versionSelectKey(versionLeft) : "")) ?? allVersions[0];
+    const versionDiffRows = buildVersionDiffRows(versionLeft, versionRight);
+    const successRate = typeof telemetrySummary.successRate === "number" ? `${Math.round(telemetrySummary.successRate * 100)}%` : "n/a";
+    const selectedThread = historyThreads.find((thread) => thread.id === selectedHistoryThreadId);
+
+    return (
+      <div className="history-layout">
+        <section className="history-hero panel">
+          <div>
+            <span className="eyebrow">Agent History</span>
+            <h2>Trace、版本、复盘和审计包</h2>
+            <p>按任务串起消息、工具、策略、产物和 telemetry，避免“显示已完成但实际没落地”的状态误判。</p>
+          </div>
+          <div className="history-actions">
+            <button className="icon-text-button" onClick={refreshHistorySnapshot} disabled={historyLoading}>
+              <RefreshCw size={16} />
+              <span>{historyLoading ? "刷新中" : "刷新"}</span>
+            </button>
+            <button className="icon-text-button" onClick={() => void exportHistoryAudit()}>
+              <Download size={16} />
+              <span>导出当前 Trace</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="history-metric-grid">
+          <div className="history-metric panel">
+            <span>线程</span>
+            <strong>{historyThreads.length}</strong>
+            <small>可追踪任务</small>
+          </div>
+          <div className="history-metric panel">
+            <span>Run</span>
+            <strong>{String(telemetrySummary.totalRuns ?? 0)}</strong>
+            <small>成功率 {successRate}</small>
+          </div>
+          <div className="history-metric panel warn">
+            <span>失败 / 需复盘</span>
+            <strong>{String(historySnapshot?.failedRuns ?? 0)}</strong>
+            <small>来自 run_end 和 warning</small>
+          </div>
+          <div className="history-metric panel">
+            <span>版本</span>
+            <strong>{allVersions.length}</strong>
+            <small>Prompt / Policy snapshots</small>
+          </div>
+        </section>
+
+        <section className="history-main-grid">
+          <div className="history-list panel">
+            <div className="panel-header">
+              <div>
+                <span>任务 Trace</span>
+                <small>点击查看执行链路</small>
+              </div>
+            </div>
+            <div className="history-run-list">
+              {historyThreads.length === 0 ? <div className="empty-state">暂无历史任务</div> : null}
+              {historyThreads.map((thread) => (
+                <button
+                  className={selectedHistoryThreadId === thread.id ? "history-run-row active" : "history-run-row"}
+                  key={thread.id}
+                  onClick={() => void openHistoryTrace(thread.id)}
+                >
+                  <span className={`status-dot ${thread.status === "done" ? "green" : thread.status === "running" ? "blue" : "orange"}`} />
+                  <div>
+                    <strong>{thread.title}</strong>
+                    <small>{thread.kind} · {historyStatusLabel(thread.status)} · {formatHistoryTime(thread.updatedAt || thread.createdAt)}</small>
+                    {thread.lastProgressTitle ? <em>{thread.lastProgressTitle}</em> : null}
+                  </div>
+                  <span>{thread.artifactCount} 产物</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="trace-panel panel">
+            <div className="panel-header">
+              <div>
+                <span>{selectedThread?.title || historyTrace?.threadId || "Trace 详情"}</span>
+                <small>{historyTrace ? `${historyTrace.timeline.length} 个事件 · ${historyTrace.toolNames.length} 个工具` : "选择一个任务查看完整链路"}</small>
+              </div>
+              <div className="history-actions compact">
+                <button className="icon-text-button" disabled={!historyTrace} onClick={() => historyTrace ? copyText(JSON.stringify(historyTrace, null, 2)) : undefined}>
+                  <Copy size={15} />
+                  <span>复制 Trace</span>
+                </button>
+                <button className="icon-text-button" disabled={!historyTrace} onClick={() => historyTrace ? void exportHistoryAudit(historyTrace.threadId) : undefined}>
+                  <Download size={15} />
+                  <span>审计包</span>
+                </button>
+              </div>
+            </div>
+
+            {historyTrace ? (
+              <>
+                <div className={`trace-review ${historyTrace.analysis.status}`}>
+                  <div>
+                    <strong>{historyTrace.analysis.headline}</strong>
+                    <span>{historyTrace.analysis.findings[0]}</span>
+                  </div>
+                  <b>{historyStatusLabel(historyTrace.analysis.status)}</b>
+                </div>
+
+                <div className="trace-two-column">
+                  <section>
+                    <h3>失败任务复盘</h3>
+                    <ul className="trace-list">
+                      {historyTrace.analysis.findings.map((finding, index) => <li key={`finding-${index}`}>{finding}</li>)}
+                    </ul>
+                  </section>
+                  <section>
+                    <h3>下一步动作</h3>
+                    <ul className="trace-list">
+                      {historyTrace.analysis.nextActions.map((action, index) => <li key={`action-${index}`}>{action}</li>)}
+                    </ul>
+                  </section>
+                </div>
+
+                <div className="trace-metrics">
+                  {Object.entries(historyTrace.analysis.metrics).map(([key, value]) => (
+                    <div key={key}>
+                      <span>{key}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="trace-timeline">
+                  {historyTrace.timeline.slice(-80).map((item) => (
+                    <div className={`trace-step ${item.status}`} key={`${item.source}-${item.id}`}>
+                      <span>{formatHistoryTime(item.time)}</span>
+                      <div>
+                        <strong>{item.source} · {item.title}</strong>
+                        <p>{item.detail || "无详情"}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">选择左侧任务后显示 Trace 时间线和失败复盘。</div>
+            )}
+          </div>
+        </section>
+
+        <section className="history-main-grid secondary">
+          <div className="version-panel panel">
+            <div className="panel-header">
+              <div>
+                <span>Prompt / Policy 版本 Diff</span>
+                <small>按配置 hash 记录 Agent、Channel 和 Policy 变化</small>
+              </div>
+            </div>
+            <div className="version-diff-controls">
+              <select value={versionLeft ? versionSelectKey(versionLeft) : ""} onChange={(event) => setVersionDiffLeftId(event.target.value)}>
+                {allVersions.map((version) => <option key={`left-${version.id}-${version.version}`} value={versionSelectKey(version)}>{versionDisplayName(version)}</option>)}
+              </select>
+              <select value={versionRight ? versionSelectKey(versionRight) : ""} onChange={(event) => setVersionDiffRightId(event.target.value)}>
+                {allVersions.map((version) => <option key={`right-${version.id}-${version.version}`} value={versionSelectKey(version)}>{versionDisplayName(version)}</option>)}
+              </select>
+            </div>
+            <div className="version-diff-list">
+              {allVersions.length === 0 ? <div className="empty-state">暂无版本快照</div> : null}
+              {versionDiffRows.length === 0 && allVersions.length > 0 ? <div className="empty-state">两个版本没有文本差异</div> : null}
+              {versionDiffRows.map((row) => (
+                <div className="version-diff-row" key={`diff-${row.index}`}>
+                  <code>{row.index}</code>
+                  <pre>{row.left || " "}</pre>
+                  <pre>{row.right || " "}</pre>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="compare-panel panel">
+            <div className="panel-header">
+              <div>
+                <span>Run Compare</span>
+                <small>比较两个任务的指标、工具、产物和失败原因</small>
+              </div>
+            </div>
+            <div className="run-compare-controls">
+              <select value={compareLeftThreadId} onChange={(event) => setCompareLeftThreadId(event.target.value)}>
+                {historyThreads.map((thread) => <option key={`compare-left-${thread.id}`} value={thread.id}>{thread.title}</option>)}
+              </select>
+              <select value={compareRightThreadId} onChange={(event) => setCompareRightThreadId(event.target.value)}>
+                {historyThreads.map((thread) => <option key={`compare-right-${thread.id}`} value={thread.id}>{thread.title}</option>)}
+              </select>
+              <button className="icon-text-button" onClick={compareHistoryRuns} disabled={!compareLeftThreadId || !compareRightThreadId}>
+                <GitBranch size={16} />
+                <span>比较</span>
+              </button>
+            </div>
+            {historyCompare ? (
+              <div className="compare-result">
+                {historyCompare.diff.summary.map((line, index) => <p key={`summary-${index}`}>{line}</p>)}
+                <div className="compare-metrics">
+                  {historyCompare.diff.metrics.map((metric) => (
+                    <div key={metric.key}>
+                      <span>{metric.key}</span>
+                      <strong>{metric.left} / {metric.right}</strong>
+                      <b className={metric.delta === 0 ? "" : metric.delta > 0 ? "up" : "down"}>{metric.delta > 0 ? `+${metric.delta}` : metric.delta}</b>
+                    </div>
+                  ))}
+                </div>
+                <div className="compare-tags">
+                  <strong>Shared tools</strong>
+                  {(historyCompare.diff.tools.shared.length ? historyCompare.diff.tools.shared : ["none"]).map((tool) => <span key={`tool-${tool}`}>{tool}</span>)}
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">选择两个任务后比较运行差异。</div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderAudit() {
     return (
       <div className="audit-layout panel">
@@ -6115,7 +6844,7 @@ ${adapter.sampleEvent}
             <span>审计日志</span>
             <small>任务、模型、工具和策略事件</small>
           </div>
-          <button className="icon-text-button">
+          <button className="icon-text-button" onClick={() => void exportHistoryAudit()}>
             <Download size={16} />
             <span>诊断包</span>
           </button>
@@ -6238,6 +6967,9 @@ ${adapter.sampleEvent}
     }
     if (activeView === "approvals") {
       return renderApprovals();
+    }
+    if (activeView === "history") {
+      return renderHistory();
     }
     if (activeView === "audit") {
       return renderAudit();

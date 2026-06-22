@@ -19,6 +19,22 @@ const results = [
     mode: "coding",
     modality: "html"
   }),
+  assertIntent("参考这个小游戏的风格https://messenger.abeto.co/，做一个孔乙己所在家乡鲁镇的游览，主角孔乙己", {
+    mode: "coding",
+    modality: "html"
+  }),
+  assertIntent("做一个孔乙己所在家乡鲁镇的交互游览，主角孔乙己", {
+    mode: "coding",
+    modality: "html"
+  }),
+  assertIntent("切换进入编码模式", {
+    mode: "coding",
+    modality: "text"
+  }),
+  assertIntent("继续执行并写入文件", {
+    mode: "coding",
+    modality: "text"
+  }),
   assertIntent("帮我写一个脚本生成视频", {
     mode: "coding",
     modality: "text"

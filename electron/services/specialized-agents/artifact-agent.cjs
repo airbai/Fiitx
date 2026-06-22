@@ -111,7 +111,8 @@ ${externalContextHint}
 1. **必须产生真实文件输出** — 使用 workspace_write 写入文件 manifest，或直接写入工作区
 2. **不要谎称文件已写入** — 没有工具结果或 manifest 时不能声称已完成
 3. **参考外部文档** — 如果用户提供了 URL 或文档，必须参考其内容
-4. **如果只有调研需求** — 建议切换到 Research Agent
+4. **HTML 模块可预览** — 单页 HTML 禁止使用裸模块 import（例如 from "three"）；three 相关模块使用 https://esm.sh/three@0.160.0 的完整 URL
+5. **如果只有调研需求** — 建议切换到 Research Agent
 `;
 
       const agentResult = await session.prompt(`${artifactInstruction}\n\n用户任务：${text}`);

@@ -2,6 +2,7 @@ const { exec, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { normalizeHtmlModuleImports } = require("./html-module-imports.cjs");
 const { normalizeFetchUrl } = require("./url-utils.cjs");
 
 const execAsync = promisify(exec);
@@ -115,9 +116,7 @@ async function fetchWithTimeout(url, options = {}) {
       method: "GET",
       headers: {
         Accept: "text/html,text/markdown,text/plain,application/json;q=0.9,*/*;q=0.5",
-        // Fiitx branding kept for easy restore:
-        // "User-Agent": "Fiitx-Agent/0.1 external-context"
-        "User-Agent": "Deepsix-Agent/0.1 external-context"
+        "User-Agent": "Fiitx-Agent/0.1 external-context"
       },
       redirect: "follow",
       signal: controller.signal
@@ -168,7 +167,13 @@ function createToolRuntime({ workspaceManager }) {
   }
 
   async function writeGeneratedProject(root, projectName, files) {
-    const projectRoot = workspaceManager.writeGeneratedProject(root, projectName, files);
+    const normalizedFiles = Object.fromEntries(
+      Object.entries(files || {}).map(([filePath, content]) => [
+        filePath,
+        normalizeHtmlModuleImports(filePath, content)
+      ])
+    );
+    const projectRoot = workspaceManager.writeGeneratedProject(root, projectName, normalizedFiles);
     return {
       projectRoot,
       toolEvent: {
@@ -187,7 +192,7 @@ function createToolRuntime({ workspaceManager }) {
       if (!file?.path || typeof file.content !== "string") {
         throw new Error("文件 manifest 中每个文件都必须包含 path 和 content");
       }
-      files[file.path] = file.content;
+      files[file.path] = normalizeHtmlModuleImports(file.path, file.content);
     }
 
     if (Object.keys(files).length === 0) {
@@ -306,10 +311,12 @@ function createToolRuntime({ workspaceManager }) {
     }
     const { absolutePath, relativePath } = resolveToolPath(workspacePath, targetPath);
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    fs.writeFileSync(absolutePath, content, "utf8");
+    const normalizedContent = normalizeHtmlModuleImports(relativePath, content);
+    fs.writeFileSync(absolutePath, normalizedContent, "utf8");
     return {
       path: relativePath,
-      bytes: Buffer.byteLength(content, "utf8")
+      bytes: Buffer.byteLength(normalizedContent, "utf8"),
+      normalizedHtmlImports: normalizedContent !== content
     };
   }
 
@@ -324,14 +331,16 @@ function createToolRuntime({ workspaceManager }) {
     if (!original.includes(search)) {
       throw new Error(`文件中没有找到待替换文本：${relativePath}`);
     }
-    const next = options.all
+    const edited = options.all
       ? original.split(search).join(replace)
       : original.replace(search, replace);
+    const next = normalizeHtmlModuleImports(relativePath, edited);
     fs.writeFileSync(absolutePath, next, "utf8");
     return {
       path: relativePath,
       replacements: options.all ? original.split(search).length - 1 : 1,
-      bytes: Buffer.byteLength(next, "utf8")
+      bytes: Buffer.byteLength(next, "utf8"),
+      normalizedHtmlImports: next !== edited
     };
   }
 

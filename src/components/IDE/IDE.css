@@ -1,0 +1,392 @@
+.ide-container {
+  display: grid;
+  grid-template-rows: 48px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: #d4d4d4;
+  background: #1e1e1e;
+}
+
+.ide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 12px 0 14px;
+  border-bottom: 1px solid #2d2d2d;
+  background: #181818;
+}
+
+.ide-header-copy {
+  min-width: 0;
+}
+
+.ide-header-copy span,
+.ide-header-copy strong {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ide-header-copy span {
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.ide-header-copy strong {
+  color: #f2f2f2;
+  font-size: 13px;
+}
+
+.ide-header-actions,
+.ide-toolbar-actions,
+.ide-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ide-icon-button,
+.ide-text-button,
+.ide-mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  border-radius: 6px;
+  color: #c8d0d8;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ide-icon-button {
+  width: 30px;
+}
+
+.ide-text-button,
+.ide-mode-switch button {
+  padding: 0 9px;
+}
+
+.ide-icon-button:hover,
+.ide-text-button:hover,
+.ide-mode-switch button:hover,
+.ide-mode-switch button.active {
+  color: #ffffff;
+  background: #313338;
+}
+
+.ide-text-button.primary {
+  color: #ffffff;
+  background: #0e639c;
+}
+
+.ide-text-button.primary:hover {
+  background: #1177bb;
+}
+
+.ide-icon-button:disabled,
+.ide-text-button:disabled,
+.ide-mode-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.ide-body {
+  display: grid;
+  grid-template-columns: minmax(190px, 250px) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ide-file-tree-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid #2d2d2d;
+  background: #252526;
+  scrollbar-width: thin;
+  scrollbar-color: #555 transparent;
+}
+
+.ide-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 10px;
+  color: #bbbbbb;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ide-panel-title.compact {
+  margin-top: 10px;
+  border-top: 1px solid #343434;
+}
+
+.ide-spin {
+  animation: ide-spin 1s linear infinite;
+}
+
+@keyframes ide-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ide-empty-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px 10px;
+  color: #8f949a;
+  font-size: 12px;
+}
+
+.ide-empty-panel button {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #0e639c;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.file-tree-folder {
+  min-width: 0;
+}
+
+.file-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 8px;
+  color: #cccccc;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.file-tree-node:hover {
+  background: #2a2d2e;
+}
+
+.file-tree-node.selected {
+  color: #ffffff;
+  background: #37373d;
+}
+
+.file-tree-icon {
+  flex: 0 0 auto;
+  color: #c5c5c5;
+}
+
+.file-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.file-tree-caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #858585;
+  transform: rotate(-90deg);
+  transition: transform 0.12s ease;
+}
+
+.file-tree-caret.expanded {
+  transform: rotate(0deg);
+}
+
+.file-tree-loading,
+.ide-empty {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  padding: 16px;
+  color: #858585;
+  font-size: 13px;
+  text-align: center;
+}
+
+.file-tree-loading-dot {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 99px;
+  background: #3794ff;
+}
+
+.ide-artifact-group {
+  padding-bottom: 12px;
+}
+
+.ide-main-panel {
+  display: grid;
+  grid-template-rows: 35px 42px minmax(0, 1fr) 24px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.ide-tab-bar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid #2d2d2d;
+  background: #252526;
+  scrollbar-width: thin;
+}
+
+.ide-tab-placeholder {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  color: #858585;
+  font-size: 12px;
+}
+
+.ide-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 118px;
+  max-width: 220px;
+  padding: 0 9px;
+  border-right: 1px solid #2d2d2d;
+  color: #cccccc;
+  background: #2d2d2d;
+}
+
+.ide-tab.active {
+  color: #ffffff;
+  background: #1e1e1e;
+}
+
+.ide-tab span:nth-of-type(2) {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ide-tab small {
+  flex: 0 0 auto;
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.ide-tab-close {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #858585;
+}
+
+.ide-tab-close:hover {
+  color: #ffffff;
+}
+
+.ide-dirty-dot,
+.ide-clean-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+}
+
+.ide-dirty-dot {
+  background: #ffffff;
+}
+
+.ide-clean-dot {
+  border: 1px solid #6a6a6a;
+}
+
+.ide-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 10px;
+  border-bottom: 1px solid #2d2d2d;
+  background: #1f1f1f;
+}
+
+.ide-editor-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ide-empty {
+  align-content: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.ide-empty strong {
+  color: #d4d4d4;
+  font-size: 15px;
+}
+
+.ide-empty span {
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+.ide-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 10px;
+  color: #d8e8ff;
+  background: #007acc;
+  font-size: 12px;
+}
+
+.ide-status-bar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ide-status-bar .error {
+  color: #fff4d6;
+}
+
+@media (max-width: 1120px) {
+  .ide-body {
+    grid-template-columns: minmax(160px, 210px) minmax(0, 1fr);
+  }
+}

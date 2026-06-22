@@ -5,7 +5,7 @@ function normalizeList(value) {
 const fallbackAdapters = [
   {
     id: "deepsix-workbench",
-    name: "Deepsix Workbench",
+    name: "Fiitx Workbench",
     channelType: "desktop-ui",
     description: "桌面工作台通道",
     transport: "Electron IPC / local session",
@@ -34,6 +34,22 @@ const fallbackAdapters = [
     followUpPolicy: "同一 conversationId 下延续 followUp，不重新开线程。",
     agentBindings: ["guest-service", "complaint-recovery", "concierge-trip", "marketing-content", "hotel-orchestrator"],
     systemPrompt: "这是微信小程序 AI 通道。先给用户短答案，再给内部待执行动作。输出适合手机阅读。"
+  },
+  {
+    id: "vscode-deepsix",
+    name: "VS Code Fiitx",
+    channelType: "vscode-extension",
+    description: "VS Code Extension 集成通道 — 内联 Diff 预览、代码上下文传递、文件编辑确认",
+    transport: "HTTP / localhost",
+    entrypoint: "vscode-extension -> deepsix-client -> vscode-channel-server",
+    sessionKeyStrategy: "workspaceRoot + clientId",
+    status: "active",
+    capabilities: ["inline-diff", "code-context", "file-write", "diff-accept", "diff-reject", "workspace-query"],
+    contextSources: ["activeFile", "selection", "openFiles", "diagnostics", "workspaceRoot"],
+    outputModes: ["inline-diff-preview", "vscode-notification", "status-bar"],
+    followUpPolicy: "绑定 workspaceRoot + threadId，通过 diffId 追踪文件变更确认。",
+    agentBindings: ["coding-agent", "research-agent", "chat-agent"],
+    systemPrompt: "这是 VS Code Extension 通道。直接操作 VS Code 工作区文件，使用内联 Diff 预览展示变更，用户确认后才写入。支持从 VS Code 发送代码上下文到 Fiitx 执行编码/解释/重构等任务。"
   }
 ];
 

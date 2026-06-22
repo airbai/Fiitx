@@ -111,7 +111,7 @@ function appendUnverifiedFileClaimNotice(summary, payload) {
 
 ---
 
-注意：Deepsix runtime 没有确认以下路径真实存在，因此不能把上面的“已写入/已生成”当作完成结果：
+注意：Fiitx runtime 没有确认以下路径真实存在，因此不能把上面的“已写入/已生成”当作完成结果：
 ${claims.map((claim) => `- ${claim.rawPath}`).join("\n")}
 
 需要真实文件时，应由 Coding Agent 调用 workspace_write、文件 manifest 或 bash 执行后，再以工具结果/Artifact 为准。`;
@@ -391,9 +391,7 @@ ${payload.connectorContextPrompt || ""}`;
 }
 
 function buildCodingSystemPrompt(payload) {
-  // Fiitx branding kept for easy restore:
-  // return `你是 Fiitx Coding Agent，运行在一个通用 agent kernel 中。`;
-  return `你是 Deepsix Coding Agent，运行在一个通用 agent kernel 中。
+  return `你是 Fiitx Coding Agent，运行在一个通用 agent kernel 中。
 
 ${buildRuntimeContext(payload)}
 
@@ -408,7 +406,8 @@ ${buildRuntimeContext(payload)}
 8. 如果 Pi turn context 注入了 channel adapter，上下文中的回复契约、followUp 规则和输出边界必须严格遵守。
 9. 可用工具包括 web_fetch_url、workspace_ls、workspace_read、workspace_write、workspace_edit、workspace_grep、workspace_find、bash。需要读取网页、文件、修改、测试时直接调用工具；需要 shell 时调用 bash，不要声称已经执行未调用的命令。
 10. 对 Word/docx/pdf/ppt/html/合同/报告等文件交付，必须产生真实工具结果或 Artifact。没有 workspace_write、文件 manifest、bash 执行结果或磁盘确认时，禁止写“文件已成功写入/已生成到某路径”。
-11. 如果当前模型或 provider 不支持 tool call，或者工具调用失败但仍要交付完整文件，可以在说明之后追加一个 fenced block：
+11. 生成可独立预览的单页 HTML 时，禁止使用裸模块 import（例如 from "three" 或 from "three/addons/..."）。如需 three/OrbitControls/CSS2DRenderer，使用 https://esm.sh/three@0.160.0 和 https://esm.sh/three@0.160.0/examples/jsm/... 的完整 URL，确保 file://、iframe 和 Vite 预览都能解析。
+12. 如果当前模型或 provider 不支持 tool call，或者工具调用失败但仍要交付完整文件，可以在说明之后追加一个 fenced block：
 
 \`\`\`fiitx-file-manifest
 {
@@ -429,9 +428,7 @@ manifest 规则：
 }
 
 function buildChatSystemPrompt(payload) {
-  // Fiitx branding kept for easy restore:
-  // return `你是 Fiitx Chat Agent，运行在 pi-core 的通用消息循环中。`;
-  return `你是 Deepsix Chat Agent，运行在 pi-core 的通用消息循环中。
+  return `你是 Fiitx Chat Agent，运行在 pi-core 的通用消息循环中。
 
 ${buildRuntimeContext(payload)}
 
@@ -483,6 +480,10 @@ function fallbackTaskTitle(prompt) {
     return "未命名任务";
   }
   return clean.length > 24 ? `${clean.slice(0, 24)}...` : clean;
+}
+
+function containsFileManifest(text) {
+  return /```fiitx-file-manifest\s*[\s\S]*?```/i.test(String(text || ""));
 }
 
 function fileUrlFromPath(filePath) {
@@ -733,6 +734,46 @@ async function loadExternalContext({ payload, toolRuntime, emitProgress, signal 
   };
 }
 
+function commonProjectSegment(files) {
+  const firstSegments = files
+    .map((file) => String(file.path || "").split(/[\\/]/).filter(Boolean)[0])
+    .filter(Boolean);
+  if (firstSegments.length === 0) {
+    return "";
+  }
+  const first = firstSegments[0];
+  return firstSegments.every((segment) => segment === first) ? first : "";
+}
+
+function createToolWriteArtifact({ payload, toolArtifacts, summary, artifactEngine }) {
+  if (!Array.isArray(toolArtifacts) || toolArtifacts.length === 0) {
+    return null;
+  }
+
+  const files = toolArtifacts
+    .map((artifact) => String(artifact.path || "").trim())
+    .filter(Boolean);
+  if (files.length === 0) {
+    return null;
+  }
+
+  const projectName = commonProjectSegment(toolArtifacts) || path.basename(payload.workspacePath || "workspace") || "workspace";
+  const projectRoot = commonProjectSegment(toolArtifacts)
+    ? path.join(payload.workspacePath || "", projectName)
+    : (payload.workspacePath || projectName);
+  const relativeFiles = commonProjectSegment(toolArtifacts)
+    ? files.map((file) => file.split(/[\\/]/).filter(Boolean).slice(1).join("/") || path.basename(file))
+    : files;
+
+  return artifactEngine.createGeneratedProjectArtifact({
+    projectName,
+    projectRoot,
+    relativeFiles,
+    title: `已写入 ${toolArtifacts.length} 个工作区文件`,
+    summary
+  });
+}
+
 function createAgentRuntime({
   modelRouter,
   toolRuntime,
@@ -800,7 +841,7 @@ function createAgentRuntime({
     }
     if (intent.mode === "coding") {
       tools.push("workspace_find", "workspace_ls", "workspace_read");
-      if (/写|生成|创建|实现|升级|修改|修复|替换|代码|小程序|网页|ppt|pptx|docx|word|pdf|html|文档|报告|合同|协议|导出|保存/i.test(String(payload.prompt || ""))) {
+      if (/做|制作|生成|创建|搭建|开发|实现|复刻|仿照|设计|升级|修改|修复|替换|写|写入|代码|编码|coding|文件|项目|小游戏|游戏|游览|漫游|导览|场景|交互|互动|小程序|网页|页面|canvas|three|3d|ppt|pptx|docx|word|pdf|html|文档|报告|合同|协议|导出|保存/i.test(String(payload.prompt || ""))) {
         tools.push("workspace_write", "workspace_edit");
       }
       if (/npm|build|test|运行|打包|git|python|脚本|命令/i.test(String(payload.prompt || ""))) {
@@ -1065,7 +1106,7 @@ function createAgentRuntime({
 
       if (shouldUseWechatSkill) {
         await emitProgressStep({
-          title: "Deepsix Gateway",
+          title: "Fiitx Gateway",
           detail: `替代微信 AI router，调用 ${wechatRouting.selected.name}`
         });
         const skillResult = await wechatAiSkillGateway.routePrompt({
@@ -1079,7 +1120,7 @@ function createAgentRuntime({
           ok: skillResult.ok,
           summary: skillResult.wechatReply?.text || "已调用微信 AI Skill。",
           mode: "chat",
-          model: "deepsix-gateway",
+          model: "fiitx-gateway",
           provider: "wechat-ai-skill",
           title: taskTitle,
           agentId: businessAgent?.id,
@@ -1101,7 +1142,7 @@ function createAgentRuntime({
             ...channelEvents,
             ...businessAgentEvents,
             ...skillResult.toolEvents.map((event) => ({
-              actor: event.label || "Deepsix Gateway",
+              actor: event.label || "Fiitx Gateway",
               event: event.label || "执行",
               target: event.detail || "",
               level: event.label === "Policy Gate" ? "info" : "success"
@@ -1297,10 +1338,57 @@ function createAgentRuntime({
       });
       throwIfAborted(runSignal);
       const result = await session.prompt(payload.prompt);
+      const chatSummary = appendUnverifiedFileClaimNotice(result.summary, payload);
+      const chatToolEvents = [
+        ...channelEvents,
+        ...businessAgentEvents,
+        ...externalToolEvents,
+        {
+          actor: "Pi Agent Core",
+          event: result.ok ? "chat turn 完成" : "chat turn 失败",
+          target: `${profile.provider} / ${profile.model}`,
+          level: result.ok ? "success" : "warn"
+        }
+      ];
+
+      if (result.ok && containsFileManifest(result.summary)) {
+        const visibleSummary = removeFileManifest(chatSummary).trim();
+        emitProgress({
+          status: "warn",
+          title: "Chat 结果未落盘",
+          detail: "Chat Agent 返回了文件 manifest，但当前回合没有执行写入工具。"
+        });
+
+        return {
+          ok: false,
+          summary: [
+            "Chat Agent 返回了文件 manifest/文件写入计划，但当前回合是 Chat 模式，没有执行文件写入，所以这些文件尚未生成。",
+            "",
+            "请重新提交为 Coding 任务，或回复“继续执行并写入文件”。",
+            visibleSummary ? `\n${visibleSummary}` : ""
+          ].filter(Boolean).join("\n"),
+          mode: "chat",
+          model: profile.model,
+          provider: profile.provider,
+          title: taskTitle,
+          agentId: businessAgent?.id,
+          agentName: businessAgent?.name,
+          artifact: null,
+          toolEvents: [
+            ...chatToolEvents,
+            {
+              actor: "Agent Runtime",
+              event: "Chat manifest 未执行",
+              target: "需要 Coding Agent 写入文件",
+              level: "warn"
+            }
+          ]
+        };
+      }
 
       return {
         ok: result.ok,
-        summary: appendUnverifiedFileClaimNotice(result.summary, payload),
+        summary: chatSummary,
         mode: "chat",
         model: profile.model,
         provider: profile.provider,
@@ -1308,17 +1396,7 @@ function createAgentRuntime({
         agentId: businessAgent?.id,
         agentName: businessAgent?.name,
         artifact: null,
-        toolEvents: [
-          ...channelEvents,
-          ...businessAgentEvents,
-          ...externalToolEvents,
-          {
-            actor: "Pi Agent Core",
-            event: result.ok ? "chat turn 完成" : "chat turn 失败",
-            target: `${profile.provider} / ${profile.model}`,
-            level: result.ok ? "success" : "warn"
-          }
-        ]
+        toolEvents: chatToolEvents
       };
     }
 
@@ -1350,6 +1428,9 @@ function createAgentRuntime({
       const result = await session.prompt(payload.prompt);
       summary = result.summary;
       modelError = result.errorMessage || "";
+      if (Array.isArray(result.artifacts) && result.artifacts.length > 0) {
+        payload.toolArtifacts = result.artifacts;
+      }
       if (result.approvalRequest) {
         return {
           ok: false,
@@ -1459,6 +1540,15 @@ function createAgentRuntime({
     }
 
     summary = appendUnverifiedFileClaimNotice(summary, payload);
+
+    if (!artifact && Array.isArray(payload.toolArtifacts) && payload.toolArtifacts.length > 0) {
+      artifact = createToolWriteArtifact({
+        payload,
+        toolArtifacts: payload.toolArtifacts,
+        summary,
+        artifactEngine
+      });
+    }
 
     if (!artifact) {
       artifact = artifactEngine.createAgentResultArtifact({

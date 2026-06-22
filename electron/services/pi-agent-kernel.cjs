@@ -80,9 +80,7 @@ function contextToPrompt(context) {
 function createPiModel(profile, payload) {
   return {
     id: profile?.model || payload.model || "fiitx-model",
-    // Fiitx branding kept for easy restore:
-    // name: profile?.model || payload.model || "Fiitx Model",
-    name: profile?.model || payload.model || "Deepsix Model",
+    name: profile?.model || payload.model || "Fiitx Model",
     api: "fiitx-openai-compatible",
     provider: profile?.provider || "fiitx",
     baseUrl: profile?.baseUrl || "",
@@ -469,9 +467,7 @@ async function createPiAgentSession({
       const summary = await modelRouter.callChat(profile, source, {
         timeoutMs: 60000,
         systemPrompt: [
-          // Fiitx branding kept for easy restore:
-          // "你负责压缩 Fiitx Agent session 上下文。",
-          "你负责压缩 Deepsix Agent session 上下文。",
+          "你负责压缩 Fiitx Agent session 上下文。",
           "保留用户目标、关键约束、已完成动作、未完成动作、文件路径、审批结果和错误信息。",
           "输出中文摘要，避免丢失可恢复执行所需的信息。",
           customInstructions ? `额外要求：${customInstructions}` : ""

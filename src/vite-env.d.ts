@@ -254,6 +254,132 @@ type FiitxAgentHarnessSnapshot = {
   models: unknown[];
 };
 
+type FiitxAgentHistoryThread = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  model: string;
+  updatedAt: string;
+  createdAt: number;
+  workspacePath?: string;
+  messageCount: number;
+  progressCount: number;
+  artifactCount: number;
+  sessionEntryCount: number;
+  lastProgressStatus?: string;
+  lastProgressTitle?: string;
+};
+
+type FiitxAgentVersionSnapshot = {
+  id: string;
+  type: string;
+  name: string;
+  version: string;
+  updatedAt: string;
+  observedAt?: string;
+  body: string;
+  metadata: Record<string, unknown>;
+};
+
+type FiitxAgentTraceTimelineItem = {
+  id: string;
+  time: string;
+  source: string;
+  status: "running" | "success" | "warn" | "info" | string;
+  title: string;
+  detail: string;
+  raw?: unknown;
+};
+
+type FiitxAgentTrace = {
+  threadId: string;
+  generatedAt: string;
+  thread: unknown;
+  record: {
+    messages?: unknown[];
+    progressEvents?: unknown[];
+    artifacts?: unknown[];
+    executionArtifacts?: unknown[];
+    sessionEntries?: unknown[];
+  };
+  sessionLog: unknown[];
+  telemetry: unknown[];
+  timeline: FiitxAgentTraceTimelineItem[];
+  toolNames: string[];
+  promptVersions: FiitxAgentVersionSnapshot[];
+  policyVersions: FiitxAgentVersionSnapshot[];
+  analysis: {
+    status: "complete" | "needs-review" | string;
+    headline: string;
+    findings: string[];
+    nextActions: string[];
+    metrics: Record<string, number>;
+  };
+};
+
+type FiitxAgentHistorySnapshot = {
+  generatedAt: string;
+  workspacePath: string;
+  activeThreadId: string;
+  threads: FiitxAgentHistoryThread[];
+  sessions: unknown[];
+  telemetrySummary: unknown;
+  recentRuns: Array<{
+    runId: string;
+    threadId: string;
+    taskId: string;
+    ok: boolean;
+    mode: string;
+    provider: string;
+    model: string;
+    startedAt: string;
+    endedAt: string;
+    durationMs: number;
+    artifactPath: string;
+    errorMessage: string;
+  }>;
+  failedRuns: number;
+  promptVersions: FiitxAgentVersionSnapshot[];
+  policyVersions: FiitxAgentVersionSnapshot[];
+};
+
+type FiitxRunCompare = {
+  generatedAt: string;
+  left: FiitxAgentTrace;
+  right: FiitxAgentTrace;
+  diff: {
+    summary: string[];
+    metrics: Array<{
+      key: string;
+      left: number;
+      right: number;
+      delta: number;
+    }>;
+    tools: {
+      leftOnly: string[];
+      rightOnly: string[];
+      shared: string[];
+    };
+    artifacts: {
+      leftOnly: string[];
+      rightOnly: string[];
+      shared: string[];
+    };
+    failures: {
+      left: string[];
+      right: string[];
+    };
+  };
+};
+
+type FiitxAuditPackageExport = {
+  ok: boolean;
+  path: string;
+  files: string[];
+  generatedAt: string;
+};
+
 type FiitxAgentProgress = {
   id: string;
   taskId: string;
@@ -315,6 +441,31 @@ type FiitxPathInfo = {
 type FiitxPathPreview = FiitxPathInfo & {
   content: string;
   truncated: boolean;
+};
+
+type FiitxWorkspaceFile = {
+  path: string;
+  size: number;
+  text: boolean;
+};
+
+type FiitxWorkspaceFileList = {
+  root: string;
+  files: FiitxWorkspaceFile[];
+  truncated: boolean;
+};
+
+type FiitxWorkspaceFileRead = {
+  root: string;
+  path: string;
+  content: string;
+  truncated: boolean;
+};
+
+type FiitxWorkspaceFileWrite = {
+  root: string;
+  path: string;
+  bytes: number;
 };
 
 type FiitxWechatAiGatewayPayload = {
@@ -401,6 +552,20 @@ interface Window {
       canceled: boolean;
       filePaths: string[];
     }>;
+    listWorkspaceFiles: (payload?: {
+      workspacePath?: string;
+      limit?: number;
+    }) => Promise<FiitxWorkspaceFileList>;
+    readWorkspaceFile: (payload: {
+      workspacePath?: string;
+      path: string;
+      maxBytes?: number;
+    }) => Promise<FiitxWorkspaceFileRead>;
+    writeWorkspaceFile: (payload: {
+      workspacePath?: string;
+      path: string;
+      content: string;
+    }) => Promise<FiitxWorkspaceFileWrite>;
     inspectPath: (path: string, basePath?: string) => Promise<FiitxPathInfo>;
     openPath: (path: string, basePath?: string) => Promise<{
       ok: boolean;
@@ -442,6 +607,10 @@ interface Window {
     inspectAgentRoute: (payload: FiitxAgentTaskPayload) => Promise<FiitxAgentRouteInspection>;
     runAgentEval: (payload: FiitxAgentTaskPayload & { cases?: unknown[] }) => Promise<FiitxAgentEvalResult>;
     getAgentHarnessSnapshot: (payload?: { limit?: number }) => Promise<FiitxAgentHarnessSnapshot>;
+    getAgentHistorySnapshot: (payload?: { limit?: number }) => Promise<FiitxAgentHistorySnapshot>;
+    getAgentTrace: (payload: { threadId: string; limit?: number }) => Promise<FiitxAgentTrace>;
+    compareAgentRuns: (payload: { leftThreadId: string; rightThreadId: string; limit?: number }) => Promise<FiitxRunCompare>;
+    exportAgentAuditPackage: (payload: { threadId: string; limit?: number }) => Promise<FiitxAuditPackageExport>;
     onAgentProgress: (callback: (payload: FiitxAgentProgress) => void) => () => void;
   };
 }

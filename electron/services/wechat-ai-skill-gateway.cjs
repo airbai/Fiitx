@@ -374,7 +374,7 @@ function createWechatAiSkillGateway(options = {}) {
 
     const skill = loadSkill(skillRoot, sessionId);
     toolEvents.push({
-      label: "Deepsix Gateway Router",
+      label: "Fiitx Gateway Router",
       detail: `替代微信 AI router，命中 ${path.basename(skill.skillRoot)}。`
     });
     toolEvents.push({
@@ -438,7 +438,7 @@ function createWechatAiSkillGateway(options = {}) {
       ok: true,
       mode: "wechat-ai-skill",
       gateway: {
-        name: "Deepsix Gateway",
+        name: "Fiitx Gateway",
         role: "wechat-ai-router-compatible",
         selectedSkill: path.basename(skill.skillRoot),
         officialSkillUnmodified: true
@@ -504,7 +504,7 @@ function createWechatAiSkillGateway(options = {}) {
       ok: response.ok,
       mode: "wechat-ai-skill",
       gateway: {
-        name: "Deepsix Gateway",
+        name: "Fiitx Gateway",
         role: "wechat-ai-router-compatible",
         selectedSkill: routing.selected.name,
         officialSkillUnmodified: true,
@@ -519,7 +519,7 @@ function createWechatAiSkillGateway(options = {}) {
       skill: response.skill,
       apiCalls: [{ apiName: firstApi.name, arguments: payload.arguments || {}, ok: response.ok }],
       toolEvents: [
-        { label: "Deepsix Gateway Router", detail: `命中 ${routing.selected.name}` },
+        { label: "Fiitx Gateway Router", detail: `命中 ${routing.selected.name}` },
         { label: "Skill API", detail: `${firstApi.name} ${JSON.stringify(payload.arguments || {})}` }
       ],
       wechatReply: {

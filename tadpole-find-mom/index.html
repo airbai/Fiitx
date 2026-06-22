@@ -1,0 +1,1939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>小蝌蚪找妈妈 🐸 语音互动</title>
+<style>
+/* ════════════════════════════════════════════════════════════
+   小蝌蚪找妈妈 — 明艳儿童绘本风格
+   ════════════════════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'PingFang SC','Microsoft YaHei','Hiragino Sans GB',sans-serif;user-select:none;background:#b3e0f2}
+body{display:flex;justify-content:center;align-items:center}
+
+#app{
+  position:relative;width:100%;height:100%;max-width:800px;max-height:1000px;
+  overflow:hidden;
+  background:linear-gradient(180deg,#7ecef5 0%,#5ab8e6 30%,#3da0d0 60%,#2d8ab8 100%);
+  cursor:default;
+  box-shadow:0 0 40px rgba(0,0,0,0.15);
+}
+
+/* ── Water ripple overlay ── */
+.water-ripple{position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse at 30% 20%,rgba(255,255,255,0.06) 0%,transparent 50%),
+             radial-gradient(ellipse at 70% 40%,rgba(255,255,255,0.04) 0%,transparent 40%),
+             radial-gradient(ellipse at 50% 70%,rgba(255,255,255,0.03) 0%,transparent 50%);}
+
+/* ── Underwater decor (fixed) ── */
+.water-decor{position:absolute;inset:0;z-index:2;pointer-events:none;overflow:hidden}
+.water-decor .sand-bottom{
+  position:absolute;bottom:0;left:0;right:0;height:12%;
+  background:linear-gradient(180deg,rgba(200,170,130,0.15),rgba(180,150,100,0.25));
+  border-radius:50% 50% 0 0 / 30% 30% 0 0;
+}
+.water-decor .plant{
+  position:absolute;bottom:5%;width:6px;
+  background:linear-gradient(180deg,rgba(60,160,80,0.4),rgba(40,130,60,0.3));
+  border-radius:3px 3px 0 0;transform-origin:bottom center;
+  animation:sway 3s ease-in-out infinite;
+}
+.water-decor .plant:nth-child(2){left:8%;height:28%;animation-delay:0.3s}
+.water-decor .plant:nth-child(3){left:25%;height:20%;animation-delay:0.8s;width:5px}
+.water-decor .plant:nth-child(4){right:15%;height:32%;animation-delay:0.5s}
+.water-decor .plant:nth-child(5){right:6%;height:22%;animation-delay:1.2s;width:5px}
+@keyframes sway{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+
+/* ── Canvas ── */
+#gameCanvas{position:absolute;inset:0;width:100%;height:100%;z-index:5}
+
+/* ── HUD ── */
+#hud{
+  position:absolute;top:0;left:0;right:0;z-index:15;
+  padding:8px 12px 6px;
+  background:linear-gradient(180deg,rgba(0,0,0,0.2) 0%,rgba(0,0,0,0.08) 70%,transparent 100%);
+  pointer-events:none;display:flex;justify-content:space-between;align-items:flex-start;
+}
+#hud>*{pointer-events:auto}
+
+/* Level indicator */
+.level-badge{
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,0.15);backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  border-radius:20px;padding:4px 14px 4px 10px;
+  border:1px solid rgba(255,255,255,0.2);
+}
+.level-badge .level-icon{font-size:18px}
+.level-badge .level-name{font-size:13px;color:#fff;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,0.2)}
+.level-badge .level-num{font-size:10px;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.1);border-radius:10px;padding:1px 6px}
+
+/* Progress dots */
+.progress-dots{display:flex;gap:5px;align-items:center}
+.dot{width:10px;height:10px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);
+  background:transparent;transition:all 0.4s}
+.dot.done{background:#ffd93d;border-color:#ffd93d;box-shadow:0 0 8px rgba(255,217,61,0.4)}
+.dot.active{background:#fff;border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,0.5);transform:scale(1.15)}
+.dot.locked{opacity:0.3}
+
+/* Right side */
+.hud-right{display:flex;align-items:center;gap:5px}
+
+/* Score */
+.score-badge{
+  display:flex;align-items:center;gap:3px;
+  background:rgba(255,255,255,0.15);backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  border-radius:20px;padding:3px 12px 3px 8px;
+  border:1px solid rgba(255,255,255,0.2);
+  font-size:14px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* ── Voice Button ── */
+#voiceBtn{
+  position:absolute;bottom:30px;left:50%;transform:translateX(-50%);
+  z-index:20;
+  width:68px;height:68px;border-radius:50%;
+  background:linear-gradient(135deg,#ff8a5c,#ff6b3d);
+  border:3px solid rgba(255,255,255,0.6);
+  box-shadow:0 4px 20px rgba(255,107,61,0.4),0 0 0 0 rgba(255,107,61,0);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:30px;transition:all 0.2s;
+  animation:voicePulse 2.5s ease-in-out infinite;
+}
+@keyframes voicePulse{
+  0%,100%{box-shadow:0 4px 20px rgba(255,107,61,0.3),0 0 0 0 rgba(255,107,61,0)}
+  50%{box-shadow:0 4px 25px rgba(255,107,61,0.5),0 0 0 8px rgba(255,107,61,0.05)}
+}
+#voiceBtn:active{transform:translateX(-50%) scale(0.92)}
+#voiceBtn.listening{
+  background:linear-gradient(135deg,#4ade80,#22c55e);
+  animation:listeningPulse 0.8s ease-in-out infinite;
+  border-color:#fff;
+}
+@keyframes listeningPulse{
+  0%,100%{box-shadow:0 4px 20px rgba(34,197,94,0.4),0 0 0 0 rgba(34,197,94,0)}
+  50%{box-shadow:0 4px 30px rgba(34,197,94,0.6),0 0 0 12px rgba(34,197,94,0.1)}
+}
+.voice-label{
+  position:absolute;bottom:98px;left:50%;transform:translateX(-50%);
+  white-space:nowrap;z-index:20;
+  font-size:12px;color:rgba(255,255,255,0.8);text-shadow:0 1px 4px rgba(0,0,0,0.3);
+  font-weight:600;letter-spacing:1px;
+  background:rgba(0,0,0,0.15);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  padding:4px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);
+}
+
+/* ── Waveform animation ── */
+.waveform-container{
+  position:absolute;bottom:108px;left:50%;transform:translateX(-50%);
+  display:flex;gap:4px;align-items:center;height:24px;z-index:21;
+  opacity:0;transition:opacity 0.3s;
+}
+.waveform-container.show{opacity:1}
+.wave-bar{
+  width:4px;height:4px;border-radius:2px;
+  background:linear-gradient(180deg,#4ade80,#22c55e);
+  animation:waveAnim 0.5s ease-in-out infinite alternate;
+}
+.wave-bar:nth-child(1){animation-delay:0s}
+.wave-bar:nth-child(2){animation-delay:0.1s;height:6px}
+.wave-bar:nth-child(3){animation-delay:0.2s;height:10px}
+.wave-bar:nth-child(4){animation-delay:0.3s;height:14px}
+.wave-bar:nth-child(5){animation-delay:0.25s;height:10px}
+.wave-bar:nth-child(6){animation-delay:0.15s;height:6px}
+.wave-bar:nth-child(7){animation-delay:0.05s;height:4px}
+@keyframes waveAnim{
+  0%{height:3px;opacity:0.3}
+  100%{height:18px;opacity:1}
+}
+
+/* ── Speech Bubble ── */
+#speechBubble{
+  position:absolute;z-index:18;pointer-events:none;
+  max-width:240px;
+  background:rgba(255,255,255,0.92);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border-radius:16px 16px 16px 4px;
+  padding:10px 16px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.08);
+  opacity:0;transform:translateY(10px) scale(0.95);
+  transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  font-size:14px;color:#333;line-height:1.5;font-weight:500;
+  text-align:center;
+}
+#speechBubble.show{opacity:1;transform:translateY(0) scale(1)}
+#speechBubble::after{
+  content:'';position:absolute;bottom:-8px;left:20px;
+  width:0;height:0;
+  border-left:8px solid transparent;
+  border-right:8px solid transparent;
+  border-top:8px solid rgba(255,255,255,0.92);
+}
+#speechBubble .bubble-emoji{font-size:22px;display:block;margin-bottom:2px}
+#speechBubble .bubble-text{display:block}
+
+/* ── Mission card ── */
+#missionCard{
+  position:absolute;top:40%;left:50%;transform:translate(-50%,-50%) scale(0.8);
+  z-index:20;width:85%;max-width:340px;
+  background:rgba(255,255,255,0.95);backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-radius:24px;padding:24px 20px 20px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.12);
+  text-align:center;
+  opacity:0;pointer-events:none;
+  transition:all 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+#missionCard.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#missionCard .card-icon{font-size:48px;margin-bottom:6px}
+#missionCard .card-title{font-size:18px;font-weight:700;color:#333;margin-bottom:4px}
+#missionCard .card-desc{font-size:14px;color:#666;line-height:1.6;margin-bottom:14px}
+#missionCard .card-hint{
+  font-size:12px;color:#999;padding:8px 12px;
+  background:#f5f5f5;border-radius:12px;margin-bottom:14px;
+}
+#missionCard .card-btn{
+  padding:10px 32px;border:none;border-radius:20px;
+  background:linear-gradient(135deg,#ff8a5c,#ff6b3d);
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;
+  box-shadow:0 4px 12px rgba(255,107,61,0.3);
+  transition:all 0.2s;
+  font-family:inherit;
+}
+#missionCard .card-btn:active{transform:scale(0.95)}
+
+/* ── Dialog Box ── */
+#dialogBox{
+  position:absolute;bottom:120px;left:50%;transform:translateX(-50%);
+  z-index:19;width:88%;max-width:360px;
+  background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  border-radius:20px;padding:16px 20px 14px;
+  box-shadow:0 4px 30px rgba(0,0,0,0.08);
+  border:1px solid rgba(255,255,255,0.3);
+  transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  cursor:pointer;
+}
+#dialogBox.hidden{opacity:0;transform:translateX(-50%) translateY(30px);pointer-events:none}
+#dialogBox .dialog-speaker{font-size:13px;font-weight:700;color:#ff6b3d;margin-bottom:2px;display:flex;align-items:center;gap:5px}
+#dialogBox .dialog-text{font-size:15px;color:#333;line-height:1.7;min-height:24px}
+#dialogBox .dialog-arrow{
+  position:absolute;bottom:10px;right:16px;
+  font-size:12px;color:#ff6b3d;
+  animation:arrowBounce 0.8s ease-in-out infinite;
+  opacity:0.6;
+}
+@keyframes arrowBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+
+/* ── Toast notification ── */
+#toast{
+  position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);
+  z-index:21;text-align:center;
+  opacity:0;pointer-events:none;
+  transition:all 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+#toast.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#toast .toast-icon{font-size:52px;display:block;margin-bottom:4px;animation:toastPop 0.6s cubic-bezier(0.34,1.56,0.64,1)}
+@keyframes toastPop{0%{transform:scale(0) rotate(-20deg)}60%{transform:scale(1.2) rotate(5deg)}100%{transform:scale(1) rotate(0)}}
+#toast .toast-title{font-size:18px;font-weight:700;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.2)}
+#toast .toast-sub{font-size:13px;color:rgba(255,255,255,0.8);margin-top:2px;text-shadow:0 1px 4px rgba(0,0,0,0.2)}
+
+/* ── Title Screen ── */
+#titleScreen{
+  position:absolute;inset:0;z-index:25;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#7ecef5 0%,#5ab8e6 40%,#3da0d0 100%);
+  transition:opacity 0.5s,transform 0.5s;
+  padding:20px;
+}
+#titleScreen.hidden{opacity:0;transform:scale(1.05);pointer-events:none}
+
+.title-sun{
+  position:absolute;top:40px;right:30px;
+  font-size:60px;opacity:0.7;
+  animation:sunPulse 4s ease-in-out infinite;
+}
+@keyframes sunPulse{0%,100%{transform:scale(1);opacity:0.7}50%{transform:scale(1.08);opacity:0.9}}
+
+.title-cloud{
+  position:absolute;top:30px;left:20px;
+  font-size:36px;opacity:0.4;
+  animation:cloudFloat 6s ease-in-out infinite;
+}
+@keyframes cloudFloat{0%,100%{transform:translateX(0)}50%{transform:translateX(20px)}}
+
+.title-characters{
+  display:flex;gap:8px;margin-bottom:10px;font-size:40px;
+  animation:charBounce 2s ease-in-out infinite;
+}
+@keyframes charBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+.title-main{
+  font-size:36px;font-weight:800;color:#fff;
+  text-shadow:0 3px 12px rgba(0,0,0,0.15),0 6px 20px rgba(0,0,0,0.08);
+  margin-bottom:2px;letter-spacing:2px;
+}
+.title-sub{
+  font-size:16px;color:rgba(255,255,255,0.85);
+  text-shadow:0 1px 6px rgba(0,0,0,0.1);
+  margin-bottom:20px;letter-spacing:4px;
+}
+
+.title-pond{
+  position:relative;width:120px;height:70px;margin-bottom:16px;
+}
+.title-pond .water{
+  position:absolute;bottom:0;left:0;right:0;height:50px;
+  background:rgba(255,255,255,0.15);
+  border-radius:50% 50% 0 0 / 100% 100% 0 0;
+  animation:pondWave 3s ease-in-out infinite;
+}
+@keyframes pondWave{0%,100%{border-radius:50% 50% 0 0 / 100% 100% 0 0}50%{border-radius:55% 45% 0 0 / 100% 100% 0 0}}
+.title-pond .tadpole-icon{
+  position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+  font-size:28px;animation:tadpoleSwim 2s ease-in-out infinite;
+}
+@keyframes tadpoleSwim{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-5px)}}
+
+.start-btn{
+  padding:14px 48px;border:none;border-radius:50px;
+  background:linear-gradient(135deg,#ff8a5c,#ff6b3d);
+  color:#fff;font-size:18px;font-weight:700;cursor:pointer;
+  box-shadow:0 6px 24px rgba(255,107,61,0.3);
+  transition:all 0.2s;letter-spacing:2px;
+  font-family:inherit;position:relative;overflow:hidden;
+}
+.start-btn:active{transform:scale(0.96)}
+.start-btn .shine{
+  position:absolute;top:0;left:-100%;width:100%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);
+  animation:btnShine 3s ease-in-out infinite;
+}
+@keyframes btnShine{0%,100%{left:-100%}50%{left:100%}}
+
+.title-features{
+  display:flex;gap:16px;margin-top:16px;
+  color:rgba(255,255,255,0.5);font-size:11px;letter-spacing:1px;
+}
+.title-features span{display:flex;align-items:center;gap:4px}
+
+/* ── Victory Screen ── */
+#victoryScreen{
+  position:absolute;inset:0;z-index:28;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,rgba(126,206,245,0.9),rgba(93,184,230,0.95));
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  opacity:0;pointer-events:none;transition:opacity 0.8s;
+  padding:20px;
+}
+#victoryScreen.show{opacity:1;pointer-events:auto}
+.victory-icon{font-size:80px;margin-bottom:6px;animation:victoryFloat 2s ease-in-out infinite}
+@keyframes victoryFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.victory-title{font-size:28px;font-weight:800;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,0.1);margin-bottom:4px}
+.victory-sub{font-size:16px;color:rgba(255,255,255,0.85);margin-bottom:16px;text-align:center;line-height:1.8}
+.victory-stats{display:flex;gap:20px;margin-bottom:20px;color:rgba(255,255,255,0.7);font-size:13px}
+.victory-stats span{display:flex;align-items:center;gap:4px}
+.restart-btn{
+  padding:12px 40px;border:none;border-radius:50px;
+  background:linear-gradient(135deg,#ffd93d,#f59e0b);
+  color:#fff;font-size:16px;font-weight:700;cursor:pointer;
+  box-shadow:0 4px 16px rgba(245,158,11,0.3);
+  transition:all 0.2s;font-family:inherit;letter-spacing:1px;
+}
+.restart-btn:active{transform:scale(0.96)}
+
+/* ── Confetti ── */
+.confetti-container{position:absolute;inset:0;pointer-events:none;z-index:27;overflow:hidden}
+.confetti-piece{position:absolute;top:-8px;width:6px;height:6px;border-radius:2px;
+  animation:confettiFall linear forwards}
+@keyframes confettiFall{
+  0%{transform:translateY(0) rotate(0deg);opacity:1}
+  100%{transform:translateY(110vh) rotate(720deg);opacity:0}
+}
+
+/* ── Bubble particles ── */
+.bubble-particle{
+  position:absolute;pointer-events:none;z-index:3;
+  border-radius:50%;
+  background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.3),rgba(255,255,255,0.05));
+  border:1px solid rgba(255,255,255,0.08);
+  animation:bubbleRise linear forwards;
+}
+@keyframes bubbleRise{
+  0%{transform:translateY(0) scale(1);opacity:0.4}
+  100%{transform:translateY(-300px) scale(0.6);opacity:0}
+}
+
+/* ── Responsive ── */
+@media(max-width:480px){
+  .title-main{font-size:26px}
+  .title-sub{font-size:14px}
+  .start-btn{padding:12px 36px;font-size:16px}
+  .level-badge{padding:3px 10px}
+  .level-badge .level-name{font-size:11px}
+  .score-badge{font-size:12px;padding:2px 8px}
+  .dot{width:8px;height:8px}
+  #voiceBtn{width:60px;height:60px;font-size:26px}
+  #missionCard .card-icon{font-size:40px}
+  #dialogBox{bottom:100px}
+  #dialogBox .dialog-text{font-size:14px}
+}
+
+/* ── Lily pad ripple click effect ── */
+.ripple-effect{
+  position:absolute;border-radius:50%;pointer-events:none;z-index:6;
+  border:2px solid rgba(255,255,255,0.3);
+  animation:rippleOut 0.6s ease-out forwards;
+}
+@keyframes rippleOut{
+  0%{width:10px;height:10px;opacity:1}
+  100%{width:100px;height:100px;opacity:0}
+}
+
+/* ── Voice discovered hint ── */
+.voice-hint-popup{
+  position:absolute;z-index:22;
+  background:rgba(255,255,255,0.95);border-radius:16px;
+  padding:12px 18px;max-width:200px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.1);
+  font-size:13px;color:#333;text-align:center;line-height:1.6;
+  animation:hintPop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  pointer-events:none;
+}
+@keyframes hintPop{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Water ripple overlay -->
+  <div class="water-ripple"></div>
+
+  <!-- Underwater decor -->
+  <div class="water-decor">
+    <div class="sand-bottom"></div>
+    <div class="plant" style="left:8%;height:28%"></div>
+    <div class="plant" style="left:25%;height:20%;width:5px"></div>
+    <div class="plant" style="right:15%;height:32%"></div>
+    <div class="plant" style="right:6%;height:22%;width:5px"></div>
+  </div>
+
+  <!-- Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Natural bubbles (CSS) -->
+  <div id="bubbleContainer" style="position:absolute;inset:0;z-index:3;pointer-events:none"></div>
+
+  <!-- ════ HUD ════ -->
+  <div id="hud">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="level-badge">
+        <span class="level-icon" id="levelIcon">🌿</span>
+        <span class="level-name" id="levelName">池塘起点</span>
+        <span class="level-num" id="levelNum">1/5</span>
+      </div>
+      <div class="progress-dots" id="progressDots">
+        <span class="dot active" data-i="0"></span>
+        <span class="dot locked" data-i="1"></span>
+        <span class="dot locked" data-i="2"></span>
+        <span class="dot locked" data-i="3"></span>
+        <span class="dot locked" data-i="4"></span>
+      </div>
+    </div>
+    <div class="hud-right">
+      <div class="score-badge">
+        <span>⭐</span>
+        <span id="starCount">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ Dialog Box ════ -->
+  <div id="dialogBox" class="hidden" onclick="onDialogClick()">
+    <div class="dialog-speaker" id="dialogSpeaker">🐟 金鱼姐姐</div>
+    <div class="dialog-text" id="dialogText">你好呀，小蝌蚪！</div>
+    <div class="dialog-arrow" id="dialogArrow">▼</div>
+  </div>
+
+  <!-- ════ Speech Bubble (tadpole says) ════ -->
+  <div id="speechBubble">
+    <span class="bubble-emoji" id="bubbleEmoji">🐸</span>
+    <span class="bubble-text" id="bubbleText">你好呀！</span>
+  </div>
+
+  <!-- ════ Mission Card ════ -->
+  <div id="missionCard">
+    <div class="card-icon" id="cardIcon">🌿</div>
+    <div class="card-title" id="cardTitle">第1关 出发！</div>
+    <div class="card-desc" id="cardDesc">小蝌蚪们在池塘里醒来，他们要去找妈妈！</div>
+    <div class="card-hint" id="cardHint">💡 点击池塘任意位置，带领小蝌蚪探索</div>
+    <button class="card-btn" id="cardBtn">开始冒险！</button>
+  </div>
+
+  <!-- ════ Voice Button ════ -->
+  <div class="voice-label">🎤 按住说话</div>
+  <button id="voiceBtn" ontouchstart="onVoiceStart(event)" ontouchend="onVoiceEnd(event)"
+            onmousedown="onVoiceStart(event)" onmouseup="onVoiceEnd(event)" onmouseleave="onVoiceEnd(event)">
+    🎤
+  </button>
+  <div class="waveform-container" id="waveform">
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+    <span class="wave-bar"></span>
+  </div>
+
+  <!-- ════ Toast ════ -->
+  <div id="toast">
+    <span class="toast-icon" id="toastIcon">⭐</span>
+    <span class="toast-title" id="toastTitle">找到星星！</span>
+    <span class="toast-sub" id="toastSub">+1 ⭐</span>
+  </div>
+
+  <!-- ════ Title Screen ════ -->
+  <div id="titleScreen">
+    <div class="title-sun">🌞</div>
+    <div class="title-cloud">☁️</div>
+    <div class="title-characters">🐸🐟🐢🦆</div>
+    <div class="title-main">小蝌蚪找妈妈</div>
+    <div class="title-sub">🎤 语音互动冒险</div>
+    <div class="title-pond">
+      <div class="water"></div>
+      <div class="tadpole-icon">🐸</div>
+    </div>
+    <button id="startBtn" class="start-btn">
+      <span class="shine"></span>
+      开始冒险 🐸
+    </button>
+    <div class="title-features">
+      <span>🎤 语音控制</span>
+      <span>⭐ 5 个关卡</span>
+      <span>🐸 找妈妈</span>
+    </div>
+  </div>
+
+  <!-- ════ Victory Screen ════ -->
+  <div id="victoryScreen">
+    <div class="victory-icon">🐸❤️🐸</div>
+    <div class="victory-title">🎉 找到妈妈啦！</div>
+    <div class="victory-sub">
+      小蝌蚪终于找到了青蛙妈妈！<br>
+      幸福地生活在美丽的池塘里 🪷
+    </div>
+    <div class="victory-stats">
+      <span>⭐ <span id="vStars">0</span></span>
+      <span>🏆 5/5 关卡</span>
+    </div>
+    <button id="restartBtn" class="restart-btn">🔄 再玩一次</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 小蝌蚪找妈妈 — 明艳绘本风 · 语音互动闯关
+// ═══════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════
+// 【配置】MiniMax TTS — 可爱小朋友声音
+// 填入你的 MiniMax API Key 即可启用
+// ════════════════════════════════════════════════
+const MINIMAX_CONFIG = {
+  enabled: false,        // true 启用 MiniMax TTS
+  apiKey: '',            // 你的 MiniMax API Key
+  groupId: '',           // 你的 Group ID
+  model: 'speech-01',
+  voiceId: 'kid-boy-friendly',  // 可爱小男孩声音
+  voiceIdMom: 'friendly-female'  // 妈妈声音
+};
+
+// ════════════════════════════════════════════════
+// Canvas
+// ════════════════════════════════════════════════
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){ W=canvas.width=canvas.clientWidth; H=canvas.height=canvas.clientHeight; }
+resize(); window.addEventListener('resize', resize);
+
+// ════════════════════════════════════════════════
+// 关卡定义（完整故事）
+// ════════════════════════════════════════════════
+const LEVELS = [
+  {
+    id:1, name:'春之池塘', icon:'🌿', emoji:'🌿',
+    story:'春天来了，池塘里的冰融化了，小蝌蚪们从睡梦中醒来，发现妈妈不见了……',
+    mission:'👆 点击池塘任意位置，带小蝌蚪们游一游，活动一下身体！',
+    hint:'💡 点击池塘，小蝌蚪就会游过去哦！找到3颗隐藏的⭐星星！',
+    objective:'explore', objCount:3,
+    npc:null, npcDialog:null,
+    completeText:'小蝌蚪们热身完毕，准备去找妈妈了！',
+    completeEmoji:'🌿', starReward:3
+  },
+  {
+    id:2, name:'金鱼水域', icon:'🐟', emoji:'🐟',
+    story:'小蝌蚪们游啊游，看到一条美丽的金鱼游过来。他们开心地喊："妈妈！妈妈！"',
+    mission:'🎤 按住麦克风说「金鱼姐姐」，或者 👆 点击金鱼问问她！',
+    hint:'💡 说"金鱼姐姐"四个字，金鱼就会回答你！',
+    objective:'interact_fish', objCount:1,
+    npc:'fish', npcDialog:'我不是你们的妈妈～你们的妈妈有大大的眼睛，去前面找找吧！',
+    completeText:'🐟 金鱼姐姐：你们的妈妈有大大的眼睛！',
+    completeEmoji:'🐟', starReward:5
+  },
+  {
+    id:3, name:'龟岩滩', icon:'🐢', emoji:'🐢',
+    story:'小蝌蚪们继续游，看到一只慢悠悠的乌龟。他们又喊："妈妈！妈妈！"',
+    mission:'🎤 说「乌龟伯伯」，或者 👆 点击乌龟伯伯！',
+    hint:'💡 说"乌龟伯伯"，乌龟会告诉你妈妈的样子！',
+    objective:'interact_turtle', objCount:1,
+    npc:'turtle', npcDialog:'我不是你们的妈妈～你们的妈妈有四条腿、白白的肚皮！',
+    completeText:'🐢 乌龟伯伯：你们的妈妈有四条腿、白肚皮！',
+    completeEmoji:'🐢', starReward:5
+  },
+  {
+    id:4, name:'鹅之湾', icon:'🦆', emoji:'🦆',
+    story:'小蝌蚪们游啊游，看到一只优雅的大白鹅在水面游着。他们喊："妈妈！妈妈！"',
+    mission:'🎤 说「大白鹅」，或者 👆 点击大白鹅阿姨！',
+    hint:'💡 说"大白鹅"三个字，大白鹅会告诉你新的线索！',
+    objective:'interact_goose', objCount:1,
+    npc:'goose', npcDialog:'我不是你们的妈妈～你们的妈妈披着绿衣裳，唱起歌来呱呱呱！',
+    completeText:'🦆 大白鹅阿姨：你们的妈妈穿绿衣裳，唱呱呱呱！',
+    completeEmoji:'🦆', starReward:5
+  },
+  {
+    id:5, name:'青蛙圣殿', icon:'🐸', emoji:'🐸',
+    story:'小蝌蚪们游啊游，突然听到"呱呱呱"的声音！一只绿色的大青蛙坐在荷叶上——大眼睛、白肚皮、四条腿、绿衣裳！',
+    mission:'🎤 大声喊「妈妈！」或者 👆 点击青蛙妈妈，扑进妈妈的怀抱！',
+    hint:'💡 说"妈妈"两个字，青蛙妈妈就会回应你！',
+    objective:'interact_mom', objCount:1,
+    npc:'frog', npcDialog:'孩子们！妈妈终于找到你们了！快过来让妈妈抱抱！❤️',
+    completeText:'🐸 小蝌蚪终于找到妈妈了！幸福地生活在一起！❤️',
+    completeEmoji:'🐸', starReward:10
+  }
+];
+
+// ════════════════════════════════════════════════
+// 游戏状态
+// ════════════════════════════════════════════════
+const state = {
+  scene:'title',       // title | play | dialog | victory
+  currentLevel:0,
+  levelStarted:false,
+  levelComplete:false,
+  cleared:new Array(5).fill(false),
+  objProgress:0,
+  objMax:1,
+  stars:0,
+
+  // 蝌蚪
+  tadpoles:[],
+  leader:null,        // 玩家控制的主蝌蚪
+
+  // NPC
+  fish:null, turtle:null, goose:null, frog:null,
+
+  // 隐藏星星
+  hiddenStars:[],
+  starsCollected:0,
+  totalStars:5,
+
+  // 自然气泡
+  ambientBubbles:[],
+
+  // 对话框
+  dialogActive:false,
+  dialogCallback:null,
+  dialogText:'',
+  dialogChars:[],
+  dialogIdx:0,
+  dialogTimer:0,
+  dialogTyping:false,
+  dialogSpeaker:'',
+
+  // 语音
+  isListening:false,
+  lastSpeech:'',
+
+  // 位置信息（用于蝌蚪排队）
+  time:0,
+};
+
+// ════════════════════════════════════════════════
+// 初始化
+// ════════════════════════════════════════════════
+function initGame(){
+  state.tadpoles = [];
+  state.stars = 0;
+  state.starsCollected = 0;
+  state.cleared = new Array(5).fill(false);
+  state.currentLevel = 0;
+  state.levelStarted = false;
+  state.levelComplete = false;
+  state.objProgress = 0;
+  state.scene = 'play';
+  state.time = 0;
+
+  // ---- 创建玩家主蝌蚪（更大，更明显） ----
+  const leader = createTadpole(true);
+  state.leader = leader;
+  state.tadpoles.push(leader);
+
+  // ---- 创建4只跟随蝌蚪 ----
+  for(let i=0;i<4;i++){
+    const t = createTadpole(false);
+    state.tadpoles.push(t);
+  }
+
+  // ---- 创建NPC ----
+  state.fish = createNPC('fish');
+  state.turtle = createNPC('turtle');
+  state.goose = createNPC('goose');
+  state.frog = createNPC('frog');
+
+  // ---- 隐藏星星 ----
+  state.hiddenStars = [];
+  for(let i=0;i<state.totalStars;i++){
+    state.hiddenStars.push({
+      x:60+Math.random()*(W-120),
+      y:80+Math.random()*(H-200),
+      collected:false,
+      size:14+Math.random()*4,
+      phase:Math.random()*Math.PI*2
+    });
+  }
+
+  // ---- 自然气泡 ----
+  state.ambientBubbles = [];
+  for(let i=0;i<12;i++){
+    state.ambientBubbles.push({
+      x:Math.random()*W,
+      y:Math.random()*H,
+      size:3+Math.random()*6,
+      speed:5+Math.random()*10,
+      wobble:Math.random()*Math.PI*2,
+      phase:Math.random()*Math.PI*2
+    });
+  }
+
+  updateUI();
+}
+
+function createTadpole(isLeader){
+  return {
+    id:Math.random(),
+    isLeader,
+    x:0, y:0,
+    targetX:0, targetY:0,
+    vx:0, vy:0,
+    size:isLeader ? 24 : 18,
+    color:isLeader ? '#ff9a56' : '#6ad46a',
+    bodyColor:isLeader ? '#ff8a4a' : '#5ac45a',
+    bellyColor:isLeader ? 'rgba(255,200,150,0.3)' : 'rgba(200,255,200,0.3)',
+    eyeColor:'#333',
+    tailAngle:0,
+    tailSpeed:0.08+Math.random()*0.03,
+    tailOffset:Math.random()*Math.PI*2,
+    blinkTimer:Math.random()*4,
+    followIdx:0,
+
+    setTarget(x,y){ this.targetX=x; this.targetY=y; },
+
+    update(dt){
+      const dx=this.targetX-this.x, dy=this.targetY-this.y, dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist>3){
+        const speed=isLeader?160:140, force=Math.min(1,dist/100);
+        this.vx+=(dx/dist*speed*force+(Math.random()-0.5)*15)*dt;
+        this.vy+=(dy/dist*speed*force+(Math.random()-0.5)*15)*dt;
+      } else {
+        this.vx+=(Math.random()-0.5)*20*dt;
+        this.vy+=(Math.random()-0.5)*20*dt;
+      }
+      this.vx*=(1-2.8*dt); this.vy*=(1-2.8*dt);
+      const spd=Math.sqrt(this.vx*this.vx+this.vy*this.vy);
+      const maxSpd=isLeader?120:100;
+      if(spd>maxSpd){this.vx=this.vx/spd*maxSpd;this.vy=this.vy/spd*maxSpd;}
+      this.x+=this.vx*dt; this.y+=this.vy*dt;
+      const margin=20; const bottom=H-60;
+      if(this.x<margin){this.x=margin;this.vx=Math.abs(this.vx)}
+      if(this.x>W-margin){this.x=W-margin;this.vx=-Math.abs(this.vx)}
+      if(this.y<margin+20){this.y=margin+20;this.vy=Math.abs(this.vy)}
+      if(this.y>bottom){this.y=bottom;this.vy=-Math.abs(this.vy)}
+      this.tailAngle+=this.tailSpeed;
+      this.blinkTimer+=dt;
+    },
+
+    draw(){
+      const s=this.size, x=this.x, y=this.y;
+      const angle=Math.atan2(this.vy,this.vx);
+      const tailWave=Math.sin(this.tailAngle+this.tailOffset)*4;
+      const wobble=Math.sin(this.tailAngle*0.5)*1.5;
+
+      ctx.save(); ctx.translate(x,y); ctx.rotate(angle);
+
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,0.04)';
+      ctx.beginPath(); ctx.ellipse(2,4,s*0.7,s*0.25,0,0,Math.PI*2); ctx.fill();
+
+      // Tail (curved)
+      ctx.strokeStyle=this.bodyColor;
+      ctx.lineWidth=s*0.22; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(-s*0.45,0);
+      ctx.quadraticCurveTo(-s*0.7,tailWave-2+wobble,-s*0.9,tailWave+wobble);
+      ctx.stroke();
+      ctx.strokeStyle='rgba(0,0,0,0.04)'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(-s*0.45,0);
+      ctx.quadraticCurveTo(-s*0.7,tailWave-2+wobble,-s*0.9,tailWave+wobble);
+      ctx.stroke();
+
+      // Body (soft gradient)
+      const grad=ctx.createRadialGradient(-s*0.1,-s*0.15,0,0,0,s*0.8);
+      if(this.isLeader){
+        grad.addColorStop(0,'#ffb07a');
+        grad.addColorStop(0.5,'#ff8a4a');
+        grad.addColorStop(1,'#e07030');
+      } else {
+        grad.addColorStop(0,'#7ade7a');
+        grad.addColorStop(0.5,'#5ac45a');
+        grad.addColorStop(1,'#3aa43a');
+      }
+      ctx.fillStyle=grad;
+      ctx.shadowColor='rgba(0,0,0,0.04)'; ctx.shadowBlur=4;
+      ctx.beginPath(); ctx.ellipse(0,0,s*0.75,s*0.52,0,0,Math.PI*2);
+      ctx.fill(); ctx.shadowBlur=0;
+
+      // Belly highlight
+      ctx.fillStyle=this.bellyColor;
+      ctx.beginPath(); ctx.ellipse(0,s*0.12,s*0.35,s*0.22,0,0,Math.PI*2); ctx.fill();
+
+      // Leader glow
+      if(this.isLeader){
+        ctx.fillStyle='rgba(255,200,100,0.06)';
+        ctx.beginPath(); ctx.arc(0,0,s*0.9,0,Math.PI*2); ctx.fill();
+      }
+
+      // Eyes
+      const blink=this.blinkTimer%3<2.9;
+      if(!blink){
+        // White
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.ellipse(s*0.25,-s*0.18,s*0.16,s*0.2,0,0,Math.PI*2); ctx.fill();
+        // Pupil
+        ctx.fillStyle='#222';
+        ctx.beginPath(); ctx.arc(s*0.3,-s*0.18,s*0.08,0,Math.PI*2); ctx.fill();
+        // Highlight
+        ctx.fillStyle='#fff';
+        ctx.beginPath(); ctx.arc(s*0.33,-s*0.22,s*0.035,0,Math.PI*2); ctx.fill();
+      } else {
+        // Closed eye line
+        ctx.strokeStyle='rgba(0,0,0,0.15)';
+        ctx.lineWidth=1.2; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(s*0.15,-s*0.16); ctx.lineTo(s*0.4,-s*0.16); ctx.stroke();
+      }
+
+      // Cheek blush
+      ctx.fillStyle='rgba(255,150,150,0.12)';
+      ctx.beginPath(); ctx.arc(s*0.38,s*0.04,s*0.08,0,Math.PI*2); ctx.fill();
+
+      // Leader crown/star marker
+      if(this.isLeader){
+        ctx.font='12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('⭐',-s*0.3,-s*0.45);
+      }
+
+      ctx.restore();
+    }
+  };
+}
+
+function createNPC(type){
+  const npc = {type, x:0,y:0,size:0,visible:false,active:false,vx:0,vy:0,
+    tailAngle:0,blinkTimer:0,breathePhase:0,wingPhase:0};
+  switch(type){
+    case 'fish':
+      npc.size=28; npc.vx=-15; npc.active=false;
+      npc.update=function(dt){if(!this.active)return;this.x+=this.vx*dt;this.y+=Math.sin(state.time*0.002)*0.3;this.tailAngle+=dt*4;if(this.x<-60)this.x=W+50;if(this.x>W+60)this.x=-50;};
+      break;
+    case 'turtle':
+      npc.size=30; npc.vx=-8; npc.active=false;
+      npc.update=function(dt){if(!this.active)return;this.x+=this.vx*dt;this.y+=Math.sin(state.time*0.0015)*0.2;this.blinkTimer+=dt;if(this.x<-50)this.x=W+50;if(this.x>W+50)this.x=-50;};
+      break;
+    case 'goose':
+      npc.size=30; npc.vx=10; npc.active=false;
+      npc.update=function(dt){if(!this.active)return;this.x+=this.vx*dt;this.y+=Math.sin(state.time*0.001)*0.4;this.wingPhase+=dt*3;if(this.x>W+50)this.x=-50;if(this.x<-50)this.x=W+50;};
+      break;
+    case 'frog':
+      npc.size=42; npc.visible=false; npc.x=W*0.6; npc.y=H*0.55;
+      npc.update=function(dt){this.blinkTimer+=dt;this.breathePhase+=dt*1.2;};
+      break;
+  }
+  return npc;
+}
+
+// ════════════════════════════════════════════════
+// 关卡管理
+// ════════════════════════════════════════════════
+function setupLevel(idx){
+  const lv = LEVELS[idx];
+  state.currentLevel = idx;
+  state.levelStarted = false;
+  state.levelComplete = false;
+  state.objProgress = 0;
+
+  // 隐藏所有NPC
+  state.fish.active = false;
+  state.turtle.active = false;
+  state.goose.active = false;
+  state.frog.visible = false;
+
+  // 蝌蚪初始位置
+  const cx=W*0.35, cy=H*0.4;
+  state.tadpoles.forEach((t,i)=>{
+    t.x=cx-40+Math.random()*30;
+    t.y=cy+(i-2)*22;
+    t.setTarget(cx+(i-2)*20, cy);
+  });
+
+  // 隐藏星星重置
+  state.hiddenStars.forEach(s=>s.collected=false);
+
+  switch(idx){
+    case 0:
+      state.objMax = lv.objCount;
+      break;
+    case 1:
+      state.objMax = 1;
+      state.fish.active = true;
+      state.fish.x = W+50;
+      break;
+    case 2:
+      state.objMax = 1;
+      state.turtle.active = true;
+      state.turtle.x = W+60;
+      break;
+    case 3:
+      state.objMax = 1;
+      state.goose.active = true;
+      state.goose.x = -50;
+      break;
+    case 4:
+      state.objMax = 1;
+      state.frog.visible = true;
+      state.frog.x = W*0.55;
+      state.frog.y = H*0.55;
+      // 所有蝌蚪看向青蛙
+      state.tadpoles.forEach(t=>t.setTarget(state.frog.x-40+Math.random()*30, state.frog.y-50));
+      break;
+  }
+
+  updateUI();
+  showMissionCard(idx);
+}
+
+function showMissionCard(idx){
+  const lv = LEVELS[idx];
+  document.getElementById('cardIcon').textContent = lv.icon;
+  document.getElementById('cardTitle').textContent = `第${lv.id}关 ${lv.name}`;
+  document.getElementById('cardDesc').textContent = lv.story;
+  document.getElementById('cardHint').textContent = lv.hint || '💡 按提示完成任务吧！';
+  document.getElementById('cardBtn').textContent = '开始冒险！';
+  document.getElementById('missionCard').classList.add('show');
+  document.getElementById('cardBtn').onclick = ()=>{
+    document.getElementById('missionCard').classList.remove('show');
+    startLevel(idx);
+  };
+}
+
+function startLevel(idx){
+  state.levelStarted = true;
+  const lv = LEVELS[idx];
+
+  // 对第一关，给个提示
+  if(idx===0){
+    const msg = '👆 点击池塘，带小蝌蚪们探索！找到闪亮的⭐星星！';
+    showSpeechBubble('🐸', msg);
+    setTimeout(()=>hideSpeechBubble(), 2500);
+  } else if(idx>0 && lv.npc){
+    const hints = {
+      fish:'🎤 说"金鱼姐姐"或点击金鱼 🐟',
+      turtle:'🎤 说"乌龟伯伯"或点击乌龟 🐢',
+      goose:'🎤 说"大白鹅"或点击大白鹅 🦆',
+      frog:'🎤 喊"妈妈"或点击青蛙妈妈 🐸'
+    };
+    showSpeechBubble('💡', hints[lv.npc]||'');
+    setTimeout(()=>hideSpeechBubble(), 3000);
+  }
+}
+
+function completeLevel(idx){
+  if(state.levelComplete) return;
+  state.levelComplete = true;
+  state.cleared[idx] = true;
+  const lv = LEVELS[idx];
+  state.stars += lv.starReward;
+
+  playSound('win');
+  updateUI();
+
+  // 显示完成
+  showToast(lv.completeEmoji, '过关啦！', `+${lv.starReward} ⭐ ${lv.completeText}`);
+
+  setTimeout(()=>{
+    hideToast();
+    if(idx < LEVELS.length-1){
+      setupLevel(idx+1);
+    } else {
+      showVictory();
+    }
+  }, 2500);
+}
+
+function addObjectiveProgress(){
+  const idx = state.currentLevel;
+  if(state.levelComplete || !state.levelStarted) return;
+  state.objProgress = Math.min(state.objProgress+1, state.objMax);
+  if(state.objProgress >= state.objMax){
+    completeLevel(idx);
+  }
+}
+
+// ════════════════════════════════════════════════
+// 交互：点击/触摸
+// ════════════════════════════════════════════════
+canvas.addEventListener('click', onCanvasClick);
+canvas.addEventListener('touchstart', (e)=>{
+  if(state.scene==='dialog'){e.preventDefault();onDialogClick();return;}
+  if(state.scene==='play' && state.dialogActive){e.preventDefault();onDialogClick();return;}
+  const touch=e.touches[0];
+  const rect=canvas.getBoundingClientRect();
+  const x=(touch.clientX-rect.left)/rect.width*W;
+  const y=(touch.clientY-rect.top)/rect.height*H;
+  handleTap(x,y);
+}, {passive:false});
+
+function onCanvasClick(e){
+  if(state.scene==='dialog'){onDialogClick();return;}
+  if(state.scene==='play' && state.dialogActive){onDialogClick();return;}
+  const rect=canvas.getBoundingClientRect();
+  const x=(e.clientX-rect.left)/rect.width*W;
+  const y=(e.clientY-rect.top)/rect.height*H;
+  handleTap(x,y);
+}
+
+function handleTap(x,y){
+  if(state.scene!=='play') return;
+  if(!state.levelStarted) {
+    showSpeechBubble('🐸','先点击"开始冒险"按钮吧！');
+    setTimeout(()=>hideSpeechBubble(),2000);
+    return;
+  }
+  const idx = state.currentLevel;
+
+  // ---- 水波纹特效 ----
+  createRipple(x,y);
+
+  // ---- 移动主蝌蚪 ----
+  state.leader.setTarget(x, y);
+
+  // ---- 跟随蝌蚪跟随主蝌蚪 ----
+  const leader = state.leader;
+  state.tadpoles.forEach((t,i)=>{
+    if(t.isLeader) return;
+    const offsetX = -(i)*22;
+    const offsetY = 15 + i*8;
+    t.setTarget(leader.x + offsetX, leader.y + offsetY);
+  });
+
+  // ---- 第一关：找隐藏星星 ----
+  if(idx===0){
+    for(let s of state.hiddenStars){
+      if(!s.collected){
+        const dx=s.x-x, dy=s.y-y;
+        if(Math.sqrt(dx*dx+dy*dy) < s.size+25){
+          s.collected = true;
+          state.starsCollected++;
+          state.stars++;
+          playSound('collect');
+          showToast('⭐','找到星星！','好棒，继续找吧！');
+          updateUI();
+          addObjectiveProgress();
+          setTimeout(()=>hideToast(),1500);
+          return;
+        }
+      }
+    }
+    // 没点到星星，给提示
+    showSpeechBubble('🐸','找找闪亮亮的星星⭐！');
+    setTimeout(()=>hideSpeechBubble(),2000);
+    return;
+  }
+
+  // ---- 与NPC互动 ----
+  if(idx===1 && state.fish.active){
+    const dx=x-state.fish.x, dy=y-state.fish.y;
+    if(Math.sqrt(dx*dx+dy*dy) < 70){
+      triggerNPC('fish');
+      return;
+    }
+  }
+  if(idx===2 && state.turtle.active){
+    const dx=x-state.turtle.x, dy=y-state.turtle.y;
+    if(Math.sqrt(dx*dx+dy*dy) < 70){
+      triggerNPC('turtle');
+      return;
+    }
+  }
+  if(idx===3 && state.goose.active){
+    const dx=x-state.goose.x, dy=y-state.goose.y;
+    if(Math.sqrt(dx*dx+dy*dy) < 70){
+      triggerNPC('goose');
+      return;
+    }
+  }
+  if(idx===4 && state.frog.visible){
+    const dx=x-state.frog.x, dy=y-state.frog.y;
+    if(Math.sqrt(dx*dx+dy*dy) < 80){
+      triggerNPC('frog');
+      return;
+    }
+  }
+}
+
+function triggerNPC(type){
+  if(state.levelComplete) return;
+  const lv = LEVELS[state.currentLevel];
+  if(!lv.npc || lv.npc !== type) return;
+
+  const npcNames = {fish:'🐟 金鱼姐姐', turtle:'🐢 乌龟伯伯', goose:'🦆 大白鹅阿姨', frog:'🐸 青蛙妈妈'};
+  showDialog(npcNames[type]||'', lv.npcDialog, ()=>{
+    playSound('hit');
+    // NPC用语音回复（MiniMax或Web Speech）
+    speakAsNPC(lv.npcDialog, type);
+    addObjectiveProgress();
+  });
+
+  // 蝌蚪游向NPC
+  if(type==='fish'){
+    state.tadpoles.forEach(t=>t.setTarget(state.fish.x+Math.random()*20, state.fish.y+Math.random()*10));
+  } else if(type==='turtle'){
+    state.tadpoles.forEach(t=>t.setTarget(state.turtle.x+Math.random()*20, state.turtle.y+Math.random()*10));
+  } else if(type==='goose'){
+    state.tadpoles.forEach(t=>t.setTarget(state.goose.x+Math.random()*20, state.goose.y+Math.random()*10));
+  } else if(type==='frog'){
+    state.tadpoles.forEach(t=>t.setTarget(state.frog.x-30+Math.random()*20, state.frog.y-40));
+  }
+}
+
+// ════════════════════════════════════════════════
+// 语音控制（按住说话）
+// ════════════════════════════════════════════════
+let recognition = null;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(SR){recognition=new SR();recognition.lang='zh-CN';recognition.continuous=false;recognition.interimResults=false;}
+
+function onVoiceStart(e){
+  e.preventDefault();
+  if(!recognition){showSpeechBubble('😅','浏览器不支持语音识别，试试点击吧！');setTimeout(()=>hideSpeechBubble(),2000);return;}
+  if(state.isListening) return;
+  state.isListening = true;
+  document.getElementById('voiceBtn').classList.add('listening');
+  document.getElementById('voiceBtn').textContent = '🔊';
+  document.getElementById('waveform').classList.add('show');
+  try{recognition.start();}catch(e){onVoiceEnd(e);return;}
+
+  recognition.onresult = (event)=>{
+    const text = event.results[0][0].transcript;
+    state.lastSpeech = text;
+    handleVoice(text);
+    state.isListening = false;
+    document.getElementById('voiceBtn').classList.remove('listening');
+    document.getElementById('voiceBtn').textContent = '🎤';
+    document.getElementById('waveform').classList.remove('show');
+  };
+  recognition.onerror = (event)=>{
+    state.isListening = false;
+    document.getElementById('voiceBtn').classList.remove('listening');
+    document.getElementById('voiceBtn').textContent = '🎤';
+    document.getElementById('waveform').classList.remove('show');
+    if(event.error!=='no-speech'){
+      showSpeechBubble('🎤','再说一次吧～');
+      setTimeout(()=>hideSpeechBubble(),2000);
+    }
+  };
+  recognition.onend = ()=>{
+    if(state.isListening){
+      state.isListening = false;
+      document.getElementById('voiceBtn').classList.remove('listening');
+      document.getElementById('voiceBtn').textContent = '🎤';
+      document.getElementById('waveform').classList.remove('show');
+    }
+  };
+}
+
+function onVoiceEnd(e){
+  // 如果还在监听，尝试停止
+  if(recognition && state.isListening){
+    try{recognition.stop();}catch(e){}
+  }
+  state.isListening = false;
+  document.getElementById('voiceBtn').classList.remove('listening');
+  document.getElementById('voiceBtn').textContent = '🎤';
+  document.getElementById('waveform').classList.remove('show');
+}
+
+// 处理语音命令
+function handleVoice(text){
+  const lower = text.toLowerCase().trim();
+  if(state.scene!=='play') return;
+  const idx = state.currentLevel;
+
+  // 显示识别到的文本
+  showSpeechBubble('🎤', text);
+  // 主蝌蚪用可爱声音回复
+  speakAsTadpole(text);
+
+  setTimeout(()=>hideSpeechBubble(), 2000);
+
+  // ---- 关卡语音触发 ----
+  if(idx===1 && (lower.includes('金鱼') || lower.includes('鱼姐姐'))){
+    setTimeout(()=>triggerNPC('fish'),800);
+    return;
+  }
+  if(idx===2 && (lower.includes('乌龟') || lower.includes('龟伯伯') || lower.includes('龟'))){
+    setTimeout(()=>triggerNPC('turtle'),800);
+    return;
+  }
+  if(idx===3 && (lower.includes('白鹅') || lower.includes('鹅'))){
+    setTimeout(()=>triggerNPC('goose'),800);
+    return;
+  }
+  if(idx===4 && (lower.includes('妈妈') || lower.includes('妈'))){
+    setTimeout(()=>triggerNPC('frog'),800);
+    return;
+  }
+
+  // ---- 通用语音控制：控制主蝌蚪移动 ----
+  if(lower.includes('上游') || lower.includes('上面') || lower.includes('上去') || lower.includes('往上')){
+    state.leader.setTarget(state.leader.x, state.leader.y-80);
+    followLeader();
+    return;
+  }
+  if(lower.includes('下游') || lower.includes('下面') || lower.includes('下去') || lower.includes('往下') || lower.includes('下边')){
+    state.leader.setTarget(state.leader.x, state.leader.y+80);
+    followLeader();
+    return;
+  }
+  if(lower.includes('左') || lower.includes('左边') || lower.includes('往左') || lower.includes('左转')){
+    state.leader.setTarget(state.leader.x-80, state.leader.y);
+    followLeader();
+    return;
+  }
+  if(lower.includes('右') || lower.includes('右边') || lower.includes('往右') || lower.includes('右转')){
+    state.leader.setTarget(state.leader.x+80, state.leader.y);
+    followLeader();
+    return;
+  }
+  if(lower.includes('游') || lower.includes('过去') || lower.includes('那边')){
+    state.leader.setTarget(state.leader.x+(Math.random()-0.5)*150, state.leader.y+(Math.random()-0.5)*100);
+    followLeader();
+    return;
+  }
+  if(lower.includes('找妈妈') || lower.includes('妈妈在哪')){
+    if(state.frog && state.frog.visible){
+      state.leader.setTarget(state.frog.x-30, state.frog.y-40);
+      followLeader();
+    }
+    return;
+  }
+  if(lower.includes('唱歌') || lower.includes('歌')){
+    showSpeechBubble('🎵','啦啦啦～小蝌蚪找妈妈～');
+    setTimeout(()=>hideSpeechBubble(),2500);
+    return;
+  }
+  if(lower.includes('你好') || lower.includes('嗨') || lower.includes('hi')){
+    showSpeechBubble('👋','你好呀！我们一起找妈妈吧！');
+    setTimeout(()=>hideSpeechBubble(),2500);
+    return;
+  }
+  if(lower.includes('停') || lower.includes('等等')){
+    state.leader.vx=0; state.leader.vy=0;
+    state.leader.setTarget(state.leader.x, state.leader.y);
+    showSpeechBubble('🐸','好～停在这里！');
+    setTimeout(()=>hideSpeechBubble(),1500);
+    return;
+  }
+  // 一般回应
+  showSpeechBubble('🐸',text.length>8 ? '嗯嗯！妈妈在哪里呀？' : '嗯！我们一起找妈妈～');
+  setTimeout(()=>hideSpeechBubble(),2000);
+}
+
+function followLeader(){
+  const leader = state.leader;
+  state.tadpoles.forEach((t,i)=>{
+    if(t.isLeader) return;
+    const offsetX = -(i)*22;
+    const offsetY = 15 + i*8;
+    t.setTarget(leader.x + offsetX, leader.y + offsetY);
+  });
+}
+
+// ════════════════════════════════════════════════
+// 对话框系统
+// ════════════════════════════════════════════════
+function showDialog(speaker, text, callback){
+  state.dialogActive = true;
+  state.dialogCallback = callback || null;
+  state.dialogSpeaker = speaker;
+  state.dialogText = text;
+  state.dialogChars = text.split('');
+  state.dialogIdx = 0;
+  state.dialogTyping = true;
+  state.dialogTimer = 0;
+
+  document.getElementById('dialogSpeaker').innerHTML = speaker;
+  document.getElementById('dialogText').textContent = '';
+  document.getElementById('dialogArrow').style.display = 'none';
+  document.getElementById('dialogBox').classList.remove('hidden');
+}
+
+function onDialogClick(){
+  if(state.dialogTyping){
+    // 立刻显示全部
+    state.dialogIdx = state.dialogChars.length;
+    document.getElementById('dialogText').textContent = state.dialogChars.join('');
+    state.dialogTyping = false;
+    document.getElementById('dialogArrow').style.display = 'block';
+    return;
+  }
+  // 关闭
+  document.getElementById('dialogBox').classList.add('hidden');
+  state.dialogActive = false;
+  if(state.dialogCallback){
+    const cb = state.dialogCallback;
+    state.dialogCallback = null;
+    cb();
+  }
+}
+
+function updateDialog(dt){
+  if(!state.dialogTyping) return;
+  state.dialogTimer += dt;
+  if(state.dialogTimer > 0.04 && state.dialogIdx < state.dialogChars.length){
+    state.dialogTimer = 0;
+    state.dialogIdx += 1;
+    document.getElementById('dialogText').textContent = state.dialogChars.slice(0, state.dialogIdx).join('');
+  }
+  if(state.dialogIdx >= state.dialogChars.length){
+    state.dialogTyping = false;
+    document.getElementById('dialogArrow').style.display = 'block';
+  }
+}
+
+// ════════════════════════════════════════════════
+// 气泡 / Toast
+// ════════════════════════════════════════════════
+function showSpeechBubble(emoji, text){
+  document.getElementById('bubbleEmoji').textContent = emoji||'🐸';
+  document.getElementById('bubbleText').textContent = text;
+  document.getElementById('speechBubble').classList.add('show');
+}
+function hideSpeechBubble(){
+  document.getElementById('speechBubble').classList.remove('show');
+}
+
+function showToast(icon, title, sub){
+  document.getElementById('toastIcon').textContent = icon;
+  document.getElementById('toastTitle').textContent = title;
+  document.getElementById('toastSub').textContent = sub||'';
+  document.getElementById('toast').classList.add('show');
+}
+function hideToast(){
+  document.getElementById('toast').classList.remove('show');
+}
+
+function createRipple(x,y){
+  const el = document.createElement('div');
+  el.className = 'ripple-effect';
+  el.style.left=(x-5)+'px'; el.style.top=(y-5)+'px';
+  document.getElementById('app').appendChild(el);
+  setTimeout(()=>el.remove(),700);
+}
+
+// ════════════════════════════════════════════════
+// UI 更新
+// ════════════════════════════════════════════════
+function updateUI(){
+  const lv = LEVELS[state.currentLevel];
+  if(lv){
+    document.getElementById('levelIcon').textContent = lv.icon;
+    document.getElementById('levelName').textContent = lv.name;
+    document.getElementById('levelNum').textContent = `${state.currentLevel+1}/${LEVELS.length}`;
+  }
+  document.getElementById('starCount').textContent = state.stars;
+
+  // Progress dots
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach((dot,i)=>{
+    dot.className = 'dot';
+    if(state.cleared[i]) dot.classList.add('done');
+    else if(i===state.currentLevel) dot.classList.add('active');
+    else dot.classList.add('locked');
+  });
+}
+
+// ════════════════════════════════════════════════
+// 语音合成 (TTS) — MiniMax / Web Speech
+// ════════════════════════════════════════════════
+async function speakText(text, voiceType='kid'){
+  if(MINIMAX_CONFIG.enabled && MINIMAX_CONFIG.apiKey){
+    try{await speakWithMiniMax(text, voiceType); return;}catch(e){}
+  }
+  speakWithWebSpeech(text, voiceType);
+}
+
+function speakWithWebSpeech(text, voiceType='kid'){
+  if(!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'zh-CN';
+  u.rate = voiceType==='kid' ? 0.85 : 0.8;
+  u.pitch = voiceType==='kid' ? 1.4 : 1.0;
+  u.volume = 1;
+  const voices = window.speechSynthesis.getVoices();
+  const zh = voices.find(v=>v.lang.startsWith('zh'));
+  if(zh) u.voice = zh;
+  window.speechSynthesis.speak(u);
+}
+
+async function speakWithMiniMax(text, voiceType='kid'){
+  const voiceId = voiceType==='kid' ? (MINIMAX_CONFIG.voiceId||'kid-boy-friendly') : (MINIMAX_CONFIG.voiceIdMom||'friendly-female');
+  const url = `https://api.minimax.chat/v1/text_to_speech?GroupId=${MINIMAX_CONFIG.groupId}`;
+  const resp = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${MINIMAX_CONFIG.apiKey}`},
+    body:JSON.stringify({
+      model:MINIMAX_CONFIG.model||'speech-01',
+      text,
+      voice_id:voiceId,
+      speed:1.0,
+      volume:1.0,
+      pitch:voiceType==='kid'?1.2:1.0
+    }),
+  });
+  if(!resp.ok) throw new Error('MiniMax TTS error');
+  const blob = await resp.blob();
+  const audio = new Audio(URL.createObjectURL(blob));
+  audio.play();
+}
+
+function speakAsTadpole(text){ speakText(text,'kid'); }
+function speakAsNPC(text, npcType){
+  const isMom = npcType==='frog';
+  speakText(text, isMom?'mom':'kid');
+}
+
+// ════════════════════════════════════════════════
+// 音效（Web Audio）
+// ════════════════════════════════════════════════
+let audioCtx = null;
+function initAudio(){if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
+
+function playSound(type){
+  try{
+    initAudio();
+    const ctx=audioCtx; const now=ctx.currentTime;
+    const osc=ctx.createOscillator(); const gain=ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+
+    switch(type){
+      case 'collect':
+        osc.type='sine';
+        osc.frequency.setValueAtTime(660,now); osc.frequency.setValueAtTime(880,now+0.08);
+        osc.frequency.setValueAtTime(1100,now+0.16);
+        gain.gain.setValueAtTime(0.1,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.35);
+        osc.start(now); osc.stop(now+0.35);
+        break;
+      case 'hit':
+        osc.type='triangle';
+        osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(900,now+0.1);
+        gain.gain.setValueAtTime(0.08,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.15);
+        osc.start(now); osc.stop(now+0.15);
+        break;
+      case 'win':
+        osc.type='sine';
+        [523,587,659,784,1047].forEach((f,i)=>{
+          osc.frequency.setValueAtTime(f,now+i*0.07);
+        });
+        gain.gain.setValueAtTime(0.1,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.45);
+        osc.start(now); osc.stop(now+0.45);
+        break;
+      case 'victory':
+        osc.type='sine';
+        [523,659,784,1047,784,1047,1319].forEach((f,i)=>{
+          osc.frequency.setValueAtTime(f,now+i*0.1);
+        });
+        gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.9);
+        osc.start(now); osc.stop(now+0.9);
+        break;
+      default:
+        osc.type='sine';
+        osc.frequency.setValueAtTime(440,now);
+        gain.gain.setValueAtTime(0.06,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.1);
+        osc.start(now); osc.stop(now+0.1);
+    }
+  }catch(e){}
+}
+
+// ════════════════════════════════════════════════
+// 胜利
+// ════════════════════════════════════════════════
+function showVictory(){
+  state.scene = 'victory';
+  document.getElementById('victoryScreen').classList.add('show');
+  document.getElementById('vStars').textContent = state.stars;
+  playSound('victory');
+  createConfetti();
+  showDialog('🎉 大团圆 🎉','小蝌蚪终于找到了妈妈！一家人在池塘里幸福地生活在一起！❤️', null);
+}
+
+function createConfetti(){
+  const colors = ['#ff6b6b','#ffd93d','#6bcbff','#a78bfa','#34d399','#fb923c','#f472b6'];
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.getElementById('app').appendChild(container);
+  for(let i=0;i<50;i++){
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    p.style.left = Math.random()*100+'%';
+    p.style.width = (3+Math.random()*5)+'px';
+    p.style.height = (3+Math.random()*5)+'px';
+    p.style.background = colors[Math.floor(Math.random()*colors.length)];
+    p.style.borderRadius = Math.random()>0.5?'50%':'2px';
+    p.style.animationDuration = (2+Math.random()*3)+'s';
+    p.style.animationDelay = Math.random()*2+'s';
+    container.appendChild(p);
+  }
+  setTimeout(()=>{if(container.parentNode)container.remove();},6000);
+}
+
+// ════════════════════════════════════════════════
+// 主循环
+// ════════════════════════════════════════════════
+let lastTime = 0;
+
+function gameLoop(time){
+  const dt = Math.min((time-lastTime)/1000, 0.05);
+  lastTime = time;
+  state.time = time;
+
+  // ---- 更新 ----
+  if(state.scene === 'play'){
+    // 蝌蚪
+    state.tadpoles.forEach(t=>t.update(dt));
+
+    // 如果主蝌蚪移动，跟随者也跟随
+    const leader = state.leader;
+    state.tadpoles.forEach((t,i)=>{
+      if(t.isLeader) return;
+      const offsetX = -(i)*22;
+      const offsetY = 15 + i*8;
+      // 渐近跟随
+      t.setTarget(leader.x + offsetX, leader.y + offsetY);
+    });
+
+    // NPC
+    if(state.fish) state.fish.update(dt);
+    if(state.turtle) state.turtle.update(dt);
+    if(state.goose) state.goose.update(dt);
+    if(state.frog) state.frog.update(dt);
+
+    // 对话框打字
+    if(state.dialogActive) updateDialog(dt);
+
+    // 自然气泡
+    state.ambientBubbles.forEach(b=>{
+      b.y -= b.speed * dt;
+      b.x += Math.sin(time*0.001 + b.wobble) * 0.3;
+      if(b.y < -20){b.y=H+10;b.x=Math.random()*W;}
+    });
+  }
+
+  // ---- 绘制 ----
+  ctx.clearRect(0,0,W,H);
+
+  // 水下背景
+  drawUnderwaterBg(time);
+
+  if(state.scene === 'play'){
+    // 隐藏星星（第一关）
+    if(state.currentLevel===0 && state.levelStarted && !state.levelComplete){
+      state.hiddenStars.forEach(s=>{
+        if(!s.collected){
+          const pulse = 0.5 + Math.sin(time*0.003 + s.phase)*0.3;
+          ctx.save(); ctx.globalAlpha = pulse;
+          ctx.shadowColor = 'rgba(255,215,0,0.4)'; ctx.shadowBlur = 12;
+          ctx.font = `${s.size*1.2}px sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('⭐', s.x, s.y);
+          ctx.restore();
+        }
+      });
+    }
+
+    // 绘制NPC
+    drawFish();
+    drawTurtle();
+    drawGoose();
+    drawFrog();
+
+    // 绘制蝌蚪（先画跟随，再画主角在上层）
+    state.tadpoles.forEach(t=>{if(!t.isLeader) t.draw();});
+    state.leader.draw();
+
+    // 主角标记
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font='10px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='bottom';
+    ctx.fillText('← 我', state.leader.x+20, state.leader.y-state.leader.size*0.6);
+    ctx.restore();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ════════════════════════════════════════════════
+// 背景绘制（明艳池塘）
+// ════════════════════════════════════════════════
+function drawUnderwaterBg(time){
+  // 水下光线
+  for(let i=0;i<4;i++){
+    ctx.save();
+    const rx=W*(0.1+i*0.25)+Math.sin(time*0.0005+i)*15;
+    ctx.beginPath();
+    ctx.moveTo(rx-15,-5);
+    ctx.lineTo(rx+25+Math.sin(time*0.0005+i)*8, H*0.6);
+    ctx.lineTo(rx-20+Math.cos(time*0.0005+i)*5, H*0.6);
+    ctx.closePath();
+    ctx.fillStyle=`rgba(255,255,255,${0.025+Math.sin(time*0.0008+i)*0.01})`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 底部沙地
+  ctx.fillStyle = 'rgba(200,170,130,0.12)';
+  ctx.beginPath();
+  ctx.ellipse(W/2, H-20, W*0.7, 40, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // 底部水草
+  drawSeaweed(W*0.08, H-30, 30, time, 0);
+  drawSeaweed(W*0.2, H-25, 25, time, 0.7);
+  drawSeaweed(W*0.75, H-28, 28, time, 1.2);
+  drawSeaweed(W*0.9, H-22, 22, time, 0.4);
+  drawSeaweed(W*0.5, H-32, 35, time, 0.9);
+
+  // 荷花
+  drawLily(W*0.1, H*0.75, time, 0);
+  drawLily(W*0.82, H*0.7, time, 1.5);
+  drawLily(W*0.45, H*0.8, time, 2.8);
+
+  // 自然气泡
+  state.ambientBubbles.forEach(b=>{
+    ctx.save(); ctx.globalAlpha=0.3;
+    ctx.fillStyle='rgba(255,255,255,0.15)';
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.size,0,Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawSeaweed(x, y, h, time, offset){
+  ctx.save();
+  ctx.strokeStyle='rgba(60,180,80,0.25)'; ctx.lineWidth=4; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x, y);
+  const sway = Math.sin(time*0.001+offset)*6;
+  ctx.quadraticCurveTo(x+sway-8, y-h*0.5, x+sway, y-h);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(40,150,60,0.15)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(x-2, y+2);
+  ctx.quadraticCurveTo(x+sway-10, y-h*0.4, x+sway-3, y-h*0.9);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLily(x, y, time, offset){
+  ctx.save();
+  const s = 18 + Math.sin(time*0.0008+offset)*2;
+  // Pad
+  ctx.fillStyle='rgba(40,160,80,0.15)';
+  ctx.beginPath(); ctx.ellipse(x,y,s,s*0.65, -0.2 + Math.sin(time*0.001+offset)*0.05, 0, Math.PI*2);
+  ctx.fill();
+  // Notch
+  ctx.fillStyle='rgba(255,255,255,0.05)';
+  ctx.beginPath(); ctx.moveTo(x-s*0.3,y); ctx.lineTo(x+s*0.3,y); ctx.lineTo(x,y+s*0.1);
+  ctx.closePath(); ctx.fill();
+  // Flower (if any)
+  if(offset<1){
+    ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('🪷', x+2, y-8);
+  }
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════════
+// NPC 绘制（明艳绘本风格）
+// ════════════════════════════════════════════════
+function drawFish(){
+  const f=state.fish; if(!f||!f.active) return;
+  const s=f.size, x=f.x, y=f.y;
+  ctx.save(); ctx.translate(x,y);
+  if(f.vx<0) ctx.scale(-1,1);
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.03)';
+  ctx.beginPath(); ctx.ellipse(3,5,s*0.6,s*0.15,0,0,Math.PI*2); ctx.fill();
+
+  // Body gradient (orange)
+  const g=ctx.createLinearGradient(-s,0,s,0);
+  g.addColorStop(0,'#ff8833'); g.addColorStop(0.5,'#ffaa44'); g.addColorStop(1,'#ffcc66');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(0,0,s*0.72,s*0.35,0,0,Math.PI*2); ctx.fill();
+
+  // Tail
+  const tw=Math.sin(f.tailAngle)*4;
+  ctx.fillStyle='#ff7722';
+  ctx.beginPath(); ctx.moveTo(-s*0.45,0);
+  ctx.quadraticCurveTo(-s*0.9,tw-4,-s*0.82,tw);
+  ctx.quadraticCurveTo(-s*0.9,tw+4,-s*0.45,0);
+  ctx.fill();
+
+  // Fin
+  ctx.fillStyle='rgba(255,150,50,0.4)';
+  ctx.beginPath(); ctx.moveTo(-s*0.1,-s*0.2); ctx.quadraticCurveTo(-s*0.25,-s*0.5,-s*0.05,-s*0.35);
+  ctx.quadraticCurveTo(s*0.1,-s*0.3,0,-s*0.2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(s*0.22,-s*0.08,s*0.1,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#333';
+  ctx.beginPath(); ctx.arc(s*0.25,-s*0.08,s*0.055,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(s*0.27,-s*0.12,s*0.025,0,Math.PI*2); ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle='rgba(0,0,0,0.1)'; ctx.lineWidth=0.8;
+  ctx.beginPath(); ctx.arc(s*0.25,s*0.05,s*0.06,0.1,Math.PI-0.1); ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawTurtle(){
+  const t=state.turtle; if(!t||!t.active) return;
+  const s=t.size, x=t.x, y=t.y;
+  ctx.save(); ctx.translate(x,y);
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.03)';
+  ctx.beginPath(); ctx.ellipse(3,5,s*0.65,s*0.15,0,0,Math.PI*2); ctx.fill();
+
+  // Shell
+  const sg=ctx.createRadialGradient(0,-s*0.1,0,0,0,s*0.7);
+  sg.addColorStop(0,'#8a9a5a'); sg.addColorStop(0.6,'#6a7a3a'); sg.addColorStop(1,'#4a5a2a');
+  ctx.fillStyle=sg;
+  ctx.beginPath(); ctx.ellipse(0,0,s*0.75,s*0.48,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.lineWidth=0.8; ctx.stroke();
+
+  // Shell pattern
+  ctx.fillStyle='rgba(90,110,50,0.15)';
+  ctx.beginPath(); ctx.arc(-s*0.2,-s*0.1,s*0.08,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s*0.2,-s*0.1,s*0.08,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0,s*0.15,s*0.08,0,Math.PI*2); ctx.fill();
+
+  // Head+Neck
+  ctx.fillStyle='#7a9a5a';
+  ctx.beginPath(); ctx.ellipse(s*0.45,-s*0.25,s*0.2,s*0.16,0.2,0,Math.PI*2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(s*0.52,-s*0.28,s*0.055,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#333';
+  ctx.beginPath(); ctx.arc(s*0.54,-s*0.28,s*0.03,0,Math.PI*2); ctx.fill();
+
+  // Legs
+  ctx.fillStyle='#6a8a4a';
+  [[-s*0.35,0.2],[s*0.35,0.2],[-s*0.45,-0.05],[s*0.45,-0.05]].forEach(([lx,ly])=>{
+    ctx.beginPath(); ctx.ellipse(lx,ly,s*0.1,s*0.06,0,0,Math.PI*2); ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+function drawGoose(){
+  const g=state.goose; if(!g||!g.active) return;
+  const s=g.size, x=g.x, y=g.y;
+  ctx.save(); ctx.translate(x,y);
+  if(g.vx>0) ctx.scale(-1,1);
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.03)';
+  ctx.beginPath(); ctx.ellipse(2,5,s*0.65,s*0.12,0,0,Math.PI*2); ctx.fill();
+
+  // Body
+  ctx.fillStyle='#f5f5ea';
+  ctx.beginPath(); ctx.ellipse(0,0,s*0.75,s*0.38,0,0,Math.PI*2); ctx.fill();
+
+  // Wing
+  const ww=Math.sin(g.wingPhase)*3;
+  ctx.fillStyle='#e8e8d8';
+  ctx.beginPath(); ctx.ellipse(-s*0.08,ww*0.3,s*0.35,s*0.2,-0.1,0,Math.PI*2); ctx.fill();
+
+  // Neck
+  ctx.strokeStyle='#f0f0e0'; ctx.lineWidth=5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(s*0.25,-s*0.02);
+  ctx.quadraticCurveTo(s*0.45,-s*0.5,s*0.65,-s*0.65);
+  ctx.stroke();
+  ctx.strokeStyle='rgba(0,0,0,0.03)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(s*0.25,-s*0.02);
+  ctx.quadraticCurveTo(s*0.45,-s*0.5,s*0.65,-s*0.65);
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle='#f0f0e0';
+  ctx.beginPath(); ctx.arc(s*0.65,-s*0.65,s*0.14,0,Math.PI*2); ctx.fill();
+
+  // Beak
+  ctx.fillStyle='#ff9944';
+  ctx.beginPath(); ctx.moveTo(s*0.78,-s*0.68); ctx.lineTo(s*0.95,-s*0.64); ctx.lineTo(s*0.78,-s*0.6); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#e08030';
+  ctx.beginPath(); ctx.arc(s*0.85,-s*0.64,s*0.02,0,Math.PI*2); ctx.fill();
+
+  // Eye
+  ctx.fillStyle='#333';
+  ctx.beginPath(); ctx.arc(s*0.68,-s*0.68,s*0.035,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(s*0.69,-s*0.7,s*0.015,0,Math.PI*2); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawFrog(){
+  const f=state.frog; if(!f||!f.visible) return;
+  const s=f.size, x=f.x, y=f.y;
+  const breath = Math.sin(f.breathePhase)*0.5;
+  ctx.save(); ctx.translate(x, y+breath);
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.04)';
+  ctx.beginPath(); ctx.ellipse(3,8,s*0.75,s*0.18,0,0,Math.PI*2); ctx.fill();
+
+  // Body
+  const g=ctx.createRadialGradient(-s*0.2,-s*0.15,0,0,0,s*0.7);
+  g.addColorStop(0,'#7ade5a'); g.addColorStop(0.5,'#4ac438'); g.addColorStop(1,'#2d9a1e');
+  ctx.fillStyle=g;
+  ctx.shadowColor='rgba(0,0,0,0.03)'; ctx.shadowBlur=6;
+  ctx.beginPath(); ctx.ellipse(0,0,s*0.78,s*0.58,0,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Belly
+  ctx.fillStyle='rgba(180,240,160,0.35)';
+  ctx.beginPath(); ctx.ellipse(0,s*0.15,s*0.4,s*0.28,0,0,Math.PI*2); ctx.fill();
+
+  // Head
+  ctx.fillStyle='#5ac438';
+  ctx.beginPath(); ctx.ellipse(0,-s*0.48,s*0.42,s*0.32,0,0,Math.PI*2); ctx.fill();
+
+  // Eye bumps
+  ctx.fillStyle='#5ac438';
+  ctx.beginPath(); ctx.ellipse(-s*0.25,-s*0.64,s*0.22,s*0.2,-0.1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(s*0.25,-s*0.64,s*0.22,s*0.2,0.1,0,Math.PI*2); ctx.fill();
+
+  // Eyes
+  const eOpen=f.blinkTimer%3.5<3.2;
+  if(eOpen){
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(-s*0.25,-s*0.64,s*0.1,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(s*0.25,-s*0.64,s*0.1,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#333';
+    ctx.beginPath(); ctx.arc(-s*0.2,-s*0.64,s*0.055,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(s*0.2,-s*0.64,s*0.055,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(-s*0.18,-s*0.66,s*0.02,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(s*0.22,-s*0.66,s*0.02,0,Math.PI*2); ctx.fill();
+  } else {
+    ctx.strokeStyle='rgba(0,80,0,0.2)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(-s*0.35,-s*0.62); ctx.lineTo(-s*0.12,-s*0.62); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s*0.12,-s*0.62); ctx.lineTo(s*0.35,-s*0.62); ctx.stroke();
+  }
+
+  // Smile
+  ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=1.2; ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(0,-s*0.32,s*0.15,0.15,Math.PI-0.15); ctx.stroke();
+
+  // Cheeks
+  ctx.fillStyle='rgba(255,130,130,0.12)';
+  ctx.beginPath(); ctx.arc(-s*0.4,-s*0.35,s*0.07,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(s*0.4,-s*0.35,s*0.07,0,Math.PI*2); ctx.fill();
+
+  // Spots
+  ctx.fillStyle='rgba(0,80,0,0.06)';
+  [[-s*0.28,s*0.12],[s*0.3,s*0.15],[-s*0.15,s*0.25],[s*0.2,-s*0.08]].forEach(([px,py])=>{
+    ctx.beginPath(); ctx.arc(px,py,s*0.05,0,Math.PI*2); ctx.fill();
+  });
+
+  // Crown emoji
+  ctx.font='16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('👑', 0, -s*0.78);
+
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════════
+// 事件绑定
+// ════════════════════════════════════════════════
+document.getElementById('startBtn').addEventListener('click',()=>{
+  initAudio();
+  document.getElementById('titleScreen').classList.add('hidden');
+  initGame();
+  setupLevel(0);
+});
+document.getElementById('startBtn').addEventListener('touchend',(e)=>{e.preventDefault();
+  initAudio();
+  document.getElementById('titleScreen').classList.add('hidden');
+  initGame();
+  setupLevel(0);
+});
+
+document.getElementById('restartBtn').addEventListener('click',()=>{
+  document.getElementById('victoryScreen').classList.remove('show');
+  const c=document.querySelector('.confetti-container');
+  if(c)c.remove();
+  initGame();
+  setupLevel(0);
+});
+
+// 键盘快捷键
+document.addEventListener('keydown',(e)=>{
+  if(e.key===' ' && state.scene==='play'){
+    e.preventDefault();
+    if(!state.isListening) onVoiceStart(e);
+    else onVoiceEnd(e);
+  }
+});
+
+// 预加载语音
+if(window.speechSynthesis){
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged=()=>{window.speechSynthesis.getVoices();};
+}
+
+// 开始游戏循环
+requestAnimationFrame(gameLoop);
+console.log('🐸 小蝌蚪找妈妈 — 明艳绘本语音互动版');
+console.log('🎤 按住麦克风说话，控制你的小蝌蚪！');
+console.log('🎯 5大关卡：春之池塘 → 金鱼水域 → 龟岩滩 → 鹅之湾 → 青蛙圣殿');
+console.log('🔊 MiniMax TTS: 配置 MINIMAX_CONFIG 启用可爱小朋友语音');
+</script>
+</body>
+</html>

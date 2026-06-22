@@ -425,7 +425,7 @@ function createToolCallingAgentSession({
     createLlmMessage("system", systemPrompt, { kind: "system" }),
     ...(compactSummary
       ? [
-          createContextMessage(AGENT_MESSAGE_TYPES.SUMMARY, `Deepsix session compact summary:\n${compactSummary}`, {
+          createContextMessage(AGENT_MESSAGE_TYPES.SUMMARY, `Fiitx session compact summary:\n${compactSummary}`, {
             name: "compact_summary"
           })
         ]
@@ -843,7 +843,7 @@ function createToolCallingAgentSession({
       const summary = await modelRouter.callChat(profile, source, {
         timeoutMs: 60000,
         systemPrompt: [
-          "你负责压缩 Deepsix Agent session 上下文。",
+          "你负责压缩 Fiitx Agent session 上下文。",
           "保留用户目标、关键约束、已完成动作、未完成动作、文件路径、审批结果、工具调用结果和错误信息。",
           "输出中文摘要；原始 JSONL 历史会继续保留，本摘要只用于后续模型上下文。",
           customInstructions ? `额外要求：${customInstructions}` : ""
@@ -852,7 +852,7 @@ function createToolCallingAgentSession({
       sessionLogStore?.appendCompact(threadId, summary, { customInstructions });
       messages.splice(1, messages.length - 1, {
         role: "user",
-        content: `Deepsix session compact summary:\n${summary}`,
+        content: `Fiitx session compact summary:\n${summary}`,
         name: "compact_summary"
       });
       emitProgress({

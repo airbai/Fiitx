@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no, user-scalable=no" />
+  <meta name="description" content="跟随孔乙己，游览鲁迅笔下的鲁镇。灵感来自 Messenger (abeto.co) 的清新小星球风格。" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="孔乙己 · 鲁镇游览" />
+  <meta name="twitter:description" content="跟随孔乙己，游览鲁迅笔下的鲁镇。" />
+  <meta property="og:title" content="孔乙己 · 鲁镇游览" />
+  <meta property="og:description" content="跟随孔乙己，游览鲁迅笔下的鲁镇。" />
+  <title>孔乙己 · 鲁镇游览</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #e8e4dc;
+      font-family: "LXGW WenKai", "STKaiti", "KaiTi", "楷体", "Noto Serif SC", serif;
+      touch-action: none;
+      -webkit-text-size-adjust: 100%;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    #app {
+      display: block;
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* ─── LOADER ─── Messenger-inspired SVG loader */
+    #loader {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #e8e4dc;
+      z-index: 100;
+      transition: opacity 0.8s ease;
+      pointer-events: none;
+    }
+    #loader.hidden { opacity: 0; }
+    #loader .title {
+      color: #4a6b6a;
+      font-size: 32px;
+      letter-spacing: 8px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      opacity: 0;
+      animation: loadFadeIn 1s ease 0.2s forwards;
+    }
+    #loader .subtitle {
+      color: #81bfbc;
+      font-size: 15px;
+      letter-spacing: 6px;
+      opacity: 0;
+      animation: loadFadeIn 1s ease 0.6s forwards;
+    }
+    #loader .loader-svg-wrap {
+      margin-top: 32px;
+      width: 80px; height: 80px;
+      opacity: 0;
+      animation: loadFadeIn 0.5s ease 0.9s forwards;
+    }
+    #loader .loader-svg-wrap svg { display: block; width: 100%; height: 100%; }
+    #loader .loader-svg-wrap svg path {
+      fill: none;
+      stroke: #81bfbc;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+    }
+    .loader-path-0 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0s; }
+    .loader-path-1 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.125s; }
+    .loader-path-2 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.25s; }
+    .loader-path-3 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.375s; }
+    .loader-path-4 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.5s; }
+    .loader-path-5 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.625s; }
+    .loader-path-6 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.75s; }
+    .loader-path-7 { visibility: hidden; animation: seq 1s infinite; animation-delay: 0.875s; }
+    @keyframes seq {
+      0% { visibility: visible; }
+      12.5% { visibility: hidden; }
+      100% { visibility: hidden; }
+    }
+    @keyframes loadFadeIn { to { opacity: 1; } }
+
+    /* ─── HUD ─── */
+    #hud {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    #hud .hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(129,191,188,0.2);
+      border-radius: 20px;
+      padding: 8px 18px;
+      color: #4a6b6a;
+      font-size: 13px;
+      letter-spacing: 1.5px;
+      box-shadow: 0 2px 12px rgba(129,191,188,0.12);
+    }
+    #hud .hint .icon {
+      font-size: 16px;
+      animation: hintPulse 2s ease-in-out infinite;
+    }
+    @keyframes hintPulse {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+
+    /* ─── SCENE TITLE ─── */
+    #scene-title {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      pointer-events: none;
+      text-align: center;
+    }
+    #scene-title .main {
+      color: #4a6b6a;
+      font-size: 22px;
+      letter-spacing: 8px;
+      font-weight: 700;
+      text-shadow: 0 1px 4px rgba(255,255,255,0.5);
+    }
+    #scene-title .sub {
+      color: #81bfbc;
+      font-size: 12px;
+      letter-spacing: 3px;
+      margin-top: 2px;
+      opacity: 0.7;
+    }
+
+    /* ─── COLLECTIBLE COUNTER ─── */
+    #bean-counter {
+      position: fixed;
+      top: 80px;
+      left: 18px;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.8);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(129,191,188,0.15);
+      border-radius: 16px;
+      padding: 5px 14px;
+      font-size: 14px;
+      color: #4a6b6a;
+      letter-spacing: 1px;
+      opacity: 0;
+      transition: opacity 0.6s;
+    }
+    #bean-counter.visible { opacity: 1; }
+    #bean-counter .bean-icon { font-size: 16px; }
+
+    /* ─── NARRATIVE CARD ─── */
+    #narrative {
+      position: fixed;
+      max-width: 440px;
+      width: 88%;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(0.92) translateY(10px);
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(129,191,188,0.25);
+      border-radius: 20px;
+      padding: 32px 28px 28px;
+      z-index: 30;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 20px 60px rgba(74,107,106,0.12), 0 8px 24px rgba(0,0,0,0.04);
+    }
+    #narrative.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, -50%) scale(1) translateY(0);
+    }
+    #narrative .location-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #81bfbc;
+      letter-spacing: 2px;
+      border: 1px solid rgba(129,191,188,0.3);
+      border-radius: 20px;
+      padding: 3px 14px;
+      margin-bottom: 16px;
+    }
+    #narrative .location-badge .dot-indicator {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #81bfbc;
+    }
+    #narrative .text {
+      color: #3a4a4a;
+      font-size: 17px;
+      line-height: 2;
+      letter-spacing: 0.5px;
+    }
+    #narrative .text .quote {
+      display: block;
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: rgba(129,191,188,0.08);
+      border-radius: 10px;
+      border-left: 3px solid #81bfbc;
+      color: #4a6b6a;
+      font-style: italic;
+      font-size: 16px;
+    }
+    #narrative .close-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 18px;
+      padding: 6px 18px;
+      color: #81bfbc;
+      font-size: 13px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      border: 1px solid rgba(129,191,188,0.25);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.5);
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    #narrative .close-btn:hover {
+      background: rgba(129,191,188,0.08);
+      border-color: rgba(129,191,188,0.5);
+    }
+
+    /* ─── LOCATION DOTS ─── */
+    #locations-list {
+      position: fixed;
+      right: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    #locations-list .dot-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    #locations-list .dot-wrap .dot-label {
+      position: absolute;
+      right: 18px;
+      white-space: nowrap;
+      color: #4a6b6a;
+      font-size: 11px;
+      letter-spacing: 1px;
+      opacity: 0;
+      transition: all 0.25s ease;
+      pointer-events: none;
+      background: rgba(255,255,255,0.85);
+      padding: 2px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(129,191,188,0.15);
+    }
+    #locations-list .dot-wrap:hover .dot-label { opacity: 1; }
+    #locations-list .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: rgba(129,191,188,0.25);
+      border: 2px solid rgba(129,191,188,0.2);
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: auto;
+      cursor: pointer;
+      position: relative;
+    }
+    #locations-list .dot-wrap:hover .dot {
+      background: rgba(129,191,188,0.5);
+      transform: scale(1.2);
+    }
+    #locations-list .dot.active {
+      background: #81bfbc;
+      border-color: #81bfbc;
+      box-shadow: 0 0 16px rgba(129,191,188,0.4);
+      transform: scale(1.3);
+    }
+    #locations-list .dot.visited {
+      background: rgba(129,191,188,0.4);
+      border-color: rgba(129,191,188,0.3);
+    }
+
+    /* ─── MINI MAP ─── */
+    #mini-map {
+      position: fixed;
+      bottom: 80px;
+      right: 18px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #mini-map canvas {
+      display: block;
+      border-radius: 12px;
+      opacity: 0.6;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    /* ─── TOAST ─── */
+    #toast {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      z-index: 50;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      font-size: 32px;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.1);
+    }
+    #toast.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 480px) {
+      #narrative { width: 92%; padding: 24px 18px; }
+      #narrative .text { font-size: 15px; }
+      #narrative .text .quote { font-size: 14px; padding: 10px 14px; }
+      #scene-title .main { font-size: 18px; letter-spacing: 6px; }
+      #scene-title .sub { font-size: 10px; }
+      #loader .title { font-size: 24px; letter-spacing: 6px; }
+      #loader .subtitle { font-size: 13px; }
+      #hud .hint { font-size: 11px; padding: 6px 14px; }
+      #locations-list { right: 12px; gap: 8px; }
+      #locations-list .dot { width: 8px; height: 8px; }
+      #bean-counter { top: 74px; left: 12px; font-size: 12px; padding: 4px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- LOADER -->
+  <div id="loader">
+    <div class="title">孔乙己 · 鲁镇游览</div>
+    <div class="subtitle">一步一景 · 品味鲁镇</div>
+    <div class="loader-svg-wrap">
+      <svg viewBox="0 0 80 80" fill="none">
+        <path class="loader-path-0" d="M20 30 L25 25 L30 30" />
+        <path class="loader-path-1" d="M35 25 L40 20 L45 25" />
+        <path class="loader-path-2" d="M50 30 L55 25 L60 30" />
+        <path class="loader-path-3" d="M55 40 L60 45 L55 50" />
+        <path class="loader-path-4" d="M40 50 L45 55 L50 50" />
+        <path class="loader-path-5" d="M25 50 L30 55 L35 50" />
+        <path class="loader-path-6" d="M20 40 L25 45 L30 40" />
+        <path class="loader-path-7" d="M40 30 L40 35 L40 40" />
+      </svg>
+    </div>
+  </div>
+
+  <div id="app"></div>
+
+  <div id="scene-title">
+    <div class="main">鲁 镇</div>
+    <div class="sub">— 孔乙己的故乡 —</div>
+  </div>
+
+  <div id="hud">
+    <div class="hint">
+      <span class="icon">👣</span>
+      <span>点击地面行走 · 点击光点探索</span>
+    </div>
+  </div>
+
+  <div id="bean-counter">
+    <span class="bean-icon">🫘</span>
+    <span>茴香豆: <span id="bean-count">0</span>/<span id="bean-total">12</span></span>
+  </div>
+
+  <div id="narrative">
+    <div class="location-badge">
+      <span class="dot-indicator"></span>
+      <span id="nar-tag">咸亨酒店</span>
+    </div>
+    <div class="text" id="nar-text"></div>
+    <button class="close-btn" id="nar-close">✕ 关闭</button>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="locations-list"></div>
+  <div id="mini-map"><canvas id="minimap-canvas" width="80" height="80"></canvas></div>
+
+  <script type="module">
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'https://esm.sh/three@0.160.0/examples/jsm/renderers/CSS2DRenderer.js';
+
+// ═══════════════════════════════════════════════════════════
+// STORY DATA
+// ═══════════════════════════════════════════════════════════
+const LOCATIONS = [
+  {
+    id: 'gate',
+    name: '鲁镇镇口',
+    pos: [0, 0, -14],
+    desc: '鲁镇的镇的格局，是和别处不同的：都是当街一个曲尺形的大柜台，柜里面预备着热水，可以随时温酒。',
+    quote: '「鲁镇的镇的格局，是和别处不同的。」',
+    color: '#81bfbc'
+  },
+  {
+    id: 'tavern',
+    name: '咸亨酒店',
+    pos: [6, 0, 2],
+    desc: '孔乙己是站着喝酒而穿长衫的唯一的人。他身材很高大；青白脸色，皱纹间时常夹些伤痕；一部乱蓬蓬的花白的胡子。',
+    quote: '「孔乙己是站着喝酒而穿长衫的唯一的人。」',
+    color: '#f0a07a'
+  },
+  {
+    id: 'counter',
+    name: '曲尺柜台',
+    pos: [5, 0, 0],
+    desc: '他对柜里说，"温两碗酒，要一碟茴香豆。"便排出九文大钱。他们又故意的高声嚷道，"你一定又偷了人家的东西了！"',
+    quote: '「温两碗酒，要一碟茴香豆。」',
+    color: '#c4a882'
+  },
+  {
+    id: 'street',
+    name: '鲁镇街道',
+    pos: [-2, 0, -4],
+    desc: '孔乙己便给他们茴香豆吃，一人一颗。孩子吃完豆，仍然不散，眼睛都望着碟子。',
+    quote: '「孩子吃完豆，仍然不散，眼睛都望着碟子。」',
+    color: '#8ab8a0'
+  },
+  {
+    id: 'well',
+    name: '古井旁',
+    pos: [-5, 0, 4],
+    desc: '孔乙己自己知道不能和他们谈天，便只好向孩子说话。有一回对我说道，"你读过书么？"我略略点一点头。',
+    quote: '「你读过书么？……我便考你一考。茴香豆的茴字，怎样写的？」',
+    color: '#7aaec4'
+  },
+  {
+    id: 'end',
+    name: '镇外',
+    pos: [0, 0, 12],
+    desc: '我到现在终于没有见——大约孔乙己的确死了。',
+    quote: '「大约孔乙己的确死了。」',
+    color: '#b8b0a0'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════
+// DOM REFS
+// ═══════════════════════════════════════════════════════════
+const loader = document.getElementById('loader');
+const narDiv = document.getElementById('narrative');
+const narText = document.getElementById('nar-text');
+const narTag = document.getElementById('nar-tag');
+const narClose = document.getElementById('nar-close');
+const hud = document.getElementById('hud');
+const sceneTitle = document.getElementById('scene-title');
+const dotContainer = document.getElementById('locations-list');
+const minimapCanvas = document.getElementById('minimap-canvas');
+const minimapCtx = minimapCanvas.getContext('2d');
+const beanCountEl = document.getElementById('bean-count');
+const beanTotalEl = document.getElementById('bean-total');
+const beanCounter = document.getElementById('bean-counter');
+const toastEl = document.getElementById('toast');
+
+// ═══════════════════════════════════════════════════════════
+// THREE.JS SCENE — Messenger-inspired small-planet feel
+// ═══════════════════════════════════════════════════════════
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe8e4dc);
+scene.fog = new THREE.Fog(0xe8e4dc, 30, 50);
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(14, 10, 18);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.6;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.left = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.getElementById('app').appendChild(labelRenderer.domElement);
+
+// Controls — Messenger smooth orbit
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI / 2.5;
+controls.minPolarAngle = Math.PI / 6.5;
+controls.minDistance = 6;
+controls.maxDistance = 28;
+controls.target.set(0, 0.3, 0);
+controls.update();
+
+// ═══════════════════════════════════════════════════════════
+// ATMOSPHERE — Messenger gradient sky dome (small planet feel)
+// ═══════════════════════════════════════════════════════════
+function createSky() {
+  const group = new THREE.Group();
+
+  // Outer gradient dome - top
+  const topGeo = new THREE.SphereGeometry(40, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+  const topMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    transparent: true,
+    uniforms: {
+      uColorTop: { value: new THREE.Color(0xd4e8e4) },
+      uColorBot: { value: new THREE.Color(0xe8e4dc) }
+    },
+    vertexShader: `
+      varying vec3 vPos;
+      void main() {
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColorTop;
+      uniform vec3 uColorBot;
+      varying vec3 vPos;
+      void main() {
+        float h = normalize(vPos).y;
+        vec3 col = mix(uColorBot, uColorTop, max(h, 0.0));
+        gl_FragColor = vec4(col, 0.6);
+      }
+    `
+  });
+  const dome = new THREE.Mesh(topGeo, topMat);
+  group.add(dome);
+
+  // Horizon ring - soft glow
+  const ringGeo = new THREE.RingGeometry(18, 22, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x81bfbc,
+    transparent: true,
+    opacity: 0.04,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.1;
+  group.add(ring);
+
+  return group;
+}
+scene.add(createSky());
+
+// ═══════════════════════════════════════════════════════════
+// LIGHTS — bright daytime with warmer fill
+// ═══════════════════════════════════════════════════════════
+const ambientLight = new THREE.AmbientLight(0xc8d8d8, 0.55);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xffeedd, 2.0);
+sunLight.position.set(12, 20, 8);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 40;
+sunLight.shadow.camera.left = -18;
+sunLight.shadow.camera.right = 18;
+sunLight.shadow.camera.top = 18;
+sunLight.shadow.camera.bottom = -18;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x81bfbc, 0.5);
+fillLight.position.set(-8, 6, -10);
+scene.add(fillLight);
+
+const warmFill = new THREE.DirectionalLight(0xf0d8b0, 0.25);
+warmFill.position.set(-4, 3, 8);
+scene.add(warmFill);
+
+const skyLight = new THREE.DirectionalLight(0xaaccff, 0.3);
+skyLight.position.set(0, 10, -10);
+scene.add(skyLight);
+
+// ═══════════════════════════════════════════════════════════
+// GROUND — curved "small planet" Messenger style
+// ═══════════════════════════════════════════════════════════
+const groundGeo = new THREE.PlaneGeometry(40, 40, 60, 60);
+groundGeo.rotateX(-Math.PI / 2);
+const pos = groundGeo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i), z = pos.getZ(i);
+  const dist = Math.sqrt(x*x + z*z);
+  // Messenger small-planet curvature
+  let y = -0.008 * dist * dist;
+  // Subtle terrain variation
+  y += Math.sin(x * 0.35) * Math.cos(z * 0.45) * 0.03;
+  y += Math.sin(x * 0.7 + z * 0.5) * 0.015;
+  pos.setY(i, y);
+}
+pos.needsUpdate = true;
+groundGeo.computeVertexNormals();
+
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0xdcd4c8,
+  roughness: 0.95,
+  metalness: 0.0,
+  side: THREE.DoubleSide
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.receiveShadow = true;
+ground.position.y = 0;
+scene.add(ground);
+
+// ═══════════════════════════════════════════════════════════
+// PATHS
+// ═══════════════════════════════════════════════════════════
+function createPath(points, color = 0xc4b8a8, width = 0.25) {
+  const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(p[0], 0.01, p[2])));
+  const tubeGeo = new THREE.TubeGeometry(curve, 36, width / 2, 6, false);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0.0 });
+  const mesh = new THREE.Mesh(tubeGeo, mat);
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return mesh;
+}
+
+createPath([[0,0,-14], [0,0,-8], [-2,0,-4], [-5,0,4]], 0xc8bcac, 0.4);
+createPath([[0,0,-8], [3,0,-2], [5,0,0], [6,0,2]], 0xc8bcac, 0.4);
+createPath([[-2,0,-4], [3,0,-2]], 0xd0c4b4, 0.3);
+createPath([[6,0,2], [5,0,0]], 0xd0c4b4, 0.3);
+createPath([[0,0,6], [0,0,12]], 0xc8bcac, 0.35);
+
+// ═══════════════════════════════════════════════════════════
+// BUILDINGS — Messenger low-poly style
+// ═══════════════════════════════════════════════════════════
+function createBuilding(x, z, w, d, h, color, options = {}) {
+  const group = new THREE.Group();
+
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshStandardMaterial({
+    color: color || 0x8a9a8a,
+    roughness: 0.8,
+    metalness: 0.05,
+    flatShading: true
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = h / 2;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+
+  // Roof
+  const roofH = h * (options.roofHeight || 0.35);
+  const roofOverhang = options.roofOverhang || 0.15;
+  const roofShape = new THREE.Shape();
+  roofShape.moveTo(-w/2 - roofOverhang, 0);
+  roofShape.lineTo(0, roofH);
+  roofShape.lineTo(w/2 + roofOverhang, 0);
+  roofShape.closePath();
+  const roofGeo = new THREE.ExtrudeGeometry(roofShape, {
+    depth: d + roofOverhang * 2,
+    bevelEnabled: false
+  });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: options.roofColor || 0x7a8a6a,
+    roughness: 0.85,
+    metalness: 0.0,
+    flatShading: true
+  });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.set(0, h, -(d + roofOverhang * 2) / 2);
+  roof.castShadow = true;
+  group.add(roof);
+
+  if (options.ridge !== false) {
+    const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x6a7a5a, roughness: 0.9 });
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, d + roofOverhang * 2 + 0.04), ridgeMat);
+    ridge.position.set(0, h + roofH, 0);
+    group.add(ridge);
+  }
+
+  // Windows
+  if (options.windows !== false) {
+    const winMat = new THREE.MeshStandardMaterial({
+      color: 0xc8e0e0,
+      emissive: 0x81bfbc,
+      emissiveIntensity: 0.08,
+      roughness: 0.2,
+      metalness: 0.0
+    });
+    const winPositions = [
+      [w/2 + 0.01, h * 0.45, d * 0.3],
+      [w/2 + 0.01, h * 0.45, -d * 0.3],
+    ];
+    if (options.frontWindows !== false) {
+      winPositions.push(
+        [0, h * 0.45, d/2 + 0.01],
+        [w * 0.25, h * 0.45, d/2 + 0.01],
+        [-w * 0.25, h * 0.45, d/2 + 0.01]
+      );
+    }
+    for (const wp of winPositions) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.4), winMat);
+      win.position.set(wp[0], wp[1], wp[2]);
+      if (Math.abs(wp[0]) > 0.01 && Math.abs(wp[2] - d/2) > 0.01) win.rotation.y = Math.PI / 2;
+      group.add(win);
+      const frame = new THREE.Mesh(new THREE.EdgesGeometry(new THREE.PlaneGeometry(0.35, 0.4)), new THREE.LineBasicMaterial({ color: 0x7a8a7a }));
+      frame.position.copy(win.position);
+      frame.rotation.copy(win.rotation);
+      group.add(frame);
+    }
+  }
+
+  group.position.set(x, 0, z);
+  return group;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TREES — Messenger low-poly
+// ═══════════════════════════════════════════════════════════
+function createTree(x, z, scale = 1, color = 0x7aaa7a) {
+  const group = new THREE.Group();
+
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 1 });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08 * scale, 0.14 * scale, 0.6 * scale, 5), trunkMat);
+  trunk.position.y = 0.3 * scale;
+  trunk.castShadow = true;
+  group.add(trunk);
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.9,
+    flatShading: true
+  });
+  const layers = [
+    { r: 0.5 * scale, y: 0.7 * scale },
+    { r: 0.38 * scale, y: 1.0 * scale },
+    { r: 0.25 * scale, y: 1.3 * scale }
+  ];
+  for (const layer of layers) {
+    const leaf = new THREE.Mesh(new THREE.OctahedronGeometry(layer.r, 0), leafMat);
+    leaf.position.y = layer.y;
+    leaf.scale.y = 0.6;
+    leaf.castShadow = true;
+    group.add(leaf);
+  }
+
+  group.position.set(x, 0, z);
+  group.rotation.y = Math.random() * Math.PI * 2;
+  return group;
+}
+
+function createBush(x, z, scale = 0.6) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x7aaa7a,
+    roughness: 0.9,
+    flatShading: true
+  });
+  for (let i = 0; i < 3; i++) {
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.2 * scale * (1 - i * 0.2), 5, 5), mat);
+    sphere.position.set((i - 1) * 0.2 * scale, 0.1 * scale, (i % 2) * 0.15 * scale);
+    sphere.scale.y = 0.6;
+    sphere.castShadow = true;
+    group.add(sphere);
+  }
+  group.position.set(x, 0, z);
+  return group;
+}
+
+// ═══════════════════════════════════════════════════════════
+// NPC CHARACTERS — Messenger low-poly people
+// ═══════════════════════════════════════════════════════════
+function createNPC(x, z, bodyColor = 0x7a8a7a, headColor = 0xd4a574, scale = 0.6, rot = 0) {
+  const group = new THREE.Group();
+
+  // Body
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.8, flatShading: true });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15 * scale, 0.2 * scale, 0.45 * scale, 5), bodyMat);
+  body.position.y = 0.25 * scale;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headMat = new THREE.MeshStandardMaterial({ color: headColor, roughness: 0.5, flatShading: true });
+  const head = new THREE.Mesh(new THREE.OctahedronGeometry(0.1 * scale, 0), headMat);
+  head.position.y = 0.52 * scale;
+  head.castShadow = true;
+  group.add(head);
+
+  // Hat for some
+  if (bodyColor === 0x7a5a3a || bodyColor === 0x4a5a6a) {
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x3a3a2a, roughness: 0.9 });
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * scale, 0.16 * scale, 0.04 * scale, 5), hatMat);
+    hat.position.y = 0.58 * scale;
+    group.add(hat);
+  }
+
+  group.position.set(x, 0, z);
+  group.rotation.y = rot;
+  group.scale.set(1, 1, 1);
+  return group;
+}
+
+// Tavern keeper (掌柜) — behind counter
+const keeper = createNPC(5.8, 0.5, 0x6a5a4a, 0xc49a7a, 0.65, -0.3);
+scene.add(keeper);
+
+// Short-clothed workers (短衣帮) — near tavern
+scene.add(createNPC(4.2, -1.0, 0x7a7a6a, 0xd4a574, 0.55, 0.8));
+scene.add(createNPC(4.8, -1.8, 0x6a7a5a, 0xc49a7a, 0.6, 0.3));
+
+// Children (孩子们) — near street area
+scene.add(createNPC(-1.0, -3.0, 0x8aaa7a, 0xdbb88c, 0.4, 1.2));
+scene.add(createNPC(-1.8, -3.5, 0x9aba8a, 0xd4a574, 0.38, -0.5));
+scene.add(createNPC(-0.2, -3.8, 0x8aaa7a, 0xdbb88c, 0.35, 2.0));
+
+// Scholar passing by
+scene.add(createNPC(-6.0, -0.5, 0x5a7a8a, 0xd4a574, 0.58, 1.8));
+
+// ═══════════════════════════════════════════════════════════
+// 茴香豆 (Fennel Beans) — Messenger sparkle collectibles
+// ═══════════════════════════════════════════════════════════
+const BEAN_POSITIONS = [
+  [4.2, 0.1, 0.8], [4.7, 0.1, -0.2], [5.3, 0.1, 0.3],
+  [3.8, 0.1, -1.2], [5.5, 0.1, -1.0], [4.0, 0.1, 1.8],
+  [-1.2, 0.1, -2.8], [-0.5, 0.1, -3.5], [-2.0, 0.1, -3.0],
+  [-4.5, 0.1, 4.5], [-5.3, 0.1, 3.5], [-4.0, 0.1, 5.0],
+];
+
+const beans = [];
+let collectedBeans = 0;
+beanTotalEl.textContent = BEAN_POSITIONS.length;
+
+function createBean(x, y, z) {
+  const group = new THREE.Group();
+
+  // Bean body — golden oval
+  const beanMat = new THREE.MeshStandardMaterial({
+    color: 0xd4a030,
+    emissive: 0xf0c040,
+    emissiveIntensity: 0.15,
+    roughness: 0.3,
+    metalness: 0.2
+  });
+  const bean = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), beanMat);
+  bean.scale.set(1.1, 0.8, 0.9);
+  bean.position.y = 0.06;
+  group.add(bean);
+
+  // Glow ring
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0xf0c040,
+    transparent: true,
+    opacity: 0.15,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  const glow = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.16, 12), glowMat);
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.y = 0.01;
+  group.add(glow);
+
+  // Sparkle point light
+  const sparkMat = new THREE.SpriteMaterial({
+    map: (() => {
+      const c = document.createElement('canvas');
+      c.width = 16; c.height = 16;
+      const cx = c.getContext('2d');
+      const grad = cx.createRadialGradient(8, 8, 0, 8, 8, 8);
+      grad.addColorStop(0, 'rgba(240,192,64,0.8)');
+      grad.addColorStop(0.3, 'rgba(240,192,64,0.3)');
+      grad.addColorStop(1, 'rgba(240,192,64,0)');
+      cx.fillStyle = grad;
+      cx.fillRect(0, 0, 16, 16);
+      return new THREE.CanvasTexture(c);
+    })(),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const spark = new THREE.Sprite(sparkMat);
+  spark.position.y = 0.15;
+  spark.scale.set(0.2, 0.2, 1);
+  group.add(spark);
+
+  group.position.set(x, y, z);
+  group.userData.collected = false;
+  return group;
+}
+
+for (const [bx, by, bz] of BEAN_POSITIONS) {
+  const bean = createBean(bx, by, bz);
+  scene.add(bean);
+  beans.push(bean);
+}
+
+// ═══════════════════════════════════════════════════════════
+// BUILD THE TOWN (continued)
+// ═══════════════════════════════════════════════════════════
+
+// 1. Xianheng Tavern
+scene.add(createBuilding(6, 2, 2.6, 2.4, 1.5, 0xc49a7a, {
+  roofColor: 0x8a6a5a,
+  roofHeight: 0.4,
+  roofOverhang: 0.2,
+  windows: true,
+  frontWindows: true
+}));
+
+// Tavern sign
+const signCanvas = document.createElement('canvas');
+signCanvas.width = 128;
+signCanvas.height = 56;
+const sctx = signCanvas.getContext('2d');
+sctx.fillStyle = '#f5f0eb';
+sctx.fillRect(0, 0, 128, 56);
+sctx.strokeStyle = '#81bfbc';
+sctx.lineWidth = 2;
+sctx.strokeRect(2, 2, 124, 52);
+sctx.fillStyle = '#4a6b6a';
+sctx.font = 'bold 26px "LXGW WenKai", "STKaiti", "KaiTi", serif';
+sctx.textAlign = 'center';
+sctx.textBaseline = 'middle';
+sctx.fillText('咸亨酒店', 64, 30);
+
+const signTex = new THREE.CanvasTexture(signCanvas);
+const signMat = new THREE.MeshStandardMaterial({ map: signTex, transparent: true, side: THREE.DoubleSide });
+const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.7), signMat);
+sign.position.set(6, 2.0, 2.9);
+scene.add(sign);
+
+// Tavern banner flags — Messenger accent
+function createBanner(x, z, color = 0xf0a07a) {
+  const group = new THREE.Group();
+  const flagMat = new THREE.MeshStandardMaterial({ color, side: THREE.DoubleSide, roughness: 0.7 });
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.18), flagMat);
+  flag.position.y = 0.09;
+  group.add(flag);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x6a5a4a });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.015, 0.4, 4), poleMat);
+  group.add(pole);
+  group.position.set(x, 1.7, z);
+  return group;
+}
+scene.add(createBanner(5.2, 2.8, 0xf0a07a));
+scene.add(createBanner(6.8, 2.8, 0x81bfbc));
+
+// Lanterns
+function createLantern(x, z, color = 0xf0a07a) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color,
+    emissiveIntensity: 0.15,
+    roughness: 0.5
+  });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.4, 6), bodyMat);
+  body.position.y = 0.2;
+  group.add(body);
+  const topMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4a });
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 0.25), topMat);
+  top.position.y = 0.42;
+  group.add(top);
+  const bot = top.clone();
+  bot.position.y = 0;
+  group.add(bot);
+  group.position.set(x, 1.5, z);
+  group.rotation.y = Math.random() * 0.2 - 0.1;
+  return group;
+}
+scene.add(createLantern(5.0, 2.6));
+scene.add(createLantern(7.0, 2.6));
+
+// 2. L-shaped counter (曲尺柜台)
+const counterMat = new THREE.MeshStandardMaterial({ color: 0xb8a88a, roughness: 0.9 });
+const counter1 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 0.35), counterMat);
+counter1.position.set(5, 0.25, -0.15);
+counter1.castShadow = true;
+scene.add(counter1);
+const counter2 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.5, 0.9), counterMat);
+counter2.position.set(5.9, 0.25, 0.3);
+counter2.castShadow = true;
+scene.add(counter2);
+
+// Bean plate on counter
+const plateMat = new THREE.MeshStandardMaterial({ color: 0xc8b8a0, roughness: 0.7 });
+const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.02, 8), plateMat);
+plate.position.set(5.0, 0.52, -0.1);
+scene.add(plate);
+
+// 3. Small houses
+scene.add(createBuilding(-4, 3, 1.6, 1.5, 0.9, 0xa8b8a0, { roofColor: 0x7a9a7a }));
+scene.add(createBuilding(-3, -3, 1.5, 1.5, 0.8, 0xc8b8a0, { roofColor: 0x8a7a6a }));
+scene.add(createBuilding(2, -6, 1.7, 1.3, 0.9, 0xb0b8a8, { roofColor: 0x7a8a6a }));
+scene.add(createBuilding(-5, -2, 1.3, 1.3, 0.7, 0xa8b8b0, { roofColor: 0x6a8a7a }));
+
+// 4. Town gate
+function createGate(x, z) {
+  const group = new THREE.Group();
+  const pillarMat = new THREE.MeshStandardMaterial({ color: 0xa89888, roughness: 0.85, flatShading: true });
+  const beamMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.85, flatShading: true });
+
+  const pillar1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.6, 0.3), pillarMat);
+  pillar1.position.set(-0.7, 0.8, 0);
+  pillar1.castShadow = true;
+  group.add(pillar1);
+  const pillar2 = pillar1.clone();
+  pillar2.position.set(0.7, 0.8, 0);
+  group.add(pillar2);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.25, 0.4), beamMat);
+  beam.position.set(0, 1.65, 0);
+  beam.castShadow = true;
+  group.add(beam);
+  const gateRoofMat = new THREE.MeshStandardMaterial({ color: 0x6a7a5a, roughness: 0.9, flatShading: true });
+  const gateRoof = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.15, 0.5), gateRoofMat);
+  gateRoof.position.set(0, 1.8, 0);
+  group.add(gateRoof);
+
+  group.position.set(x, 0, z);
+  return group;
+}
+scene.add(createGate(0, -14));
+
+// Gate sign
+const gateSignTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 36;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#f5f0eb';
+  cx.fillRect(0, 0, 128, 36);
+  cx.strokeStyle = '#81bfbc';
+  cx.lineWidth = 1.5;
+  cx.strokeRect(1, 1, 126, 34);
+  cx.fillStyle = '#4a6b6a';
+  cx.font = '22px "LXGW WenKai", "STKaiti", "KaiTi", serif';
+  cx.textAlign = 'center';
+  cx.textBaseline = 'middle';
+  cx.fillText('鲁 镇', 64, 20);
+  return new THREE.CanvasTexture(c);
+})();
+const gateSignMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.2, 0.4),
+  new THREE.MeshStandardMaterial({ map: gateSignTex, transparent: true, side: THREE.DoubleSide })
+);
+gateSignMesh.position.set(0, 1.9, -13.8);
+scene.add(gateSignMesh);
+
+// 5. Well
+const wellMat = new THREE.MeshStandardMaterial({ color: 0x9a8a7a, roughness: 0.9, flatShading: true });
+const wellBase = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.2, 10), wellMat);
+wellBase.position.set(-5, 0.1, 4);
+wellBase.castShadow = true;
+scene.add(wellBase);
+const wellWall = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.35, 10), wellMat);
+wellWall.position.set(-5, 0.38, 4);
+wellWall.castShadow = true;
+scene.add(wellWall);
+
+// 6. Trees
+const trees = [
+  [-6, -6, 1.0], [7, -3, 0.9], [-7, 5, 0.8], [4, -7, 1.0],
+  [-3, 8, 0.9], [8, 6, 0.7], [-8, -4, 0.9], [6, -6, 0.8],
+  [-2, -8, 0.7], [9, 0, 0.6], [-6, -4, 0.75], [3, 7, 0.85]
+];
+for (const [tx, tz, ts] of trees) {
+  scene.add(createTree(tx, tz, ts));
+}
+
+// Bushes
+const bushes = [
+  [-1, -9], [4, -5], [-6, 1], [7, 5], [-4, 6], [2, 8], [-6, -2],
+  [-1, 5], [5, -4]
+];
+for (const [bx, bz] of bushes) {
+  scene.add(createBush(bx, bz, 0.5 + Math.random() * 0.3));
+}
+
+// Stone lamps
+function createStoneLamp(x, z) {
+  const g = new THREE.Group();
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x9a8a7a, roughness: 0.95 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.5, 5), baseMat);
+  base.position.y = 0.25;
+  base.castShadow = true;
+  g.add(base);
+  const topMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.9 });
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.14), topMat);
+  top.position.y = 0.53;
+  g.add(top);
+  g.position.set(x, 0, z);
+  return g;
+}
+scene.add(createStoneLamp(1.5, -5));
+scene.add(createStoneLamp(-0.5, 0.5));
+scene.add(createStoneLamp(3.5, 5));
+scene.add(createStoneLamp(-3, -5));
+
+// ═══════════════════════════════════════════════════════════
+// FLOWERS — Messenger colorful accents on the ground
+// ═══════════════════════════════════════════════════════════
+function createFlowerCluster(x, z, color = 0xf0c0c0) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: true });
+  for (let i = 0; i < 5; i++) {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(0.025, 4, 4), mat);
+    f.position.set((i - 2) * 0.06, 0.01, (i % 3 - 1) * 0.06);
+    group.add(f);
+  }
+  group.position.set(x, 0, z);
+  return group;
+}
+const flowerSpots = [[2, -3], [0, 5], [-3, 0], [4, 4], [-2, -6], [6, -2], [-4, -4]];
+const flowerColors = [0xf0c0c0, 0xf0d0a0, 0xd0c0f0, 0xc0e0c0];
+for (const [fx, fz] of flowerSpots) {
+  scene.add(createFlowerCluster(fx, fz, flowerColors[Math.floor(Math.random() * flowerColors.length)]));
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOCATION MARKERS — Messenger glowing dots
+// ═══════════════════════════════════════════════════════════
+const locationMeshes = [];
+const locationDataMap = new Map();
+const visitedLocations = new Set();
+
+for (const loc of LOCATIONS) {
+  const colorHex = parseInt(loc.color.replace('#', ''), 16);
+
+  // Glowing sphere
+  const geo = new THREE.SphereGeometry(0.18, 10, 10);
+  const mat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.4,
+    transparent: true,
+    opacity: 0.8
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(loc.pos[0], 0.15, loc.pos[2]);
+  mesh.userData.locationId = loc.id;
+  scene.add(mesh);
+  locationMeshes.push(mesh);
+  locationDataMap.set(loc.id, loc);
+
+  // Ground ring
+  const ringGeo = new THREE.RingGeometry(0.22, 0.38, 20);
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.12,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(loc.pos[0], 0.005, loc.pos[2]);
+  scene.add(ring);
+
+  // CSS2D label — Messenger clean minimal
+  const labelDiv = document.createElement('div');
+  labelDiv.textContent = loc.name;
+  labelDiv.style.color = '#4a6b6a';
+  labelDiv.style.fontSize = '12px';
+  labelDiv.style.fontFamily = '"LXGW WenKai", "STKaiti", "KaiTi", serif';
+  labelDiv.style.letterSpacing = '2px';
+  labelDiv.style.textShadow = '0 1px 4px rgba(232,228,220,0.8)';
+  labelDiv.style.background = 'rgba(232,228,220,0.8)';
+  labelDiv.style.padding = '2px 10px';
+  labelDiv.style.borderRadius = '10px';
+  labelDiv.style.border = '1px solid rgba(129,191,188,0.2)';
+  labelDiv.style.backdropFilter = 'blur(4px)';
+  labelDiv.style.pointerEvents = 'none';
+  labelDiv.style.transition = 'opacity 0.3s';
+  labelDiv.style.fontWeight = '500';
+
+  const label = new CSS2DObject(labelDiv);
+  label.position.set(loc.pos[0], 0.9, loc.pos[2]);
+  scene.add(label);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHARACTER: KONG YIJI — with walking animation
+// ═══════════════════════════════════════════════════════════
+const charGroup = new THREE.Group();
+const armLRef = { mesh: null, defaultRotZ: 0 };
+const armRRef = { mesh: null, defaultRotZ: 0 };
+
+// Body (长衫)
+const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3a5a7a, roughness: 0.7, flatShading: true });
+const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.65, 6), bodyMat);
+body.position.y = 0.4;
+body.castShadow = true;
+charGroup.add(body);
+
+// Head
+const headMat = new THREE.MeshStandardMaterial({ color: 0xd4a574, roughness: 0.5, flatShading: true });
+const head = new THREE.Mesh(new THREE.OctahedronGeometry(0.13, 0), headMat);
+head.position.y = 0.78;
+head.castShadow = true;
+charGroup.add(head);
+
+// Eyes — tiny detail
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+const eyeL = new THREE.Mesh(new THREE.CircleGeometry(0.015, 6), eyeMat);
+eyeL.position.set(-0.05, 0.8, 0.13);
+charGroup.add(eyeL);
+const eyeR = eyeL.clone();
+eyeR.position.set(0.05, 0.8, 0.13);
+charGroup.add(eyeR);
+
+// Hat (小毡帽)
+const hatMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9, flatShading: true });
+const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.06, 5), hatMat);
+hat.position.y = 0.85;
+charGroup.add(hat);
+
+// Queue (辫子)
+const queueMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1 });
+const queue = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.025, 0.2, 4), queueMat);
+queue.position.set(-0.1, 0.65, 0.02);
+queue.rotation.z = 0.25;
+queue.rotation.x = -0.1;
+charGroup.add(queue);
+
+// Arms — animated when walking
+const armMat = new THREE.MeshStandardMaterial({ color: 0x3a5a7a, roughness: 0.7 });
+const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.25, 4), armMat);
+armL.position.set(-0.18, 0.5, 0);
+armL.rotation.z = 0.4;
+armLRef.mesh = armL;
+armLRef.defaultRotZ = 0.4;
+charGroup.add(armL);
+
+const armR = armL.clone();
+armR.position.set(0.18, 0.5, 0);
+armR.rotation.z = -0.4;
+armRRef.mesh = armR;
+armRRef.defaultRotZ = -0.4;
+charGroup.add(armR);
+
+// Feet
+const feetMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+const footL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.1), feetMat);
+footL.position.set(-0.07, 0.015, 0.06);
+charGroup.add(footL);
+const footR = footL.clone();
+footR.position.set(0.07, 0.015, 0.06);
+charGroup.add(footR);
+
+charGroup.position.set(0, 0, 0);
+charGroup.scale.set(0.7, 0.7, 0.7);
+scene.add(charGroup);
+
+// Character shadow
+const shadowMat = new THREE.MeshStandardMaterial({
+  color: 0x000000,
+  transparent: true,
+  opacity: 0.08,
+  roughness: 1
+});
+const shadowDisc = new THREE.Mesh(new THREE.CircleGeometry(0.2, 12), shadowMat);
+shadowDisc.rotation.x = -Math.PI / 2;
+shadowDisc.position.y = 0.005;
+scene.add(shadowDisc);
+
+// ═══════════════════════════════════════════════════════════
+// PARTICLES — floating dust / Messenger atmospheric
+// ═══════════════════════════════════════════════════════════
+const particleCount = 100;
+const particleGeo = new THREE.BufferGeometry();
+const particlePos = new Float32Array(particleCount * 3);
+const particleSizes = new Float32Array(particleCount);
+for (let i = 0; i < particleCount; i++) {
+  particlePos[i*3] = (Math.random() - 0.5) * 30;
+  particlePos[i*3+1] = Math.random() * 2.8 + 0.2;
+  particlePos[i*3+2] = (Math.random() - 0.5) * 30;
+  particleSizes[i] = Math.random() * 0.025 + 0.006;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+particleGeo.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+const particleMat = new THREE.PointsMaterial({
+  color: 0x81bfbc,
+  transparent: true,
+  opacity: 0.15,
+  size: 0.012,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false
+});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ═══════════════════════════════════════════════════════════
+// AMBIENT SOUND — pentatonic Chinese atmosphere (Web Audio)
+// ═══════════════════════════════════════════════════════════
+let audioCtx = null;
+let isAudioStarted = false;
+
+function initAudio() {
+  if (isAudioStarted) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    isAudioStarted = true;
+
+    // Gentle pentatonic drone
+    const pentatonic = [261.63, 293.66, 329.63, 392.00, 440.00]; // C D E G A
+    const notes = [];
+
+    for (let i = 0; i < 3; i++) {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const freq = pentatonic[Math.floor(Math.random() * pentatonic.length)] * (0.5 + Math.random() * 0.5);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.value = 0.008 + Math.random() * 0.006;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      notes.push({ osc, gain, freq, phase: Math.random() * Math.PI * 2 });
+    }
+
+    // Slow volume modulation
+    function modulate() {
+      const t = audioCtx.currentTime;
+      for (const n of notes) {
+        n.gain.gain.value = 0.008 + Math.sin(t * 0.15 + n.phase) * 0.005;
+      }
+      requestAnimationFrame(modulate);
+    }
+    setTimeout(modulate, 500);
+  } catch (e) {
+    // Audio not available
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// MINIMAP
+// ═══════════════════════════════════════════════════════════
+function drawMinimap(currentPos) {
+  const w = 80, h = 80;
+  minimapCtx.clearRect(0, 0, w, h);
+
+  minimapCtx.fillStyle = 'rgba(232,228,220,0.7)';
+  minimapCtx.beginPath();
+  minimapCtx.roundRect(0, 0, w, h, 8);
+  minimapCtx.fill();
+
+  const scale = 4;
+  const cx = w / 2, cy = h / 2;
+
+  const paths = [
+    [[0,-14],[0,-8],[-2,-4],[-5,4]],
+    [[0,-8],[3,-2],[5,0],[6,2]],
+    [[-2,-4],[3,-2]],
+    [[6,2],[5,0]],
+    [[0,6],[0,12]]
+  ];
+  for (const p of paths) {
+    minimapCtx.beginPath();
+    for (let i = 0; i < p.length; i++) {
+      const px = cx + p[i][0] * scale;
+      const py = cy + p[i][1] * scale;
+      if (i === 0) minimapCtx.moveTo(px, py);
+      else minimapCtx.lineTo(px, py);
+    }
+    minimapCtx.strokeStyle = 'rgba(129,191,188,0.25)';
+    minimapCtx.lineWidth = 1.5;
+    minimapCtx.stroke();
+  }
+
+  for (const loc of LOCATIONS) {
+    const px = cx + loc.pos[0] * scale;
+    const py = cy + loc.pos[2] * scale;
+    const isVisited = visitedLocations.has(loc.id);
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 3, 0, Math.PI * 2);
+    minimapCtx.fillStyle = isVisited ? loc.color : 'rgba(129,191,188,0.3)';
+    minimapCtx.fill();
+    minimapCtx.strokeStyle = isVisited ? loc.color : 'rgba(129,191,188,0.2)';
+    minimapCtx.lineWidth = 1;
+    minimapCtx.stroke();
+  }
+
+  if (currentPos) {
+    const px = cx + (currentPos.x || 0) * scale;
+    const py = cy + (currentPos.z || 0) * scale;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+    minimapCtx.fillStyle = '#4a6b6a';
+    minimapCtx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════
+function showToast(text, duration = 1200) {
+  toastEl.textContent = text;
+  toastEl.classList.add('visible');
+  clearTimeout(toastEl._hideTimer);
+  toastEl._hideTimer = setTimeout(() => {
+    toastEl.classList.remove('visible');
+  }, duration);
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERACTION
+// ═══════════════════════════════════════════════════════════
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let isMoving = false;
+let moveTarget = null;
+let currentLocationId = null;
+let lastLocationId = null;
+let characterPos = { x: 0, z: 0 };
+let walkTime = 0;
+
+renderer.domElement.addEventListener('click', onPointerClick);
+renderer.domElement.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    onPointerClick({ clientX: t.clientX, clientY: t.clientY });
+  }
+}, { passive: true });
+
+// Also start audio on first interaction
+function onPointerClick(event) {
+  // Start audio on first click
+  if (!isAudioStarted) initAudio();
+
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(pointer, camera);
+
+  // Check beans first (they're sprites so we need raycasting differently)
+  // We'll check proximity in the animation loop instead
+
+  // Check location spheres
+  const locIntersects = raycaster.intersectObjects(locationMeshes);
+  if (locIntersects.length > 0) {
+    const hit = locIntersects[0].object;
+    const locId = hit.userData.locationId;
+    const locData = locationDataMap.get(locId);
+    if (locData) {
+      showNarrative(locData);
+      moveCharacterTo(locData.pos);
+      visitedLocations.add(locId);
+      return;
+    }
+  }
+
+  // Check ground
+  const groundIntersects = raycaster.intersectObject(ground);
+  if (groundIntersects.length > 0) {
+    const point = groundIntersects[0].point;
+    // Clamp within bounds
+    const dist = Math.sqrt(point.x * point.x + point.z * point.z);
+    if (dist < 16) {
+      moveCharacterTo([point.x, 0, point.z]);
+    }
+  }
+}
+
+function moveCharacterTo(pos) {
+  moveTarget = new THREE.Vector3(pos[0], 0, pos[2]);
+  isMoving = true;
+}
+
+function updateCharacter(delta) {
+  if (!isMoving || !moveTarget) return;
+
+  const currentPos = charGroup.position;
+  const targetPos = moveTarget;
+  const dx = targetPos.x - currentPos.x;
+  const dz = targetPos.z - currentPos.z;
+  const dist = Math.sqrt(dx*dx + dz*dz);
+
+  if (dist < 0.05) {
+    isMoving = false;
+    characterPos.x = currentPos.x;
+    characterPos.z = currentPos.z;
+    // Reset arm animation
+    if (armLRef.mesh) armLRef.mesh.rotation.z = armLRef.defaultRotZ;
+    if (armRRef.mesh) armRRef.mesh.rotation.z = armRRef.defaultRotZ;
+    drawMinimap(characterPos);
+    return;
+  }
+
+  const speed = 3.2 * delta;
+  const step = Math.min(speed, dist);
+  currentPos.x += (dx / dist) * step;
+  currentPos.z += (dz / dist) * step;
+
+  characterPos.x = currentPos.x;
+  characterPos.z = currentPos.z;
+
+  // Shadow follows
+  shadowDisc.position.x = currentPos.x;
+  shadowDisc.position.z = currentPos.z;
+
+  // Walking animation — arm swing
+  walkTime += delta * 8;
+  const swing = Math.sin(walkTime) * 0.25;
+  if (armLRef.mesh) armLRef.mesh.rotation.z = armLRef.defaultRotZ + swing;
+  if (armRRef.mesh) armRRef.mesh.rotation.z = armRRef.defaultRotZ - swing;
+
+  // Walking bob
+  const bob = Math.sin(walkTime * 0.7) * 0.012;
+  charGroup.position.y = bob;
+
+  // Face direction (smooth rotation)
+  const targetAngle = Math.atan2(dx, dz);
+  let currentAngle = charGroup.rotation.y;
+  let diff = targetAngle - currentAngle;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  currentAngle += diff * 0.15;
+  charGroup.rotation.y = currentAngle;
+
+  // Check proximity to beans
+  for (let i = 0; i < beans.length; i++) {
+    const bean = beans[i];
+    if (bean.userData.collected) continue;
+    const bd = Math.sqrt(
+      (currentPos.x - bean.position.x) ** 2 +
+      (currentPos.z - bean.position.z) ** 2
+    );
+    if (bd < 0.4) {
+      bean.userData.collected = true;
+      bean.visible = false;
+      collectedBeans++;
+      beanCountEl.textContent = collectedBeans;
+      showToast('🫘 +1 茴香豆');
+      if (collectedBeans === BEAN_POSITIONS.length) {
+        setTimeout(() => showToast('🎉 茴香豆收集完毕！"多乎哉？不多也。"', 2000), 500);
+      }
+    }
+  }
+
+  // Check proximity to locations
+  for (const loc of LOCATIONS) {
+    const lx = loc.pos[0], lz = loc.pos[2];
+    const ld = Math.sqrt((currentPos.x - lx)**2 + (currentPos.z - lz)**2);
+    if (ld < 0.8 && lastLocationId !== loc.id) {
+      lastLocationId = loc.id;
+      document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
+      const dot = document.querySelector(`.dot[data-id="${loc.id}"]`);
+      if (dot) dot.classList.add('active');
+      drawMinimap(characterPos);
+      break;
+    }
+  }
+}
+
+// Narrative display
+function showNarrative(locData) {
+  narTag.textContent = locData.name;
+  narText.innerHTML = `${locData.desc}<br/><br/><span class="quote">${locData.quote}</span>`;
+  narDiv.classList.add('visible');
+  document.querySelector('#scene-title .main').textContent = locData.name;
+  document.querySelector('#scene-title .sub').textContent = '— 点击关闭继续探索 —';
+  currentLocationId = locData.id;
+
+  document.querySelectorAll('.dot').forEach(d => d.classList.remove('active'));
+  const dot = document.querySelector(`.dot[data-id="${locData.id}"]`);
+  if (dot) dot.classList.add('active');
+  if (!visitedLocations.has(locData.id)) {
+    visitedLocations.add(locData.id);
+    if (dot) dot.classList.add('visited');
+  }
+  drawMinimap(characterPos);
+}
+
+narClose.addEventListener('click', closeNarrative);
+narDiv.addEventListener('click', (e) => {
+  if (e.target === narDiv || e.target.closest('.close-btn')) {
+    closeNarrative();
+  }
+});
+
+function closeNarrative() {
+  narDiv.classList.remove('visible');
+  document.querySelector('#scene-title .main').textContent = '鲁 镇';
+  document.querySelector('#scene-title .sub').textContent = '— 孔乙己的故乡 —';
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOCATION DOTS UI
+// ═══════════════════════════════════════════════════════════
+for (const loc of LOCATIONS) {
+  const wrap = document.createElement('div');
+  wrap.className = 'dot-wrap';
+
+  const dot = document.createElement('div');
+  dot.className = 'dot';
+  dot.dataset.id = loc.id;
+  dot.title = loc.name;
+
+  const label = document.createElement('span');
+  label.className = 'dot-label';
+  label.textContent = loc.name;
+
+  dot.addEventListener('click', () => {
+    if (!isAudioStarted) initAudio();
+    const data = locationDataMap.get(loc.id);
+    if (data) {
+      moveCharacterTo(data.pos);
+      showNarrative(data);
+      visitedLocations.add(loc.id);
+    }
+  });
+
+  wrap.appendChild(dot);
+  wrap.appendChild(label);
+  dotContainer.appendChild(wrap);
+}
+
+// ═══════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+});
+
+// ═══════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════
+let time = 0;
+
+function animate(delta) {
+  requestAnimationFrame(animate);
+
+  controls.update();
+  updateCharacter(delta);
+
+  // Float particles
+  const ppos = particles.geometry.attributes.position.array;
+  for (let i = 0; i < particleCount; i++) {
+    ppos[i*3+1] += Math.sin(time * 0.5 + i * 0.3) * 0.0008;
+    if (ppos[i*3+1] > 2.8) ppos[i*3+1] = 0.2;
+    if (ppos[i*3+1] < 0.2) ppos[i*3+1] = 2.8;
+    ppos[i*3] += Math.cos(time * 0.3 + i * 0.5) * 0.0004;
+  }
+  particles.geometry.attributes.position.needsUpdate = true;
+
+  // Bean float & pulse animation
+  for (const bean of beans) {
+    if (bean.userData.collected) continue;
+    const bY = 0.1 + Math.sin(time * 1.2 + bean.position.x * 0.5 + bean.position.z * 0.7) * 0.04;
+    bean.position.y = bY;
+    bean.rotation.y += delta * 0.5;
+    // Sparkle scale pulse
+    const spark = bean.children[2];
+    if (spark) {
+      const s = 0.15 + Math.sin(time * 2.0 + bean.position.x) * 0.08;
+      spark.scale.set(s, s, 1);
+    }
+  }
+
+  // Gentle location sphere pulse
+  for (const m of locationMeshes) {
+    const pulse = 0.5 + Math.sin(time * 1.5 + m.position.x * 0.5) * 0.3;
+    m.material.emissiveIntensity = 0.2 + pulse * 0.25;
+  }
+
+  time += delta;
+
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════════
+
+// Hide loader
+setTimeout(() => {
+  loader.classList.add('hidden');
+  setTimeout(() => { loader.style.display = 'none'; }, 800);
+}, 1500);
+
+// Show bean counter after entrance
+setTimeout(() => {
+  beanCounter.classList.add('visible');
+}, 2500);
+
+// Entrance animation
+charGroup.position.y = -1;
+charGroup.scale.set(0, 0, 0);
+shadowDisc.scale.set(0, 0, 0);
+setTimeout(() => {
+  let t = 0;
+  const entrance = () => {
+    t += 0.025;
+    if (t >= 1) t = 1;
+    const ease = 1 - Math.pow(1 - t, 3);
+    charGroup.position.y = (1 - ease) * -0.5;
+    const s = ease * 0.7;
+    charGroup.scale.set(s, s, s);
+    shadowDisc.scale.set(ease, ease, ease);
+    characterPos = { x: charGroup.position.x, z: charGroup.position.z };
+    if (t < 1) requestAnimationFrame(entrance);
+    else drawMinimap(characterPos);
+  };
+  entrance();
+}, 1700);
+
+let lastTime = performance.now() / 1000;
+function loop(time_ms) {
+  const now = time_ms / 1000;
+  const delta = Math.min(now - lastTime, 0.05);
+  lastTime = now;
+  animate(delta);
+}
+requestAnimationFrame(loop);
+
+// Initial minimap
+drawMinimap({ x: 0, z: 0 });
+  </script>
+</body>
+</html>

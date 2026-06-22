@@ -39,6 +39,9 @@ const videoSignals = ["生成视频", "视频", "短视频", "动效", "动画",
 const audioSignals = ["语音", "音频", "配音", "tts", "朗读", "wav", "mp3"];
 const htmlSignals = ["html", "网页预览", "页面预览", "iframe"];
 const htmlArtifactSignals = ["html代码", "html 代码", "html格式", "html 格式", "html文件", "html 文件", "代码形式", "网页", "网页形式", "页面", "canvas", "css", "javascript", "js", "svg", "交互演示", "演示动画", "教学动画"];
+const interactiveArtifactSignals = ["小游戏", "游戏", "游览", "漫游", "导览", "场景", "主角", "角色", "npc", "交互", "互动", "three", "3d", "canvas", "地图", "关卡", "像素", "动画", "复古", "页面", "网站"];
+const creationSignals = ["做", "制作", "生成", "创建", "搭建", "开发", "实现", "复刻", "仿照", "设计", "输出", "写"];
+const codingModeSwitchSignals = ["切换进入编码模式", "切换到编码模式", "进入编码模式", "编码模式", "切换进入coding", "切换到coding", "进入coding", "coding模式", "coding mode", "开发模式"];
 const documentArtifactSignals = [
   "ppt",
   "pptx",
@@ -99,6 +102,9 @@ function detectTaskKind(text, modality, isCoding) {
   if (isCoding && /html|网页|canvas|svg|演示动画|教学动画|交互演示/.test(text)) {
     return "html-artifact";
   }
+  if (isCoding && /小游戏|游戏|游览|漫游|导览|场景|主角|角色|npc|交互|互动|three|3d|canvas|地图|关卡|像素|动画/.test(text)) {
+    return "html-artifact";
+  }
   if (isCoding && /微信|小程序/.test(text)) {
     return "miniapp-coding";
   }
@@ -140,29 +146,46 @@ function routeIntent(payload) {
   const promptWithoutUrls = stripExternalUrlsFromText(normalizedPrompt);
   const hasUrl = externalUrls.length > 0;
   const hasAttachment = Array.isArray(payload?.attachments) && payload.attachments.length > 0;
+  const hasCreationIntent = includesAny(promptWithoutUrls, creationSignals);
+  const wantsCodingMode = includesAny(promptWithoutUrls, codingModeSwitchSignals);
+  const wantsInteractiveArtifact = hasCreationIntent && includesAny(promptWithoutUrls, interactiveArtifactSignals);
+  const referenceDeliveryIntent =
+    hasUrl &&
+    hasCreationIntent &&
+    includesAny(promptWithoutUrls, ["参考", "照着", "仿照", "复刻", "风格", "类似"]);
   const hasExplicitCodingSignal =
     hasAttachment ||
     includesAny(promptWithoutUrls, codingSignals) ||
     includesAny(promptWithoutUrls, htmlSignals) ||
     includesAny(promptWithoutUrls, htmlArtifactSignals) ||
-    includesAny(promptWithoutUrls, documentArtifactSignals);
+    includesAny(promptWithoutUrls, documentArtifactSignals) ||
+    wantsCodingMode ||
+    wantsInteractiveArtifact ||
+    referenceDeliveryIntent;
   const hasCodeDeliverySignal = hasAttachment || includesAny(promptWithoutUrls, codeDeliverySignals);
   const needsExternalArtifact = hasUrl && (
     includesAny(promptWithoutUrls, documentArtifactSignals) ||
-    includesAny(promptWithoutUrls, webResearchSignals) && /做|生成|制作|输出|整理|升级|改|写|ppt|报告|文档|素材/.test(promptWithoutUrls)
+    referenceDeliveryIntent ||
+    includesAny(promptWithoutUrls, webResearchSignals) && /做|生成|制作|创建|搭建|实现|复刻|仿照|设计|输出|整理|升级|改|写|ppt|报告|文档|素材/.test(promptWithoutUrls)
   );
   const codingScore =
     scoreSignals(promptWithoutUrls, codingSignals, 2) +
     scoreSignals(promptWithoutUrls, htmlArtifactSignals, 4) +
+    scoreSignals(promptWithoutUrls, interactiveArtifactSignals, wantsInteractiveArtifact ? 3 : 1) +
     scoreSignals(promptWithoutUrls, documentArtifactSignals, 4) +
     scoreSignals(promptWithoutUrls, codeDeliverySignals, 1) +
     (hasAttachment ? 6 : 0) +
+    (wantsCodingMode ? 9 : 0) +
+    (wantsInteractiveArtifact ? 7 : 0) +
+    (referenceDeliveryIntent ? 7 : 0) +
     (needsExternalArtifact ? 7 : 0);
   const mediaScore =
     scoreSignals(promptWithoutUrls, imageSignals, 2) +
     scoreSignals(promptWithoutUrls, videoSignals, 2) +
     scoreSignals(promptWithoutUrls, audioSignals, 2);
-  const modality = detectModality(promptWithoutUrls, { preferCodeArtifact: hasCodeDeliverySignal });
+  const modality = wantsInteractiveArtifact
+    ? "html"
+    : detectModality(promptWithoutUrls, { preferCodeArtifact: hasCodeDeliverySignal || referenceDeliveryIntent });
   const preferredProvider = detectProvider(promptWithoutUrls);
   const isMediaGeneration = ["image", "video", "audio"].includes(modality) && !hasCodeDeliverySignal && mediaScore >= codingScore;
   const threadContext = payload?.threadContext || {};
@@ -184,6 +207,7 @@ function routeIntent(payload) {
   const isCoding =
     !isMediaGeneration && (
     hasAttachment ||
+    wantsCodingMode ||
     modality === "html" ||
     hasExplicitCodingSignal ||
     needsExternalArtifact ||
@@ -208,6 +232,7 @@ function routeIntent(payload) {
       needsExternalArtifact ? "外部资料需要生成交付物" : "",
       modality !== "text" ? `识别到 ${modality} 任务` : "",
       hasExplicitCodingSignal && ["image", "video", "audio"].includes(modality) ? "明确要求代码交付，跳过媒体生成" : "",
+      wantsCodingMode ? "用户明确要求进入 coding/编码模式" : "",
       taskKind ? `任务类型 ${taskKind}` : "",
       preferredProvider ? `用户点名 ${preferredProvider}` : "",
       isContinuationCoding ? "结合线程上下文识别为 coding continuation" : ""

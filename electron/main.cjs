@@ -5,6 +5,7 @@ const { fileURLToPath } = require("node:url");
 const artifactEngine = require("./services/artifact-engine.cjs");
 const policyEngine = require("./services/policy-engine.cjs");
 const { createAgentRuntime } = require("./services/agent-runtime.cjs");
+const { createAgentHistoryService } = require("./services/agent-history.cjs");
 const { createModelRouter } = require("./services/model-router.cjs");
 const { createSessionLogStore } = require("./services/session-log-store.cjs");
 const { createTelemetryStore } = require("./services/telemetry-store.cjs");
@@ -12,16 +13,17 @@ const { createThreadStore } = require("./services/thread-store.cjs");
 const { createToolRuntime } = require("./services/tool-runtime.cjs");
 const { createWorkspaceManager } = require("./services/workspace-manager.cjs");
 const { createWechatChannelServer } = require("./services/wechat-channel-server.cjs");
+const { createVscodeChannelServer } = require("./services/vscode-channel-server.cjs");
 const { createWechatAiSkillGateway } = require("./services/wechat-ai-skill-gateway.cjs");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let mainWindow = null;
 
+app.setName("Fiitx");
+
 function getDefaultWorkspaceRoot() {
   const documentsPath = app.getPath("documents");
-  // Fiitx branding kept for easy restore:
-  // const root = path.join(documentsPath, "Fiitx Workspaces");
-  const root = path.join(documentsPath, "Deepsix Workspaces");
+  const root = path.join(documentsPath, "Fiitx Workspaces");
   fs.mkdirSync(root, { recursive: true });
   return root;
 }
@@ -35,6 +37,12 @@ const modelRouter = createModelRouter({ app, safeStorage });
 const sessionLogStore = createSessionLogStore({ app });
 const telemetryStore = createTelemetryStore({ app });
 const threadStore = createThreadStore({ app });
+const agentHistory = createAgentHistoryService({
+  app,
+  sessionLogStore,
+  telemetryStore,
+  threadStore
+});
 const wechatAiSkillGateway = createWechatAiSkillGateway();
 const agentRuntime = createAgentRuntime({
   artifactEngine,
@@ -56,6 +64,36 @@ const wechatChannelServer = createWechatChannelServer({
   }
 });
 
+const vscodeChannelServer = createVscodeChannelServer({
+  port: Number(process.env.DEEPSIX_VSCODE_CHANNEL_PORT || 18767),
+  onInboundMessage: (payload) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("vscode-channel:inbound", payload);
+  },
+  onContextReceived: (context) => {
+    // VS Code 传来的上下文可以触发 Agent 任务
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("vscode-channel:context", context);
+  },
+  onDiffAccepted: (diffId, files) => {
+    // 差异被接受后，可以通知桌面 UI
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("vscode-channel:diff-accepted", { diffId, files });
+  },
+  onDiffRejected: (diffId, reason) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("vscode-channel:diff-rejected", { diffId, reason });
+  }
+});
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
@@ -63,14 +101,10 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: "#f6f7fb",
-    // Fiitx branding kept for easy restore:
-    // title: "Fiitx",
-    title: "Deepsix",
+    title: "Fiitx",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
-    // Fiitx icon kept for easy restore:
-    // icon: path.join(__dirname, "../assets/icon-1024.png"),
-    icon: path.join(__dirname, "../assets/deepsix-logo.png"),
+    icon: path.join(__dirname, "../assets/icon-1024.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -193,6 +227,34 @@ function getSearchRoot(basePath) {
   return workspaceManager.getFallbackRoot();
 }
 
+function resolveWorkspaceFilePath(workspacePath, relativePath) {
+  const root = workspaceManager.resolveWorkspaceRoot(workspacePath);
+  const normalizedRelative = String(relativePath || "").trim();
+  if (!normalizedRelative) {
+    throw new Error("文件路径不能为空");
+  }
+  if (path.isAbsolute(normalizedRelative)) {
+    throw new Error("IDE 文件路径必须是 workspace 相对路径");
+  }
+
+  const absolutePath = path.resolve(root, normalizedRelative);
+  const boundary = `${root}${path.sep}`;
+  if (absolutePath !== root && !absolutePath.startsWith(boundary)) {
+    throw new Error(`文件路径不能跳出 workspace：${normalizedRelative}`);
+  }
+
+  const safeRelativePath = path.relative(root, absolutePath);
+  if (policyEngine.isSensitivePath(safeRelativePath)) {
+    throw new Error(`敏感文件不允许在 IDE 中直接读取或写入：${safeRelativePath}`);
+  }
+
+  return {
+    root,
+    absolutePath,
+    relativePath: safeRelativePath
+  };
+}
+
 function pathSuffixMatches(relativePath, suffix) {
   if (!suffix) {
     return false;
@@ -308,6 +370,9 @@ app.whenReady().then(() => {
   wechatChannelServer.start().catch((error) => {
     console.error("[wechat-channel] failed to start", error);
   });
+  vscodeChannelServer.start().catch((error) => {
+    console.error("[vscode-channel] failed to start", error);
+  });
 
   ipcMain.handle("app:get-platform", () => ({
     platform: process.platform,
@@ -329,6 +394,59 @@ app.whenReady().then(() => {
       properties: ["openFile", "multiSelections"]
     })
   );
+
+  ipcMain.handle("workspace:list-files", (_event, payload = {}) => {
+    const root = workspaceManager.resolveWorkspaceRoot(payload.workspacePath);
+    const limit = Math.max(1, Math.min(Number(payload.limit || 800), 2000));
+    const files = workspaceManager.listWorkspaceFiles(root, limit);
+    return {
+      root,
+      files,
+      truncated: files.length >= limit
+    };
+  });
+
+  ipcMain.handle("workspace:read-file", (_event, payload = {}) => {
+    const { root, absolutePath, relativePath } = resolveWorkspaceFilePath(payload.workspacePath, payload.path);
+    if (!policyEngine.isTextFile(relativePath)) {
+      throw new Error(`当前文件类型不支持文本编辑：${relativePath}`);
+    }
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      throw new Error(`文件不存在：${relativePath}`);
+    }
+
+    const stat = fs.statSync(absolutePath);
+    const maxBytes = Math.max(1, Math.min(Number(payload.maxBytes || 1024 * 1024), 1024 * 1024 * 2));
+    const fd = fs.openSync(absolutePath, "r");
+    const buffer = Buffer.alloc(Math.min(stat.size, maxBytes));
+    try {
+      fs.readSync(fd, buffer, 0, buffer.length, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+
+    return {
+      root,
+      path: relativePath,
+      content: buffer.toString("utf8").replace(/\u0000/g, ""),
+      truncated: stat.size > maxBytes
+    };
+  });
+
+  ipcMain.handle("workspace:write-file", (_event, payload = {}) => {
+    const { root, absolutePath, relativePath } = resolveWorkspaceFilePath(payload.workspacePath, payload.path);
+    if (!policyEngine.isTextFile(relativePath)) {
+      throw new Error(`当前文件类型不支持文本编辑：${relativePath}`);
+    }
+    const content = typeof payload.content === "string" ? payload.content : "";
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content, "utf8");
+    return {
+      root,
+      path: relativePath,
+      bytes: Buffer.byteLength(content, "utf8")
+    };
+  });
 
   ipcMain.handle("path:inspect", (_event, payload) => {
     const parsed = parsePathPayload(payload);
@@ -419,6 +537,8 @@ app.whenReady().then(() => {
   ipcMain.handle("wechat-ai:invoke-skill", (_event, payload) => wechatAiSkillGateway.callApi(payload));
 
   ipcMain.handle("wechat-channel:status", () => wechatChannelServer.getStatus());
+
+  ipcMain.handle("vscode-channel:status", () => vscodeChannelServer.getStatus());
 
   ipcMain.handle("terminal:run-command", async (_event, payload = {}) => {
     const command = String(payload.command || "").trim();
@@ -541,6 +661,22 @@ app.whenReady().then(() => {
     return agentRuntime.getHarnessSnapshot(payload);
   });
 
+  ipcMain.handle("agent-history:snapshot", (_event, payload = {}) => {
+    return agentHistory.getSnapshot(payload);
+  });
+
+  ipcMain.handle("agent-history:trace", (_event, payload = {}) => {
+    return agentHistory.getTrace(payload);
+  });
+
+  ipcMain.handle("agent-history:compare", (_event, payload = {}) => {
+    return agentHistory.compareRuns(payload);
+  });
+
+  ipcMain.handle("agent-history:export", (_event, payload = {}) => {
+    return agentHistory.exportAuditPackage(payload);
+  });
+
   createWindow();
 
   app.on("activate", () => {
@@ -558,4 +694,5 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   void wechatChannelServer.stop();
+  void vscodeChannelServer.stop();
 });
