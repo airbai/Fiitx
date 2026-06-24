@@ -1,33 +1,42 @@
-# Deepsix — 自迭代 AI Agent Workbench
+# Fiitx — Global AI Agent Workbench
 
-> **原名 Fiitx** · 基于 Electron + React + BYOM（Bring Your Own Model）的桌面端企业级 Agent 工作台。  
-> 核心理念：**让 AI Agent 在 Deepsix 内升级迭代 Deepsix 自己。**
+> Electron + React + BYOM desktop workbench for enterprise AI agents.  
+> Fiitx is built for global teams: local-first execution, multilingual UI, transparent model routing, auditable tools, and policy-controlled workspace operations.
 
 ---
 
-## 项目定位
-
 <p align="center">
-  <img src="assets/intro.png" alt="Deepsix — 自迭代 AI Agent Workbench" width="800"/>
+  <img src="assets/intro.png" alt="Fiitx — Global AI Agent Workbench" width="800"/>
 </p>
 
-Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操作系统雏形**，参考了 Pi (@earendil-works)、OpenClaw、Codex 等架构思路，实现了：
+## What Is Fiitx?
 
-- LLM 原生的 Agent 循环（不是 Chat 壳）
-- 结构化记忆与上下文压缩（替代无脑填满 Context Window）
-- 多 Agent 编排（类最近微信 AI 小程序 Skill 化的思路）
-- 文件系统级别的 Diff 引擎与跨文件感知
-- 权限审批（企业级安全策略门控）
+Fiitx is not another AI chat wrapper. It is a self-hosted desktop workbench for building, running, auditing, and improving AI agents inside real local workspaces.
 
-## 界面多语言
+Fiitx combines a native agent loop with workspace tools, model routing, policy gates, MCP/Skill integration, and an IDE-style editing surface. The goal is to make agent execution visible and controllable enough for enterprise workflows, while still keeping the product lightweight enough to run as a desktop app.
 
-Fiitx 界面默认跟随系统语言，也可以在 `Settings > General > Language` 手动切换。当前支持 English、全球主要使用人群语种，以及繁体中文：
+Core capabilities:
 
-| Locale | 语言 |
-|--------|------|
+- LLM-native agent loop with streaming, tool calls, and reasoning-compatible message history.
+- Structured memory and context compression instead of blindly filling the context window.
+- Multi-agent orchestration with intent routing and task-specific agent capabilities.
+- MCP and Skill support for external tools, resources, prompts, and workflow extensions.
+- Workspace file operations with local resource discovery, diff preview, IDE viewing, and artifact preview.
+- Policy-controlled approvals for filesystem, shell, network, MCP, and sensitive operations.
+- Multi-provider model routing with fallback, latency awareness, cost awareness, and provider health tracking.
+- Global multilingual UI that follows the system language by default.
+
+## Global UI Languages
+
+Fiitx follows the operating system language by default. Users can also switch languages manually in `Settings > General > Language`.
+
+Supported UI languages:
+
+| Locale | Language |
+|--------|----------|
 | `en` | English |
-| `zh` | 简体中文 |
-| `zh-TW` | 繁體中文 |
+| `zh` | Simplified Chinese / 简体中文 |
+| `zh-TW` | Traditional Chinese / 繁體中文 |
 | `hi` | हिन्दी / Hindi |
 | `es` | Español / Spanish |
 | `fr` | Français / French |
@@ -38,14 +47,66 @@ Fiitx 界面默认跟随系统语言，也可以在 `Settings > General > Langua
 | `ur` | اردو / Urdu |
 | `ru` | Русский / Russian |
 
-#### 点击观看演示视频
+## Architecture Highlights
+
+| Area | Status |
+|------|--------|
+| Agent loop | Pi Kernel, Agent Runtime, Tool Agent Loop, and Agent Executor are implemented. |
+| Structured memory | Summary, fact, artifact, decision, constraint, pending, and tool result memory are implemented. |
+| Multi-agent orchestration | Intent Router, Agent Orchestrator, specialized agents, and channel adapters are implemented. |
+| Workspace operations | File manifest, diff engine, local resource display, preview, and IDE integration are implemented. |
+| Safety and approval | Policy engine, sensitive file detection, approval flow, and audit records are implemented. |
+| MCP and Skills | External MCP servers, local/repository skills, discovery, install, enable/disable, and permission handling are implemented. |
+| Observability | Streaming execution logs, trace storage, collapsed execution process, and result display are implemented. |
+| Model routing | Provider registry, cross-MaaS fallback, latency/cost-aware routing, health tracking, and encrypted profiles are implemented. |
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Start development mode with Vite HMR + Electron
+npm run dev
+
+# Build production assets
+npm run build
+npm run dist
+```
+
+Fiitx uses Electron `safeStorage` for encrypted model profile and API key storage when available. The desktop icon and in-app logo are stored under `assets/`.
+
+## Desktop Build
+
+<p align="center">
+  <a href="https://drive.google.com/drive/folders/1ZUEXKVIIfJ6jwLmb5pOWlyAyPy7LF7Ps" target="_blank"
+     style="font-size: 18px; color: #1a73e8; text-decoration: none; border-bottom: 1px solid #1a73e8;">
+    Mac desktop build (Google Drive folder)
+  </a>
+</p>
+
+## Demo
+
 <a href="https://www.youtube.com/watch?v=UMXBwSsjEgA" target="_blank">
   <img src="https://img.youtube.com/vi/UMXBwSsjEgA/maxresdefault.jpg" 
-       alt="点击观看视频" 
+       alt="Watch the Fiitx demo video" 
        style="width: 100%; max-width: 560px; border-radius: 8px;">
 </a>
 
 ---
+
+## 中文说明
+
+Fiitx 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操作系统雏形**，参考了 Pi (@earendil-works)、OpenClaw、Codex 等架构思路，实现了：
+
+- LLM 原生的 Agent 循环（不是 Chat 壳）
+- 结构化记忆与上下文压缩（替代无脑填满 Context Window）
+- 多 Agent 编排（类最近微信 AI 小程序 Skill 化的思路）
+- 文件系统级别的 Diff 引擎与跨文件感知
+- 权限审批（企业级安全策略门控）
+- MCP / Skill 扩展、模型路由、多语言界面与可观测执行过程
+
+Fiitx 界面默认跟随系统语言，也可以在 `Settings > General > Language` 手动切换。当前支持 English、全球主要使用人群语种，以及繁体中文。
 
 ## 架构路线图
 
@@ -240,7 +301,7 @@ Fiitx 界面默认跟随系统语言，也可以在 `Settings > General > Langua
 | 编辑器 | | | 🔴 VS Code 集成 + Inline Diff |
 | 开发工具链 | | | 🔴 ESLint / Prettier / 测试 / CI |
 | Model 路由 | ✅ Provider Registry + 跨 MaaS 自动路由 + fallback + 成本/延迟感知 | | |
-| 自迭代闭环 | ✅ "在 Deepsix 内升级 Deepsix" 工作流已打通 | | |
+| 自迭代闭环 | ✅ "在 Fiitx 内升级 Fiitx" 工作流已打通 | | |
 
 ---
 
@@ -258,13 +319,13 @@ npm run build
 npm run dist
 ```
 
-应用使用 `assets/deepsix-logo.png` 作为图标，模型配置/API Key 存储在 Electron userData 目录，API Key 支持 Electron `safeStorage` 加密。
+应用使用 `assets/fiitx-logo.png` / `assets/fiitx.icns` 作为图标，模型配置/API Key 存储在 Electron userData 目录，API Key 支持 Electron `safeStorage` 加密。
 
 ### 安装使用桌面版
 <p align="center">
   <a href="https://drive.google.com/drive/folders/1ZUEXKVIIfJ6jwLmb5pOWlyAyPy7LF7Ps" target="_blank" 
      style="font-size: 18px; color: #1a73e8; text-decoration: none; border-bottom: 1px solid #1a73e8;">
-    📂 Mac桌面版（Google Drive 文件夹）
+    Mac 桌面版（Google Drive 文件夹）
   </a>
 </p>
 
@@ -299,9 +360,9 @@ Agent Loop (Pi Kernel)
           ↓
     Workspace Write (修改代码/文档)
           ↓
-    Deepsix 自身代码被修改 → 重启后新能力生效
+    Fiitx 自身代码被修改 → 重启后新能力生效
           ↓
-    "在 Deepsix 内升级迭代 Deepsix 自己" ✅
+    "在 Fiitx 内升级迭代 Fiitx 自己" ✅
 ```
 
 ---
