@@ -72,6 +72,8 @@ function normalizeRecord(record = {}) {
 function extractEntryText(entry) {
   return [
     entry?.content,
+    entry?.reasoning_content,
+    entry?.reasoningContent,
     entry?.message,
     entry?.summary,
     entry?.errorMessage,

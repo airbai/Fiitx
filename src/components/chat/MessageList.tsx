@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Bot, ShieldCheck, UserRound } from "lucide-react";
+import { Bot, Copy, ShieldCheck, UserRound } from "lucide-react";
 
 export type ChatMessage = {
   id: string;
@@ -14,6 +14,7 @@ type MessageListProps = {
   messages: ChatMessage[];
   renderMessageBody: (message: ChatMessage) => ReactNode;
   renderExecutionActivity: () => ReactNode;
+  onCopyMessage?: (message: ChatMessage) => void;
   initialVisibleCount?: number;
   pageSize?: number;
 };
@@ -22,6 +23,7 @@ export function MessageList({
   messages,
   renderMessageBody,
   renderExecutionActivity,
+  onCopyMessage,
   initialVisibleCount = 80,
   pageSize = 50
 }: MessageListProps) {
@@ -57,6 +59,17 @@ export function MessageList({
             <div className="message-meta">
               <strong>{message.author}</strong>
               <span>{message.time}</span>
+              {onCopyMessage ? (
+                <button
+                  className="message-meta-copy-button"
+                  onClick={() => onCopyMessage(message)}
+                  title="复制消息"
+                  type="button"
+                >
+                  <Copy size={14} />
+                  <span>复制</span>
+                </button>
+              ) : null}
             </div>
             {renderMessageBody(message)}
           </div>

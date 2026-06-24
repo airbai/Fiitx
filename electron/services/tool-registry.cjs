@@ -304,6 +304,19 @@ function createToolRegistry({ toolRuntime }) {
       return [...tools.values()].map((tool) => tool.toOpenAiTool());
     },
     register,
+    unregister(name) {
+      return tools.delete(name);
+    },
+    unregisterWhere(predicate) {
+      let removed = 0;
+      for (const [name, tool] of tools.entries()) {
+        if (predicate(tool, name)) {
+          tools.delete(name);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
     async execute(name, args, context) {
       const tool = tools.get(name);
       if (!tool) {

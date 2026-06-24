@@ -16,14 +16,16 @@ async function main() {
   const logs = [];
   let calls = 0;
   const modelRouter = {
-    async callChatMessages() {
+    async callChatMessages(_profile, messages) {
       calls += 1;
       if (calls === 1) {
         return {
           content: "",
+          reasoningContent: "需要写入 hello.txt，所以调用 workspace_write。",
           finishReason: "tool_calls",
           message: {
             role: "assistant",
+            reasoning_content: "需要写入 hello.txt，所以调用 workspace_write。",
             content: "",
             tool_calls: [
               {
@@ -50,6 +52,14 @@ async function main() {
             }
           ]
         };
+      }
+
+      const previousAssistant = messages.find((message) => message.role === "assistant" && message.tool_calls?.length);
+      if (!previousAssistant?.reasoning_content) {
+        throw new Error(`missing reasoning_content in tool follow-up: ${JSON.stringify(messages)}`);
+      }
+      if (previousAssistant.reasoning_content !== "需要写入 hello.txt，所以调用 workspace_write。") {
+        throw new Error(`unexpected reasoning_content: ${previousAssistant.reasoning_content}`);
       }
 
       return {
@@ -100,6 +110,10 @@ async function main() {
   }
   if (!logs.some((entry) => entry.type === "tool_result")) {
     throw new Error("tool loop smoke failed: missing tool_result session log");
+  }
+  const assistantLog = logs.find((entry) => entry.type === "message" && entry.role === "assistant" && entry.tool_calls?.length);
+  if (!assistantLog?.reasoning_content) {
+    throw new Error(`assistant reasoning_content was not persisted: ${JSON.stringify(logs)}`);
   }
   console.log("tool agent loop smoke passed");
 }

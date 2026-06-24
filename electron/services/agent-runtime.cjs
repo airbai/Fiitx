@@ -376,6 +376,7 @@ function buildRuntimeContext(payload) {
 - 线程语义上下文：${threadContextPrompt ? "已注入" : "无"}
 - 通道上下文：${channelAdapterPrompt ? "已注入" : "无"}
 - 外部系统连接器：${payload.connectorContextPrompt ? "已注入" : "无"}
+- MCP Registry：${payload.mcpContextPrompt ? "已注入" : "无"}
 
 上下文原则：
 1. 每轮都必须结合 Pi thread history、运行环境和当前用户输入理解任务。
@@ -387,7 +388,9 @@ ${channelAdapterPrompt}
 
 ${businessAgentPrompt}
 
-${payload.connectorContextPrompt || ""}`;
+${payload.connectorContextPrompt || ""}
+
+${payload.mcpContextPrompt || ""}`;
 }
 
 function buildCodingSystemPrompt(payload) {
@@ -404,7 +407,7 @@ ${buildRuntimeContext(payload)}
 6. 如果用户要求“升级/修改/实现/生成项目或小程序”，优先调用 workspace_find/workspace_ls/workspace_read 理解现状，再调用 workspace_write/workspace_edit 写入文件；不要只生成报告或说明。
 7. 如果 transformContext 的线程语义上下文指向已有项目、artifact 或文件，用户说“升级/改进/继续/这个小程序”时必须作用在该目标上。
 8. 如果 Pi turn context 注入了 channel adapter，上下文中的回复契约、followUp 规则和输出边界必须严格遵守。
-9. 可用工具包括 web_fetch_url、workspace_ls、workspace_read、workspace_write、workspace_edit、workspace_grep、workspace_find、bash。需要读取网页、文件、修改、测试时直接调用工具；需要 shell 时调用 bash，不要声称已经执行未调用的命令。
+9. 可用工具包括 web_fetch_url、workspace_ls、workspace_read、workspace_write、workspace_edit、workspace_grep、workspace_find、bash，以及已注入的 mcp__server__tool、mcp_list_resources、mcp_read_resource、mcp_list_prompts、mcp_get_prompt。需要读取网页、文件、修改、测试、调用外部 MCP 能力时直接调用工具；需要 shell 时调用 bash，不要声称已经执行未调用的命令。
 10. 对 Word/docx/pdf/ppt/html/合同/报告等文件交付，必须产生真实工具结果或 Artifact。没有 workspace_write、文件 manifest、bash 执行结果或磁盘确认时，禁止写“文件已成功写入/已生成到某路径”。
 11. 生成可独立预览的单页 HTML 时，禁止使用裸模块 import（例如 from "three" 或 from "three/addons/..."）。如需 three/OrbitControls/CSS2DRenderer，使用 https://esm.sh/three@0.160.0 和 https://esm.sh/three@0.160.0/examples/jsm/... 的完整 URL，确保 file://、iframe 和 Vite 预览都能解析。
 12. 如果当前模型或 provider 不支持 tool call，或者工具调用失败但仍要交付完整文件，可以在说明之后追加一个 fenced block：
@@ -783,13 +786,42 @@ function createAgentRuntime({
   telemetryStore,
   toolRegistry,
   skillRegistry,
-  connectorRegistry
+  connectorRegistry,
+  mcpService,
+  skillMarketplace
 }) {
   const sessions = new Map();
   const activeRuns = new Map();
   const runtimeToolRegistry = toolRegistry || createToolRegistry({ toolRuntime });
   const runtimeSkillRegistry = skillRegistry || createSkillRegistry({ wechatAiSkillGateway });
   const runtimeConnectorRegistry = connectorRegistry || createConnectorRegistry();
+
+  function registerInstalledSkills() {
+    const descriptors = skillMarketplace?.getEnabledDescriptors?.() || [];
+    for (const descriptor of descriptors) {
+      try {
+        runtimeSkillRegistry.register(descriptor);
+      } catch {
+        // Invalid installed skills are reported through marketplace APIs.
+      }
+    }
+    return descriptors;
+  }
+
+  async function refreshMcpRegistry(payload = {}, emitProgress = () => undefined) {
+    if (!mcpService?.registerTools) {
+      payload.mcpContextPrompt = "";
+      return null;
+    }
+    emitProgress({
+      status: "running",
+      title: "MCP Registry",
+      detail: "发现已配置 MCP server 的 tools/resources/prompts。"
+    });
+    const snapshot = await mcpService.registerTools(runtimeToolRegistry);
+    payload.mcpContextPrompt = mcpService.buildContextPrompt(snapshot);
+    return snapshot;
+  }
 
   function getSessionId(payload = {}) {
     return payload.threadId || payload.sessionId || payload.taskId;
@@ -900,7 +932,7 @@ function createAgentRuntime({
     inspectPayload.businessAgent = businessAgent;
     const preferredModel = resolveAgentModelPreference(businessAgent, inspectPayload.model);
     const selectedProfile = modelRouter.resolveModelProfile(preferredModel, intent);
-    const modelCandidates = modelRouter.resolveModelProfiles(preferredModel, intent).slice(0, 6).map(safeProfile);
+    const modelCandidates = (modelRouter.listRouteCandidates?.(preferredModel, intent) || modelRouter.resolveModelProfiles(preferredModel, intent).map(safeProfile)).slice(0, 6);
     const toolPlan = buildToolPlan(intent, inspectPayload);
 
     return {
@@ -992,7 +1024,18 @@ function createAgentRuntime({
     };
   }
 
-  function getHarnessSnapshot(payload = {}) {
+  async function getHarnessSnapshot(payload = {}) {
+    registerInstalledSkills();
+    const mcpSnapshot = mcpService?.registerTools
+      ? await mcpService.registerTools(runtimeToolRegistry).catch((error) => ({
+          servers: [],
+          tools: [],
+          resources: [],
+          resourceTemplates: [],
+          prompts: [],
+          errors: [{ message: error instanceof Error ? error.message : "MCP refresh failed" }]
+        }))
+      : null;
     return {
       tools: runtimeToolRegistry.list(),
       toolCount: runtimeToolRegistry.list().length,
@@ -1004,6 +1047,7 @@ function createAgentRuntime({
         capabilities: skill.capabilities,
         apis: skill.apis
       })),
+      skillMarketplace: skillMarketplace?.listInstalled?.() || [],
       connectors: (runtimeConnectorRegistry.list?.() || []).map((connector) => ({
         id: connector.id,
         name: connector.name,
@@ -1012,6 +1056,7 @@ function createAgentRuntime({
         status: connector.status,
         description: connector.description
       })),
+      mcp: mcpSnapshot,
       telemetry: telemetryStore?.summarize?.(payload.limit || 500) || null,
       sessions: (sessionLogStore?.listSessions?.() || []).slice(0, 20),
       models: modelRouter.listProfiles().map((profile) => ({
@@ -1022,7 +1067,11 @@ function createAgentRuntime({
         supportsTools: profile.supportsTools,
         supportsVision: profile.supportsVision,
         hasApiKey: profile.hasApiKey,
-        keyStatus: profile.keyStatus
+        keyStatus: profile.keyStatus,
+        routeStats: profile.routeStats,
+        inputCostPer1M: profile.inputCostPer1M,
+        outputCostPer1M: profile.outputCostPer1M,
+        expectedLatencyMs: profile.expectedLatencyMs
       }))
     };
   }
@@ -1068,9 +1117,11 @@ function createAgentRuntime({
     const businessAgent = selectBusinessAgent(payload);
     payload.businessAgent = businessAgent;
     payload.connectorContextPrompt = runtimeConnectorRegistry.buildContextPrompt();
+    registerInstalledSkills();
     runtimeSkillRegistry.discoverWechatSkills({
       skillsRoot: payload.wechatSkillsRoot || payload.wechatSkillRoot
     });
+    await refreshMcpRegistry(payload, emitProgress);
     const businessAgentEvents = businessAgent
       ? [
           {

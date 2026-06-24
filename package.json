@@ -12,6 +12,7 @@
     "test:agent-history": "node scripts/smoke-agent-history.cjs",
     "test:html-imports": "node scripts/smoke-html-module-imports.cjs",
     "test:intent-router": "node scripts/smoke-intent-router.cjs",
+    "test:mcp-service": "node scripts/smoke-mcp-service.cjs",
     "test:tool-agent": "node scripts/smoke-tool-agent-loop.cjs",
     "test:wechat-ai-gateway": "node scripts/smoke-wechat-ai-gateway.cjs",
     "test:wechat-channel": "node scripts/smoke-wechat-channel-server.cjs",
@@ -21,6 +22,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.78.1",
     "@earendil-works/pi-ai": "^0.78.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@monaco-editor/react": "^4.7.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",

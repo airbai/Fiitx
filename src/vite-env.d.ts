@@ -13,6 +13,10 @@ type FiitxModelPayload = {
   supportsJsonMode: boolean;
   bestFor: string[];
   toolCallStyle: string;
+  inputCostPer1M?: number;
+  outputCostPer1M?: number;
+  expectedLatencyMs?: number;
+  priority?: number;
   createdAt?: string;
 };
 
@@ -22,6 +26,25 @@ type FiitxModelProfile = Omit<FiitxModelPayload, "apiKey"> & {
   hasApiKey?: boolean;
   hasStoredApiKey?: boolean;
   keyStatus?: "available" | "locked" | "missing";
+  routeScore?: number;
+  routeReasons?: string[];
+  routeStats?: {
+    successCount: number;
+    failureCount: number;
+    consecutiveFailures: number;
+    totalLatencyMs: number;
+    lastLatencyMs: number;
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    estimatedCostUsd: number;
+    lastSuccessAt: string;
+    lastFailureAt: string;
+    lastError: string;
+    circuitOpenUntil: number;
+    successRate: number | null;
+    averageLatencyMs: number;
+    circuitOpen: boolean;
+  };
   updatedAt: string;
 };
 
@@ -248,7 +271,9 @@ type FiitxAgentHarnessSnapshot = {
   tools: unknown[];
   toolCount: number;
   skills: unknown[];
+  skillMarketplace?: unknown[];
   connectors: unknown[];
+  mcp?: FiitxMcpSnapshot | null;
   telemetry: unknown;
   sessions: unknown[];
   models: unknown[];
@@ -462,6 +487,16 @@ type FiitxWorkspaceFileRead = {
   truncated: boolean;
 };
 
+type FiitxWorkspaceDiffBase = {
+  ok: boolean;
+  root: string;
+  path: string;
+  source: "git-head" | "git-missing" | "none";
+  content: string;
+  repoRelativePath?: string;
+  message?: string;
+};
+
 type FiitxWorkspaceFileWrite = {
   root: string;
   path: string;
@@ -481,6 +516,43 @@ type FiitxWechatAiSkillInvokePayload = {
   sessionId?: string;
   apiName: string;
   arguments?: Record<string, unknown>;
+};
+
+type FiitxMcpServerConfig = {
+  id: string;
+  name?: string;
+  type?: "stdio" | "sse" | "streamable-http";
+  enabled?: boolean;
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  risk?: "low" | "medium" | "high";
+  timeoutMs?: number;
+  description?: string;
+};
+
+type FiitxMcpConfig = {
+  version?: number;
+  path?: string;
+  mcpServers: Record<string, FiitxMcpServerConfig>;
+};
+
+type FiitxMcpSnapshot = {
+  servers: unknown[];
+  tools: unknown[];
+  resources: unknown[];
+  resourceTemplates?: unknown[];
+  prompts: unknown[];
+  errors?: unknown[];
+};
+
+type FiitxSkillInstallPayload = {
+  root: string;
+  id?: string;
+  enabled?: boolean;
 };
 
 type FiitxWechatChannelStatus = {
@@ -543,6 +615,7 @@ interface Window {
       version: string;
       encryptionAvailable: boolean;
       defaultWorkspace?: string;
+      locale?: string;
     }>;
     chooseWorkspace: () => Promise<{
       canceled: boolean;
@@ -551,6 +624,15 @@ interface Window {
     chooseFiles: () => Promise<{
       canceled: boolean;
       filePaths: string[];
+    }>;
+    savePastedAttachment: (payload: {
+      name: string;
+      mimeType?: string;
+      buffer: ArrayBuffer;
+    }) => Promise<{
+      ok: boolean;
+      path: string;
+      bytes: number;
     }>;
     listWorkspaceFiles: (payload?: {
       workspacePath?: string;
@@ -561,6 +643,10 @@ interface Window {
       path: string;
       maxBytes?: number;
     }) => Promise<FiitxWorkspaceFileRead>;
+    readWorkspaceDiffBase: (payload: {
+      workspacePath?: string;
+      path: string;
+    }) => Promise<FiitxWorkspaceDiffBase>;
     writeWorkspaceFile: (payload: {
       workspacePath?: string;
       path: string;
@@ -591,6 +677,21 @@ interface Window {
     discoverWechatAiSkills: () => Promise<unknown[]>;
     routeWechatAiPrompt: (payload: FiitxWechatAiGatewayPayload) => Promise<unknown>;
     invokeWechatAiSkill: (payload: FiitxWechatAiSkillInvokePayload) => Promise<unknown>;
+    getMcpConfig: () => Promise<FiitxMcpConfig>;
+    saveMcpConfig: (payload: FiitxMcpConfig) => Promise<FiitxMcpConfig>;
+    upsertMcpServer: (payload: FiitxMcpServerConfig) => Promise<FiitxMcpConfig>;
+    removeMcpServer: (payload: { id: string }) => Promise<FiitxMcpConfig>;
+    refreshMcpRegistry: (payload?: { extraServers?: FiitxMcpServerConfig[] }) => Promise<FiitxMcpSnapshot>;
+    callMcpTool: (payload: { serverId: string; toolName: string; arguments?: Record<string, unknown> }) => Promise<unknown>;
+    listMcpResources: (payload?: { serverId?: string }) => Promise<unknown>;
+    readMcpResource: (payload: { serverId: string; uri: string }) => Promise<unknown>;
+    listMcpPrompts: (payload?: { serverId?: string }) => Promise<unknown>;
+    getMcpPrompt: (payload: { serverId: string; name: string; arguments?: Record<string, unknown> }) => Promise<unknown>;
+    listSkillCatalog: (payload?: { roots?: string[] }) => Promise<unknown[]>;
+    listInstalledSkills: () => Promise<unknown[]>;
+    installLocalSkill: (payload: FiitxSkillInstallPayload) => Promise<unknown>;
+    uninstallSkill: (payload: { id: string }) => Promise<unknown>;
+    setSkillEnabled: (payload: { id: string; enabled: boolean }) => Promise<unknown>;
     getWechatChannelStatus: () => Promise<FiitxWechatChannelStatus>;
     runTerminalCommand: (payload: FiitxTerminalCommandPayload) => Promise<FiitxTerminalCommandResult>;
     onWechatChannelInbound: (callback: (payload: FiitxWechatChannelInbound) => void) => () => void;

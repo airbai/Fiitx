@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require("electron");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { fileURLToPath } = require("node:url");
@@ -12,6 +13,8 @@ const { createTelemetryStore } = require("./services/telemetry-store.cjs");
 const { createThreadStore } = require("./services/thread-store.cjs");
 const { createToolRuntime } = require("./services/tool-runtime.cjs");
 const { createWorkspaceManager } = require("./services/workspace-manager.cjs");
+const { createMcpService } = require("./services/mcp-service.cjs");
+const { createSkillMarketplace } = require("./services/skill-marketplace.cjs");
 const { createWechatChannelServer } = require("./services/wechat-channel-server.cjs");
 const { createVscodeChannelServer } = require("./services/vscode-channel-server.cjs");
 const { createWechatAiSkillGateway } = require("./services/wechat-ai-skill-gateway.cjs");
@@ -44,6 +47,8 @@ const agentHistory = createAgentHistoryService({
   threadStore
 });
 const wechatAiSkillGateway = createWechatAiSkillGateway();
+const mcpService = createMcpService({ app });
+const skillMarketplace = createSkillMarketplace({ app });
 const agentRuntime = createAgentRuntime({
   artifactEngine,
   modelRouter,
@@ -51,7 +56,9 @@ const agentRuntime = createAgentRuntime({
   sessionLogStore,
   telemetryStore,
   toolRuntime,
-  wechatAiSkillGateway
+  wechatAiSkillGateway,
+  mcpService,
+  skillMarketplace
 });
 const wechatChannelServer = createWechatChannelServer({
   wechatAiSkillGateway,
@@ -255,6 +262,48 @@ function resolveWorkspaceFilePath(workspacePath, relativePath) {
   };
 }
 
+function readGitHeadFile(root, relativePath) {
+  try {
+    const gitRoot = execFileSync("git", ["-C", root, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 16,
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3000
+    }).trim();
+    if (!gitRoot) {
+      return null;
+    }
+
+    const absolutePath = path.resolve(root, relativePath);
+    const repoRelativePath = path.relative(gitRoot, absolutePath).split(path.sep).join("/");
+    if (!repoRelativePath || repoRelativePath.startsWith("..") || path.isAbsolute(repoRelativePath)) {
+      return null;
+    }
+
+    let content = "";
+    let source = "git-head";
+    try {
+      content = execFileSync("git", ["-C", gitRoot, "show", `HEAD:${repoRelativePath}`], {
+        encoding: "utf8",
+        maxBuffer: 1024 * 1024 * 2,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 4000
+      }).replace(/\u0000/g, "");
+    } catch {
+      source = "git-missing";
+    }
+
+    return {
+      source,
+      gitRoot,
+      repoRelativePath,
+      content
+    };
+  } catch {
+    return null;
+  }
+}
+
 function pathSuffixMatches(relativePath, suffix) {
   if (!suffix) {
     return false;
@@ -378,7 +427,8 @@ app.whenReady().then(() => {
     platform: process.platform,
     version: app.getVersion(),
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
-    defaultWorkspace: workspaceManager.getFallbackRoot()
+    defaultWorkspace: workspaceManager.getFallbackRoot(),
+    locale: app.getLocale()
   }));
 
   ipcMain.handle("app:choose-workspace", async () =>
@@ -394,6 +444,39 @@ app.whenReady().then(() => {
       properties: ["openFile", "multiSelections"]
     })
   );
+
+  ipcMain.handle("app:save-pasted-attachment", async (_event, payload = {}) => {
+    const rawName = String(payload.name || "pasted-attachment").trim();
+    const safeName = rawName
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/^\.+/, "")
+      .slice(0, 120) || "pasted-attachment";
+    let buffer = Buffer.alloc(0);
+    if (payload.buffer instanceof ArrayBuffer) {
+      buffer = Buffer.from(new Uint8Array(payload.buffer));
+    } else if (ArrayBuffer.isView(payload.buffer)) {
+      buffer = Buffer.from(payload.buffer.buffer, payload.buffer.byteOffset, payload.buffer.byteLength);
+    } else if (Array.isArray(payload.buffer)) {
+      buffer = Buffer.from(payload.buffer);
+    }
+    if (buffer.length === 0) {
+      throw new Error("剪贴板附件为空");
+    }
+    if (buffer.length > 50 * 1024 * 1024) {
+      throw new Error("剪贴板附件超过 50MB，暂不支持直接粘贴");
+    }
+
+    const attachmentDir = path.join(app.getPath("userData"), "Pasted Attachments");
+    fs.mkdirSync(attachmentDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const targetPath = path.join(attachmentDir, `${timestamp}-${safeName}`);
+    fs.writeFileSync(targetPath, buffer);
+    return {
+      ok: true,
+      path: targetPath,
+      bytes: buffer.length
+    };
+  });
 
   ipcMain.handle("workspace:list-files", (_event, payload = {}) => {
     const root = workspaceManager.resolveWorkspaceRoot(payload.workspacePath);
@@ -430,6 +513,34 @@ app.whenReady().then(() => {
       path: relativePath,
       content: buffer.toString("utf8").replace(/\u0000/g, ""),
       truncated: stat.size > maxBytes
+    };
+  });
+
+  ipcMain.handle("workspace:read-diff-base", (_event, payload = {}) => {
+    const { root, relativePath } = resolveWorkspaceFilePath(payload.workspacePath, payload.path);
+    if (!policyEngine.isTextFile(relativePath)) {
+      throw new Error(`当前文件类型不支持文本 Diff：${relativePath}`);
+    }
+
+    const gitBase = readGitHeadFile(root, relativePath);
+    if (!gitBase) {
+      return {
+        ok: false,
+        root,
+        path: relativePath,
+        source: "none",
+        content: "",
+        message: "未找到 Git HEAD 基线，Diff 将使用打开时内容"
+      };
+    }
+
+    return {
+      ok: true,
+      root,
+      path: relativePath,
+      source: gitBase.source,
+      repoRelativePath: gitBase.repoRelativePath,
+      content: gitBase.content
     };
   });
 
@@ -535,6 +646,36 @@ app.whenReady().then(() => {
   ipcMain.handle("wechat-ai:route-prompt", (_event, payload) => wechatAiSkillGateway.routePrompt(payload));
 
   ipcMain.handle("wechat-ai:invoke-skill", (_event, payload) => wechatAiSkillGateway.callApi(payload));
+
+  ipcMain.handle("mcp:get-config", () => mcpService.getConfig());
+
+  ipcMain.handle("mcp:save-config", (_event, payload = {}) => mcpService.saveConfig(payload));
+
+  ipcMain.handle("mcp:upsert-server", (_event, payload = {}) => mcpService.upsertServer(payload));
+
+  ipcMain.handle("mcp:remove-server", (_event, payload = {}) => mcpService.removeServer(payload.id || payload.serverId));
+
+  ipcMain.handle("mcp:refresh", (_event, payload = {}) => mcpService.refreshAll(payload));
+
+  ipcMain.handle("mcp:call-tool", (_event, payload = {}) => mcpService.callTool(payload.serverId, payload.toolName, payload.arguments || {}));
+
+  ipcMain.handle("mcp:list-resources", (_event, payload = {}) => mcpService.listResources(payload.serverId));
+
+  ipcMain.handle("mcp:read-resource", (_event, payload = {}) => mcpService.readResource(payload.serverId, payload.uri));
+
+  ipcMain.handle("mcp:list-prompts", (_event, payload = {}) => mcpService.listPrompts(payload.serverId));
+
+  ipcMain.handle("mcp:get-prompt", (_event, payload = {}) => mcpService.getPrompt(payload.serverId, payload.name, payload.arguments || {}));
+
+  ipcMain.handle("skill-market:list-catalog", (_event, payload = {}) => skillMarketplace.listCatalog(payload));
+
+  ipcMain.handle("skill-market:list-installed", () => skillMarketplace.listInstalled());
+
+  ipcMain.handle("skill-market:install-local", (_event, payload = {}) => skillMarketplace.installLocalSkill(payload));
+
+  ipcMain.handle("skill-market:uninstall", (_event, payload = {}) => skillMarketplace.uninstallSkill(payload.id));
+
+  ipcMain.handle("skill-market:set-enabled", (_event, payload = {}) => skillMarketplace.setSkillEnabled(payload.id, payload.enabled));
 
   ipcMain.handle("wechat-channel:status", () => wechatChannelServer.getStatus());
 
@@ -695,4 +836,5 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   void wechatChannelServer.stop();
   void vscodeChannelServer.stop();
+  void mcpService.closeAll();
 });

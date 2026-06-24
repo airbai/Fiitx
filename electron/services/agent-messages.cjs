@@ -13,14 +13,60 @@ const AGENT_MESSAGE_TYPES = Object.freeze({
   TELEMETRY: "telemetry"
 });
 
+function extractReasoningContent(input = {}) {
+  const value =
+    input.reasoning_content ??
+    input.reasoningContent ??
+    input.metadata?.reasoning_content ??
+    input.metadata?.reasoningContent;
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeToolCalls(toolCalls = []) {
+  if (!Array.isArray(toolCalls)) {
+    return [];
+  }
+  return toolCalls
+    .map((call) => {
+      const name = call?.function?.name || call?.name || "";
+      if (!name) {
+        return null;
+      }
+      const rawArguments = call?.function?.arguments ?? call?.arguments ?? "{}";
+      let argumentsText = "{}";
+      if (typeof rawArguments === "string") {
+        argumentsText = rawArguments || "{}";
+      } else {
+        try {
+          argumentsText = JSON.stringify(rawArguments || {});
+        } catch {
+          argumentsText = "{}";
+        }
+      }
+      return {
+        id: call?.id || `tool-call-${crypto.randomUUID()}`,
+        type: "function",
+        function: {
+          name,
+          arguments: argumentsText
+        }
+      };
+    })
+    .filter(Boolean);
+}
+
 function createAgentMessage(input = {}) {
   const now = new Date().toISOString();
+  const reasoningContent = extractReasoningContent(input);
+  const toolCalls = normalizeToolCalls(input.tool_calls || input.toolCalls || input.metadata?.tool_calls || input.metadata?.toolCalls);
   return {
     id: input.id || crypto.randomUUID(),
     parentId: Object.prototype.hasOwnProperty.call(input, "parentId") ? input.parentId : null,
     type: input.type || AGENT_MESSAGE_TYPES.LLM,
     role: input.role || "system",
     content: typeof input.content === "string" ? input.content : "",
+    reasoningContent,
+    toolCalls,
     visibility: input.visibility || "model",
     createdAt: input.createdAt || now,
     metadata: input.metadata && typeof input.metadata === "object" ? input.metadata : {}
@@ -32,6 +78,8 @@ function createLlmMessage(role, content, metadata = {}) {
     type: AGENT_MESSAGE_TYPES.LLM,
     role,
     content,
+    reasoningContent: metadata.reasoningContent || metadata.reasoning_content,
+    toolCalls: metadata.toolCalls || metadata.tool_calls,
     metadata
   });
 }
@@ -194,11 +242,20 @@ function convertToLlm(agentMessages = []) {
       if (message.type === AGENT_MESSAGE_TYPES.TOOL_CALL || message.type === AGENT_MESSAGE_TYPES.ARTIFACT) {
         return null;
       }
-      return {
+      const llmMessage = {
         role: ["system", "user", "assistant"].includes(message.role) ? message.role : "user",
         content: message.content,
         name: message.metadata?.name
       };
+      const reasoningContent = extractReasoningContent(message);
+      if (llmMessage.role === "assistant" && reasoningContent) {
+        llmMessage.reasoning_content = reasoningContent;
+      }
+      const toolCalls = normalizeToolCalls(message.toolCalls || message.tool_calls || message.metadata?.toolCalls || message.metadata?.tool_calls);
+      if (llmMessage.role === "assistant" && toolCalls.length) {
+        llmMessage.tool_calls = toolCalls;
+      }
+      return llmMessage;
     })
     .filter(Boolean)
     .map((message) => {
@@ -219,6 +276,7 @@ module.exports = {
   createChannelEventMessage,
   createContextMessage,
   createLlmMessage,
+  extractReasoningContent,
   createToolCallMessage,
   createToolResultMessage,
   fromUiContextMessage,

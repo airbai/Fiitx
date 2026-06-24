@@ -66,6 +66,15 @@ function stringifyMessageContent(content) {
   return String(content);
 }
 
+function extractReasoningContent(message) {
+  const value =
+    message?.reasoning_content ??
+    message?.reasoningContent ??
+    message?.metadata?.reasoning_content ??
+    message?.metadata?.reasoningContent;
+  return typeof value === "string" ? value : "";
+}
+
 function normalizeProviderToolCall(call, index, messageIndex = 0) {
   const rawArguments = call?.function?.arguments ?? call?.arguments ?? "{}";
   let argumentsText = "{}";
@@ -105,24 +114,33 @@ function normalizeMessagesForProvider(messages = []) {
     }
 
     if (message.role === "assistant") {
-      const toolCalls = Array.isArray(message.tool_calls)
+      const assistantMessage = {
+        role: "assistant",
+        content: stringifyMessageContent(message.content)
+      };
+      const reasoningContent = extractReasoningContent(message);
+      if (reasoningContent) {
+        assistantMessage.reasoning_content = reasoningContent;
+      }
+      const sourceToolCalls = Array.isArray(message.tool_calls)
         ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : Array.isArray(message.metadata?.tool_calls)
+            ? message.metadata.tool_calls
+            : Array.isArray(message.metadata?.toolCalls)
+              ? message.metadata.toolCalls
+              : [];
+      const toolCalls = sourceToolCalls.length
+        ? sourceToolCalls
             .map((call, callIndex) => normalizeProviderToolCall(call, callIndex, index))
             .filter(Boolean)
         : [];
       if (toolCalls.length) {
         pendingToolCallIds.push(...toolCalls.map((call) => call.id));
-        normalized.push({
-          role: "assistant",
-          content: stringifyMessageContent(message.content),
-          tool_calls: toolCalls
-        });
-      } else {
-        normalized.push({
-          role: "assistant",
-          content: stringifyMessageContent(message.content)
-        });
+        assistantMessage.tool_calls = toolCalls;
       }
+      normalized.push(assistantMessage);
       continue;
     }
 
@@ -283,6 +301,10 @@ function createModelRouter({ app, safeStorage }) {
     return path.join(app.getPath("userData"), "model-profiles.json");
   }
 
+  function getMetricsPath() {
+    return path.join(app.getPath("userData"), "model-router-metrics.json");
+  }
+
   function getLegacyStorePath() {
     return path.join(app.getPath("appData"), "fiitx-desktop", "model-profiles.json");
   }
@@ -366,6 +388,136 @@ function createModelRouter({ app, safeStorage }) {
     fs.writeFileSync(getStorePath(), JSON.stringify(profiles, null, 2), "utf8");
   }
 
+  function readMetrics() {
+    try {
+      const raw = fs.readFileSync(getMetricsPath(), "utf8");
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeMetrics(metrics) {
+    fs.mkdirSync(path.dirname(getMetricsPath()), { recursive: true });
+    fs.writeFileSync(getMetricsPath(), JSON.stringify(metrics, null, 2), "utf8");
+  }
+
+  function emptyProfileMetrics() {
+    return {
+      successCount: 0,
+      failureCount: 0,
+      consecutiveFailures: 0,
+      totalLatencyMs: 0,
+      lastLatencyMs: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      estimatedCostUsd: 0,
+      lastSuccessAt: "",
+      lastFailureAt: "",
+      lastError: "",
+      circuitOpenUntil: 0
+    };
+  }
+
+  function metricsForProfile(metrics, profile) {
+    return {
+      ...emptyProfileMetrics(),
+      ...(metrics[profileIdentity(profile)] || {})
+    };
+  }
+
+  function profileStats(profile) {
+    const metrics = metricsForProfile(readMetrics(), profile);
+    const calls = metrics.successCount + metrics.failureCount;
+    return {
+      ...metrics,
+      successRate: calls ? metrics.successCount / calls : null,
+      averageLatencyMs: metrics.successCount ? Math.round(metrics.totalLatencyMs / metrics.successCount) : 0,
+      circuitOpen: Number(metrics.circuitOpenUntil || 0) > Date.now()
+    };
+  }
+
+  function updateProfileMetrics(profile, patch) {
+    const metrics = readMetrics();
+    const key = profileIdentity(profile);
+    const current = {
+      ...emptyProfileMetrics(),
+      ...(metrics[key] || {})
+    };
+    metrics[key] = {
+      ...current,
+      ...patch
+    };
+    writeMetrics(metrics);
+    return metrics[key];
+  }
+
+  function estimateTokensFromMessages(messages = []) {
+    const text = messages.map((message) => stringifyMessageContent(message.content)).join("\n");
+    return Math.max(1, Math.ceil(text.length / 4));
+  }
+
+  function estimateTokensFromText(text = "") {
+    return Math.max(1, Math.ceil(String(text || "").length / 4));
+  }
+
+  function usageFromResponse(data, providerMessages, content) {
+    const usage = data?.usage || {};
+    return {
+      promptTokens: Number(usage.prompt_tokens || usage.promptTokens || 0) || estimateTokensFromMessages(providerMessages),
+      completionTokens: Number(usage.completion_tokens || usage.completionTokens || 0) || estimateTokensFromText(content),
+      totalTokens: Number(usage.total_tokens || usage.totalTokens || 0) || undefined
+    };
+  }
+
+  function estimateCostUsd(profile, usage = {}) {
+    const inputCost = Number(profile?.inputCostPer1M || profile?.pricing?.inputPer1M || 0);
+    const outputCost = Number(profile?.outputCostPer1M || profile?.pricing?.outputPer1M || 0);
+    const promptTokens = Number(usage.promptTokens || 0);
+    const completionTokens = Number(usage.completionTokens || 0);
+    if (!inputCost && !outputCost) {
+      return 0;
+    }
+    return (promptTokens * inputCost + completionTokens * outputCost) / 1000000;
+  }
+
+  function recordProfileSuccess(profile, startedAt, usage) {
+    const current = profileStats(profile);
+    const latencyMs = Math.max(1, Date.now() - startedAt);
+    const estimatedCostUsd = estimateCostUsd(profile, usage);
+    updateProfileMetrics(profile, {
+      successCount: current.successCount + 1,
+      consecutiveFailures: 0,
+      totalLatencyMs: current.totalLatencyMs + latencyMs,
+      lastLatencyMs: latencyMs,
+      totalPromptTokens: current.totalPromptTokens + Number(usage?.promptTokens || 0),
+      totalCompletionTokens: current.totalCompletionTokens + Number(usage?.completionTokens || 0),
+      estimatedCostUsd: Number((current.estimatedCostUsd + estimatedCostUsd).toFixed(8)),
+      lastSuccessAt: new Date().toISOString(),
+      lastError: "",
+      circuitOpenUntil: 0
+    });
+    return {
+      latencyMs,
+      estimatedCostUsd
+    };
+  }
+
+  function recordProfileFailure(profile, startedAt, error) {
+    const current = profileStats(profile);
+    const consecutiveFailures = current.consecutiveFailures + 1;
+    const backoffMs = consecutiveFailures >= 3 ? Math.min(300000, 30000 * 2 ** Math.min(consecutiveFailures - 3, 3)) : 0;
+    updateProfileMetrics(profile, {
+      failureCount: current.failureCount + 1,
+      consecutiveFailures,
+      lastLatencyMs: Math.max(1, Date.now() - startedAt),
+      lastFailureAt: new Date().toISOString(),
+      lastError: error instanceof Error ? error.message : String(error || "模型调用失败"),
+      circuitOpenUntil: backoffMs ? Date.now() + backoffMs : 0
+    });
+  }
+
   function encryptApiKey(apiKey) {
     if (!apiKey) {
       return null;
@@ -439,6 +591,10 @@ function createModelRouter({ app, safeStorage }) {
       supportsJsonMode: payload.supportsJsonMode,
       bestFor: payload.bestFor,
       toolCallStyle: payload.toolCallStyle,
+      inputCostPer1M: payload.inputCostPer1M,
+      outputCostPer1M: payload.outputCostPer1M,
+      expectedLatencyMs: payload.expectedLatencyMs,
+      priority: payload.priority,
       apiKeyRef: `keychain:${payload.provider}:${normalizeModelName(payload.model)}`,
       encryptedApiKey,
       updatedAt: now,
@@ -471,7 +627,8 @@ function createModelRouter({ app, safeStorage }) {
       ...safeProfile,
       hasApiKey: keyStatus === "available",
       hasStoredApiKey: hasStoredApiKey(profile),
-      keyStatus
+      keyStatus,
+      routeStats: profileStats(profile)
     };
   }
 
@@ -604,6 +761,45 @@ function createModelRouter({ app, safeStorage }) {
     return Array.from(new Set(candidates.filter(Boolean)));
   }
 
+  function profileRouteEconomyScore(profile) {
+    const inputCost = Number(profile?.inputCostPer1M || profile?.pricing?.inputPer1M || 0);
+    const outputCost = Number(profile?.outputCostPer1M || profile?.pricing?.outputPer1M || 0);
+    const blendedCost = inputCost + outputCost;
+    if (!blendedCost) {
+      return 0;
+    }
+    return Math.max(-18, -Math.log10(blendedCost + 1) * 10);
+  }
+
+  function profileRouteLatencyScore(profile, stats) {
+    const observedLatency = Number(stats?.averageLatencyMs || stats?.lastLatencyMs || 0);
+    const expectedLatency = Number(profile?.expectedLatencyMs || 0);
+    const latencyMs = observedLatency || expectedLatency;
+    if (!latencyMs) {
+      return 0;
+    }
+    return Math.max(-18, -Math.log10(Math.max(1000, latencyMs) / 1000) * 10);
+  }
+
+  function profileRouteHealthScore(profile) {
+    const stats = profileStats(profile);
+    if (stats.circuitOpen) {
+      return -1000;
+    }
+    const calls = stats.successCount + stats.failureCount;
+    let score = 0;
+    if (calls > 0 && stats.successRate != null) {
+      score += (stats.successRate - 0.5) * 30;
+    }
+    if (stats.consecutiveFailures) {
+      score -= stats.consecutiveFailures * 12;
+    }
+    if (stats.lastSuccessAt) {
+      score += 4;
+    }
+    return score;
+  }
+
   function profileRank(profile, preferredModel, intent = {}) {
     let score = 0;
     if (profile.id === preferredModel || profile.provider === preferredModel || normalizeModelName(profile.model) === normalizeModelName(preferredModel)) {
@@ -618,7 +814,36 @@ function createModelRouter({ app, safeStorage }) {
     if (intent.mode === "coding" && profileMatchesCapability(profile, "coding")) {
       score += 10;
     }
+    if (Number.isFinite(Number(profile.priority))) {
+      score += Number(profile.priority) / 10;
+    }
+    if (isAutoSelection(preferredModel) || !preferredModel) {
+      score += profileRouteEconomyScore(profile);
+      score += profileRouteLatencyScore(profile, profileStats(profile));
+    }
+    score += profileRouteHealthScore(profile);
     return score;
+  }
+
+  function routeCandidate(profile, preferredModel, intent = {}, index = 0) {
+    const stats = profileStats(profile);
+    const score = profileRank(profile, preferredModel, intent);
+    return {
+      profile,
+      index,
+      score,
+      reasons: [
+        profile.id === preferredModel || profile.provider === preferredModel || normalizeModelName(profile.model) === normalizeModelName(preferredModel)
+          ? "preferred"
+          : "",
+        intent.preferredProvider && profileMatchesProvider(profile, intent.preferredProvider) ? "provider-match" : "",
+        intent.mode === "coding" && profileMatchesCapability(profile, "coding") ? "coding" : "",
+        intent.modality && intent.modality !== "text" && profileMatchesCapability(profile, intent.modality) ? intent.modality : "",
+        stats.averageLatencyMs ? `avg-latency:${stats.averageLatencyMs}ms` : "",
+        profile.inputCostPer1M || profile.outputCostPer1M ? `cost:${profile.inputCostPer1M || 0}/${profile.outputCostPer1M || 0}` : "",
+        stats.circuitOpen ? "circuit-open" : ""
+      ].filter(Boolean)
+    };
   }
 
   function resolveModelProfiles(preferredModel, intent = {}) {
@@ -628,15 +853,22 @@ function createModelRouter({ app, safeStorage }) {
         ? allProfiles.filter((profile) => profileMatchesCapability(profile, intent.modality))
         : allProfiles;
     const sorted = profiles
-      .map((profile, index) => ({
-        profile,
-        index,
-        score: profileRank(profile, preferredModel, intent)
-      }))
+      .map((profile, index) => routeCandidate(profile, preferredModel, intent, index))
       .sort((left, right) => right.score - left.score || left.index - right.index)
       .map((item) => item.profile);
 
     return sorted;
+  }
+
+  function listRouteCandidates(preferredModel, intent = {}) {
+    return resolveModelProfiles(preferredModel, intent).map((profile, index) => {
+      const candidate = routeCandidate(profile, preferredModel, intent, index);
+      return {
+        ...sanitizeProfile(profile),
+        routeScore: Number(candidate.score.toFixed(2)),
+        routeReasons: candidate.reasons
+      };
+    });
   }
 
   function profileMatchesCapability(profile, capability) {
@@ -671,50 +903,7 @@ function createModelRouter({ app, safeStorage }) {
   }
 
   function resolveModelProfile(preferredModel, intent = {}) {
-    const profiles = readProfiles().filter(hasDecryptableApiKey);
-    const normalizedModel = normalizeModelName(preferredModel);
-    const fallback = profiles[0];
-    const explicitProfile =
-      profiles.find((profile) => normalizeModelName(profile.model) === normalizedModel) ||
-      profiles.find((profile) => profile.provider === preferredModel) ||
-      profiles.find((profile) => profile.id === preferredModel);
-
-    if (intent.preferredProvider) {
-      const byProvider =
-        intent.modality && intent.modality !== "text"
-          ? profiles.find(
-              (profile) =>
-                profileMatchesProvider(profile, intent.preferredProvider) &&
-                profileMatchesCapability(profile, intent.modality)
-            )
-          : profiles.find((profile) => profileMatchesProvider(profile, intent.preferredProvider));
-      if (byProvider) {
-        return byProvider;
-      }
-    }
-
-    if (intent.modality && intent.modality !== "text") {
-      const byCapability = profiles.find((profile) => profileMatchesCapability(profile, intent.modality));
-      if (byCapability) {
-        return byCapability;
-      }
-    }
-
-    if (explicitProfile && preferredModel && !isAutoSelection(preferredModel)) {
-      return explicitProfile;
-    }
-
-    if (intent.mode === "coding") {
-      const coding = profiles.find((profile) => profileMatchesCapability(profile, "coding"));
-      if (coding) {
-        return coding;
-      }
-    }
-
-    return (
-      explicitProfile ||
-      fallback
-    );
+    return resolveModelProfiles(preferredModel, intent)[0] || null;
   }
 
   function normalizeToolCall(call, index) {
@@ -737,7 +926,7 @@ function createModelRouter({ app, safeStorage }) {
     };
   }
 
-  async function callChatMessages(profile, messages, options = {}) {
+  async function callChatMessagesOnce(profile, messages, options = {}) {
     const apiKey = decryptApiKey(profile?.encryptedApiKey);
     if (!profile || !apiKey) {
       throw new Error("没有找到可解密的模型 API Key");
@@ -795,28 +984,144 @@ function createModelRouter({ app, safeStorage }) {
       }
 
       const content = typeof message.content === "string" ? message.content.trim() : "";
+      const reasoningContent = extractReasoningContent(message);
       const toolCalls = (message.tool_calls || []).map(normalizeToolCall);
+      const usage = usageFromResponse(data, providerMessages, content);
+      const assistantMessage = {
+        role: message.role || "assistant",
+        content
+      };
+      if (reasoningContent) {
+        assistantMessage.reasoning_content = reasoningContent;
+      }
+      if (toolCalls.length) {
+        assistantMessage.tool_calls = toolCalls.map((toolCall, index) => normalizeProviderToolCall({
+          id: toolCall.id,
+          type: toolCall.type,
+          name: toolCall.name,
+          arguments: toolCall.rawArguments
+        }, index));
+      }
       return {
         content,
+        reasoningContent,
         finishReason: choice?.finish_reason || "",
-        message: {
-          role: message.role || "assistant",
-          content,
-          tool_calls: toolCalls.map((toolCall, index) => normalizeProviderToolCall({
-            id: toolCall.id,
-            type: toolCall.type,
-            name: toolCall.name,
-            arguments: toolCall.rawArguments
-          }, index))
-        },
+        message: assistantMessage,
         rawToolCalls: message.tool_calls || [],
         toolCalls,
+        usage,
+        estimatedCostUsd: estimateCostUsd(profile, usage),
+        profile,
         raw: data
       };
     } finally {
       clearTimeout(timeout);
       options.signal?.removeEventListener?.("abort", abortListener);
     }
+  }
+
+  function resolveChatRouteProfiles(preferredProfile, options = {}) {
+    const intent = {
+      modality: "text",
+      ...(options.intent || {}),
+      mode: options.mode || options.intent?.mode || options.payload?.intent?.mode || options.payload?.mode
+    };
+    const preferredModel =
+      options.preferredModel ||
+      preferredProfile?.id ||
+      preferredProfile?.model ||
+      preferredProfile?.provider ||
+      "auto";
+    const routed = resolveModelProfiles(preferredModel, intent);
+    const explicitHasKey = preferredProfile && hasDecryptableApiKey(preferredProfile);
+    const explicitIdentity = profileIdentity(preferredProfile);
+    const merged = [];
+
+    if (explicitHasKey) {
+      merged.push(preferredProfile);
+    }
+    for (const candidate of routed) {
+      if (!candidate || merged.some((item) => profileIdentity(item) === profileIdentity(candidate))) {
+        continue;
+      }
+      merged.push(candidate);
+    }
+
+    if (!isAutoSelection(preferredModel) && explicitHasKey) {
+      return merged;
+    }
+
+    return merged
+      .map((profile, index) => routeCandidate(profile, preferredModel, intent, index))
+      .sort((left, right) => right.score - left.score || left.index - right.index)
+      .map((item) => item.profile);
+  }
+
+  function shouldStopChatFallback(error, options = {}) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    return options.signal?.aborted || /用户已停止|aborted|AbortError/i.test(message);
+  }
+
+  async function callChatMessages(profile, messages, options = {}) {
+    if (options.disableFallback) {
+      return callChatMessagesOnce(profile, messages, options);
+    }
+
+    const candidates = resolveChatRouteProfiles(profile, options);
+    const errors = [];
+    const attempts = [];
+
+    for (const candidate of candidates) {
+      if (options.signal?.aborted) {
+        throw new Error("用户已停止当前 Agent 回合。");
+      }
+      const startedAt = Date.now();
+      options.onAttempt?.(candidate);
+      attempts.push({
+        provider: candidate.provider,
+        model: normalizeModelName(candidate.model),
+        startedAt
+      });
+      try {
+        const result = await callChatMessagesOnce(candidate, messages, options);
+        const recorded = recordProfileSuccess(candidate, startedAt, result.usage);
+        const successfulAttempt = attempts[attempts.length - 1];
+        successfulAttempt.ok = true;
+        successfulAttempt.latencyMs = recorded.latencyMs;
+        successfulAttempt.estimatedCostUsd = recorded.estimatedCostUsd;
+        return {
+          ...result,
+          profile: candidate,
+          provider: candidate.provider,
+          model: normalizeModelName(candidate.model),
+          routing: {
+            selectedProvider: candidate.provider,
+            selectedModel: normalizeModelName(candidate.model),
+            attempts,
+            fallbackCount: attempts.length - 1,
+            estimatedCostUsd: result.estimatedCostUsd
+          }
+        };
+      } catch (error) {
+        if (shouldStopChatFallback(error, options)) {
+          throw error;
+        }
+        recordProfileFailure(candidate, startedAt, error);
+        const message = error instanceof Error ? error.message : "模型调用失败";
+        const failedAttempt = attempts[attempts.length - 1];
+        failedAttempt.ok = false;
+        failedAttempt.error = message;
+        failedAttempt.latencyMs = Math.max(1, Date.now() - startedAt);
+        errors.push(`${candidate.provider} / ${candidate.model}: ${message}`);
+      }
+    }
+
+    const keylessProfiles = readProfiles()
+      .filter((candidate) => !hasDecryptableApiKey(candidate))
+      .slice(0, 6)
+      .map((candidate) => `${candidate.provider} / ${candidate.model}${hasStoredApiKey(candidate) ? "（API Key 无法解密，请重新保存）" : ""}`);
+    const keylessHint = keylessProfiles.length ? `；跳过无可用 API Key 的 profile：${keylessProfiles.join("；")}` : "";
+    throw new Error(`没有可用 MaaS 模型完成本次调用，已尝试 ${candidates.length} 个候选：${errors.join("；")}${keylessHint}`);
   }
 
   async function callChat(profile, prompt, options = {}) {
@@ -1300,6 +1605,7 @@ function createModelRouter({ app, safeStorage }) {
     callChatMessages,
     ensureSeededProfiles,
     listProfiles,
+    listRouteCandidates,
     normalizeModelName,
     resolveModelProfile,
     resolveModelProfiles,
@@ -1310,5 +1616,6 @@ function createModelRouter({ app, safeStorage }) {
 
 module.exports = {
   createModelRouter,
+  extractReasoningContent,
   normalizeMessagesForProvider
 };

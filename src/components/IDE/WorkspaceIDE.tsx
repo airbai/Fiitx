@@ -37,6 +37,8 @@ type OpenDocument = {
   language: string;
   content: string;
   originalContent: string;
+  originalSource: "opened" | "git-head" | "git-missing" | "artifact";
+  savedContent: string;
   dirty: boolean;
   readOnly: boolean;
   truncated?: boolean;
@@ -329,6 +331,20 @@ export function WorkspaceIDE({
           throw new Error("当前运行环境未连接 Electron workspace API");
         }
 
+        let diffBase: FiitxWorkspaceDiffBase | null = null;
+        try {
+          diffBase = await window.fiitx?.readWorkspaceDiffBase?.({
+            workspacePath,
+            path: result.path
+          }) ?? null;
+        } catch {
+          diffBase = null;
+        }
+
+        const diffBaseSource = diffBase?.ok && (diffBase.source === "git-head" || diffBase.source === "git-missing")
+          ? diffBase.source
+          : null;
+        const diffBaseContent = diffBaseSource ? diffBase?.content ?? "" : result.content;
         const document: OpenDocument = {
           id,
           source: "workspace",
@@ -336,7 +352,9 @@ export function WorkspaceIDE({
           title: fileNameFromPath(result.path),
           language: languageFromPath(result.path),
           content: result.content,
-          originalContent: result.content,
+          originalContent: diffBaseContent,
+          originalSource: diffBaseSource ?? "opened",
+          savedContent: result.content,
           dirty: false,
           readOnly: result.truncated,
           truncated: result.truncated
@@ -344,7 +362,12 @@ export function WorkspaceIDE({
         setOpenDocuments((current) => upsertDocument(current, document));
         setActiveDocumentId(id);
         setEditorMode("edit");
-        setStatusMessage(result.truncated ? `${result.path} 超过编辑大小限制，已用只读模式打开` : `已打开 ${result.path}`);
+        const diffHint = diffBaseSource
+          ? diffBaseSource === "git-missing"
+            ? " · Diff 基线：新增文件"
+            : " · Diff 基线：Git HEAD"
+          : "";
+        setStatusMessage(result.truncated ? `${result.path} 超过编辑大小限制，已用只读模式打开${diffHint}` : `已打开 ${result.path}${diffHint}`);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "文件打开失败");
       } finally {
@@ -364,6 +387,8 @@ export function WorkspaceIDE({
       language: languageFromPath(artifact.path, artifact.language || "markdown"),
       content: artifact.preview,
       originalContent: artifact.preview,
+      originalSource: "artifact",
+      savedContent: artifact.preview,
       dirty: false,
       readOnly: true
     };
@@ -408,7 +433,8 @@ export function WorkspaceIDE({
             ? {
                 ...document,
                 dirty: false,
-                originalContent: document.content
+                originalContent: document.originalSource === "opened" ? document.content : document.originalContent,
+                savedContent: document.content
               }
             : document
         )
@@ -473,7 +499,7 @@ export function WorkspaceIDE({
           ? {
               ...document,
               content,
-              dirty: content !== document.originalContent
+              dirty: content !== document.savedContent
             }
           : document
       )

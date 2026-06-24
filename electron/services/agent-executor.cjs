@@ -390,6 +390,7 @@ class AgentExecutor {
           type: 'llm_call_end',
           step,
           hasContent: Boolean(response.content),
+          hasReasoningContent: Boolean(response.reasoningContent || response.message?.reasoning_content),
           hasToolCalls: response.toolCalls?.length > 0,
           finishReason: response.finishReason,
         });

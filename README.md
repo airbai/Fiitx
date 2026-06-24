@@ -19,6 +19,25 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 - 文件系统级别的 Diff 引擎与跨文件感知
 - 权限审批（企业级安全策略门控）
 
+## 界面多语言
+
+Fiitx 界面默认跟随系统语言，也可以在 `Settings > General > Language` 手动切换。当前支持 English、全球主要使用人群语种，以及繁体中文：
+
+| Locale | 语言 |
+|--------|------|
+| `en` | English |
+| `zh` | 简体中文 |
+| `zh-TW` | 繁體中文 |
+| `hi` | हिन्दी / Hindi |
+| `es` | Español / Spanish |
+| `fr` | Français / French |
+| `ar` | العربية / Arabic |
+| `bn` | বাংলা / Bengali |
+| `pt` | Português / Portuguese |
+| `id` | Bahasa Indonesia / Indonesian |
+| `ur` | اردو / Urdu |
+| `ru` | Русский / Russian |
+
 #### 点击观看演示视频
 <a href="https://www.youtube.com/watch?v=UMXBwSsjEgA" target="_blank">
   <img src="https://img.youtube.com/vi/UMXBwSsjEgA/maxresdefault.jpg" 
@@ -187,24 +206,23 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 
 ---
 
-### 🔴 10. Model 在多 MaaS 间自动路由 — 实现 Model 对用户透明
+### ✅ 10. Model 在多 MaaS 间自动路由 — 实现 Model 对用户透明
 
 | 需求 | 状态 |
 |------|------|
-| Provider Registry | `electron/services/provider-registry.cjs` | ✅ 基础完成 |
-| Model Router (单 Provider) | `electron/services/model-router.cjs` (44KB) | 🟡 部分完成 |
-| 跨 MaaS 自动路由 | — | 🔴 待实现 |
-| Fallback / 降级策略 | — | 🔴 待实现 |
-| 成本 / 延迟感知路由 | — | 🔴 待实现 |
+| Provider Registry | `electron/services/provider-registry.cjs` | ✅ 完成 |
+| Model Router | `electron/services/model-router.cjs` | ✅ 完成 |
+| 跨 MaaS 自动路由 | 文本 / tool call 透明候选队列 | ✅ 完成 |
+| Fallback / 降级策略 | Provider 失败后自动尝试下一个可用 MaaS | ✅ 完成 |
+| 成本 / 延迟感知路由 | 结合静态成本、预期延迟、历史成功率、平均延迟、连续失败、熔断状态排序 | ✅ 完成 |
 | Model Profile 加密存储 | Electron safeStorage | ✅ 完成 |
 
-**已实现：** Provider Registry 支持多 Provider 注册，Model Router 基于 profile 路由到不同模型，API Key 通过 Electron safeStorage 加密存储。
-
-**待实现（企业级方向）：**
-- 自动探测模型可用性 + 延迟/成本数据
-- 基于 Prompt 复杂度/预算/延迟要求的智能路由
-- Provider 故障时自动降级到备用模型
-- 统一 token 用量与成本追踪（跨 Provider）
+**已实现：**
+- Provider Registry 为默认 MaaS profile 写入成本、预期延迟和优先级元数据
+- Model Router 为文本和工具调用维护跨 Provider 候选队列
+- 每次调用记录成功 / 失败、连续失败、平均延迟、token 与估算成本
+- 连续失败触发短时熔断，避免同一故障 Provider 被反复选中
+- Settings 的模型页面展示路由健康状态、延迟、成功率和成本信息
 
 ---
 
@@ -221,7 +239,7 @@ Deepsix 不是又一个 AI Chat 客户端。它是一个**自托管的 Agent 操
 | 可观测性 | | 🟡 后端 StreamingBus + Trace | 🔴 前端流式渲染/时间线 |
 | 编辑器 | | | 🔴 VS Code 集成 + Inline Diff |
 | 开发工具链 | | | 🔴 ESLint / Prettier / 测试 / CI |
-| Model 路由 | | 🟡 基础 Provider 注册 | 🔴 跨 MaaS 透明自动路由 |
+| Model 路由 | ✅ Provider Registry + 跨 MaaS 自动路由 + fallback + 成本/延迟感知 | | |
 | 自迭代闭环 | ✅ "在 Deepsix 内升级 Deepsix" 工作流已打通 | | |
 
 ---

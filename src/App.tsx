@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import css from "highlight.js/lib/languages/css";
@@ -12,6 +12,7 @@ import xml from "highlight.js/lib/languages/xml";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   Bot,
   Brain,
   Check,
@@ -28,9 +29,8 @@ import {
   FolderPlus,
   GitBranch,
   Image,
+  Info,
   KeyRound,
-  LayoutDashboard,
-  LockKeyhole,
   LucideIcon,
   Maximize2,
   MessageSquare,
@@ -43,6 +43,7 @@ import {
   Presentation,
   RefreshCw,
   Save,
+  Search,
   Send,
   Settings,
   Shield,
@@ -63,6 +64,273 @@ import logoUrl from "../assets/fiitx-logo.png";
 const PRODUCT_NAME = "Fiitx";
 const PRODUCT_EYEBROW = "Fiitx BYOM Agent Desktop";
 const PRODUCT_SUBTITLE = "Enterprise Agent";
+const I18N_STORAGE_KEY = "fiitx.uiLocale";
+
+type UiLocale = "en" | "zh" | "zh-TW" | "hi" | "es" | "fr" | "ar" | "bn" | "pt" | "id" | "ur" | "ru";
+
+const supportedLocales: Array<{ id: UiLocale; nativeName: string; englishName: string; dir: "ltr" | "rtl" }> = [
+  { id: "en", nativeName: "English", englishName: "English", dir: "ltr" },
+  { id: "zh", nativeName: "中文", englishName: "Chinese", dir: "ltr" },
+  { id: "zh-TW", nativeName: "繁體中文", englishName: "Traditional Chinese", dir: "ltr" },
+  { id: "hi", nativeName: "हिन्दी", englishName: "Hindi", dir: "ltr" },
+  { id: "es", nativeName: "Español", englishName: "Spanish", dir: "ltr" },
+  { id: "fr", nativeName: "Français", englishName: "French", dir: "ltr" },
+  { id: "ar", nativeName: "العربية", englishName: "Arabic", dir: "rtl" },
+  { id: "bn", nativeName: "বাংলা", englishName: "Bengali", dir: "ltr" },
+  { id: "pt", nativeName: "Português", englishName: "Portuguese", dir: "ltr" },
+  { id: "id", nativeName: "Bahasa Indonesia", englishName: "Indonesian", dir: "ltr" },
+  { id: "ur", nativeName: "اردو", englishName: "Urdu", dir: "rtl" },
+  { id: "ru", nativeName: "Русский", englishName: "Russian", dir: "ltr" }
+];
+
+const i18n: Record<UiLocale, Record<string, string>> = {
+  en: {
+    "product.subtitle": "Enterprise Agent",
+    "sidebar.newTask": "New task",
+    "sidebar.projects": "Projects",
+    "sidebar.settings": "Settings",
+    "workspace.choose": "Choose workspace",
+    "action.refresh": "Refresh status",
+    "action.addAttachment": "Add attachment",
+    "action.voiceInput": "Voice input",
+    "action.stopTask": "Stop current task",
+    "action.stopping": "Stopping",
+    "action.sendTask": "Send task",
+    "action.sendSteer": "Send update",
+    "pane.sidebar.collapse": "Collapse left navigation",
+    "pane.sidebar.expand": "Expand left navigation",
+    "pane.right.collapse": "Collapse right panel",
+    "pane.right.expand": "Expand right panel",
+    "composer.currentChannel": "Current channel: {name}",
+    "composer.placeholder": "Type a message or task",
+    "permissions.ask": "Request approval",
+    "permissions.auto": "Auto-approve",
+    "permissions.full": "Full access",
+    "status.running": "Running",
+    "status.waiting": "Pending approval",
+    "status.done": "Completed",
+    "settings.group": "Settings",
+    "settings.back": "Back to app",
+    "settings.eyebrow": "Settings",
+    "settings.fallbackTitle": "Settings",
+    "settings.fallbackDesc": "Fiitx configuration",
+    "settings.language": "Language",
+    "settings.languageHelp": "Defaults to your system language. You can override it here.",
+    "nav.agents": "Agent",
+    "nav.approvals": "Approvals",
+    "nav.history": "History",
+    "nav.audit": "Audit",
+    "nav.policy": "Policy",
+    "nav.models": "Model Marketplace",
+    "nav.mcp": "MCP",
+    "nav.skills": "Skill",
+    "nav.about": "General",
+    "nav.agents.desc": "Business agents, channels, evals",
+    "nav.approvals.desc": "Permission queue and releases",
+    "nav.history.desc": "Traces, versions, reviews",
+    "nav.audit.desc": "Security and operation logs",
+    "nav.policy.desc": "Tools, sandbox, default permissions",
+    "nav.models.desc": "Providers, profiles, routing",
+    "nav.mcp.desc": "External tools and data sources",
+    "nav.skills.desc": "Task capability extensions",
+    "nav.about.desc": "Language, version, local state",
+    "about.eyebrow": "General",
+    "about.copy1": "Fiitx is a BYOM Agent Desktop for enterprise and professional workflows, bringing model profiles, agent orchestration, approval policy, execution history, audit logs and local workspace operations into one desktop workbench.",
+    "about.copy2": "Its goal is to close the loop across Chat, Coding, Artifacts, MCP/Skill extensions and safety policy: tasks execute, processes are traceable, and outcomes can be reviewed.",
+    "about.platform": "Platform",
+    "about.version": "Version",
+    "about.secureStorage": "Secure storage",
+    "about.workspace": "Current workspace",
+    "about.keychainAvailable": "Keychain available",
+    "about.keychainUnavailable": "Local encryption unavailable",
+    "about.notSelected": "Not selected",
+    "terminal.new": "New terminal",
+    "terminal.close": "Close Terminal",
+    "terminal.empty": "Run commands in the current workspace for builds, scripts and file checks.",
+    "terminal.running": "Running"
+  },
+  zh: {
+    "product.subtitle": "Enterprise Agent",
+    "sidebar.newTask": "新建任务",
+    "sidebar.projects": "项目",
+    "sidebar.settings": "设置",
+    "workspace.choose": "选择工作区",
+    "action.refresh": "刷新状态",
+    "action.addAttachment": "添加附件",
+    "action.voiceInput": "语音输入",
+    "action.stopTask": "停止当前任务",
+    "action.stopping": "正在停止",
+    "action.sendTask": "发送任务",
+    "action.sendSteer": "发送中途补充",
+    "pane.sidebar.collapse": "收起左侧导航",
+    "pane.sidebar.expand": "展开左侧导航",
+    "pane.right.collapse": "收起右侧面板",
+    "pane.right.expand": "展开右侧面板",
+    "composer.currentChannel": "当前通道：{name}",
+    "composer.placeholder": "输入消息或任务",
+    "permissions.ask": "请求批准",
+    "permissions.auto": "替我审批",
+    "permissions.full": "完全访问权限",
+    "status.running": "运行中",
+    "status.waiting": "待审批",
+    "status.done": "已完成",
+    "settings.group": "Settings",
+    "settings.back": "Back to app",
+    "settings.eyebrow": "Settings",
+    "settings.fallbackTitle": "设置",
+    "settings.fallbackDesc": "Fiitx 配置",
+    "settings.language": "界面语言",
+    "settings.languageHelp": "默认跟随系统语言，也可以在这里手动覆盖。",
+    "nav.agents": "Agent",
+    "nav.approvals": "审批",
+    "nav.history": "历史",
+    "nav.audit": "审计",
+    "nav.policy": "策略",
+    "nav.models": "模型广场",
+    "nav.mcp": "MCP",
+    "nav.skills": "Skill",
+    "nav.about": "General",
+    "nav.agents.desc": "业务 Agent、通道、评测",
+    "nav.approvals.desc": "权限队列与放行",
+    "nav.history.desc": "Trace、版本、复盘",
+    "nav.audit.desc": "安全与操作日志",
+    "nav.policy.desc": "工具、沙箱、默认权限",
+    "nav.models.desc": "Provider、Profile、路由",
+    "nav.mcp.desc": "外部工具与数据源",
+    "nav.skills.desc": "任务能力扩展",
+    "nav.about.desc": "语言、版本与本机信息",
+    "about.eyebrow": "General",
+    "about.copy1": "Fiitx 是面向企业与专业工作流的 BYOM Agent Desktop，用于把模型配置、Agent 编排、审批策略、执行历史、审计记录和本地工作区操作放在同一个桌面工作台里。",
+    "about.copy2": "它的目标是让 Chat、Coding、Artifact、MCP/Skill 扩展和安全策略形成闭环：任务能执行，过程可追踪，结果可复盘。",
+    "about.platform": "平台",
+    "about.version": "版本",
+    "about.secureStorage": "安全存储",
+    "about.workspace": "当前工作区",
+    "about.keychainAvailable": "Keychain 可用",
+    "about.keychainUnavailable": "本地加密不可用",
+    "about.notSelected": "未选择",
+    "terminal.new": "新建终端",
+    "terminal.close": "关闭 Terminal",
+    "terminal.empty": "在当前工作区执行命令，适合运行构建、脚本和文件检查。",
+    "terminal.running": "执行中"
+  },
+  "zh-TW": {
+    "product.subtitle": "Enterprise Agent",
+    "sidebar.newTask": "新增任務",
+    "sidebar.projects": "專案",
+    "sidebar.settings": "設定",
+    "workspace.choose": "選擇工作區",
+    "action.refresh": "重新整理狀態",
+    "action.addAttachment": "新增附件",
+    "action.voiceInput": "語音輸入",
+    "action.stopTask": "停止目前任務",
+    "action.stopping": "正在停止",
+    "action.sendTask": "送出任務",
+    "action.sendSteer": "送出補充",
+    "pane.sidebar.collapse": "收合左側導覽",
+    "pane.sidebar.expand": "展開左側導覽",
+    "pane.right.collapse": "收合右側面板",
+    "pane.right.expand": "展開右側面板",
+    "composer.currentChannel": "目前通道：{name}",
+    "composer.placeholder": "輸入訊息或任務",
+    "permissions.ask": "請求核准",
+    "permissions.auto": "替我核准",
+    "permissions.full": "完整存取權限",
+    "status.running": "執行中",
+    "status.waiting": "待核准",
+    "status.done": "已完成",
+    "settings.group": "Settings",
+    "settings.back": "Back to app",
+    "settings.eyebrow": "Settings",
+    "settings.fallbackTitle": "設定",
+    "settings.fallbackDesc": "Fiitx 設定",
+    "settings.language": "介面語言",
+    "settings.languageHelp": "預設跟隨系統語言，也可以在這裡手動覆寫。",
+    "nav.agents": "Agent",
+    "nav.approvals": "核准",
+    "nav.history": "歷史",
+    "nav.audit": "稽核",
+    "nav.policy": "策略",
+    "nav.models": "模型廣場",
+    "nav.mcp": "MCP",
+    "nav.skills": "Skill",
+    "nav.about": "General",
+    "nav.agents.desc": "業務 Agent、通道、評測",
+    "nav.approvals.desc": "權限佇列與放行",
+    "nav.history.desc": "Trace、版本、復盤",
+    "nav.audit.desc": "安全與操作記錄",
+    "nav.policy.desc": "工具、沙箱、預設權限",
+    "nav.models.desc": "Provider、Profile、路由",
+    "nav.mcp.desc": "外部工具與資料來源",
+    "nav.skills.desc": "任務能力擴充",
+    "nav.about.desc": "語言、版本與本機資訊",
+    "about.eyebrow": "General",
+    "about.copy1": "Fiitx 是面向企業與專業工作流的 BYOM Agent Desktop，用於把模型設定、Agent 編排、核准策略、執行歷史、稽核記錄和本地工作區操作放在同一個桌面工作台裡。",
+    "about.copy2": "它的目標是讓 Chat、Coding、Artifact、MCP/Skill 擴充和安全策略形成閉環：任務能執行，過程可追蹤，結果可復盤。",
+    "about.platform": "平台",
+    "about.version": "版本",
+    "about.secureStorage": "安全儲存",
+    "about.workspace": "目前工作區",
+    "about.keychainAvailable": "Keychain 可用",
+    "about.keychainUnavailable": "本機加密不可用",
+    "about.notSelected": "未選擇",
+    "terminal.new": "新增終端機",
+    "terminal.close": "關閉 Terminal",
+    "terminal.empty": "在目前工作區執行命令，適合執行建置、腳本和檔案檢查。",
+    "terminal.running": "執行中"
+  },
+  hi: {
+    "product.subtitle": "Enterprise Agent", "sidebar.newTask": "नया कार्य", "sidebar.projects": "प्रोजेक्ट", "sidebar.settings": "सेटिंग्स", "workspace.choose": "वर्कस्पेस चुनें", "action.refresh": "स्थिति रीफ्रेश करें", "action.addAttachment": "अटैचमेंट जोड़ें", "action.voiceInput": "वॉइस इनपुट", "action.stopTask": "वर्तमान कार्य रोकें", "action.stopping": "रोका जा रहा है", "action.sendTask": "कार्य भेजें", "action.sendSteer": "अपडेट भेजें", "pane.sidebar.collapse": "बायां नेविगेशन समेटें", "pane.sidebar.expand": "बायां नेविगेशन खोलें", "pane.right.collapse": "दायां पैनल समेटें", "pane.right.expand": "दायां पैनल खोलें", "composer.currentChannel": "वर्तमान चैनल: {name}", "composer.placeholder": "संदेश या कार्य लिखें", "permissions.ask": "अनुमोदन मांगें", "permissions.auto": "स्वतः अनुमोदन", "permissions.full": "पूर्ण पहुंच", "status.running": "चल रहा है", "status.waiting": "अनुमोदन लंबित", "status.done": "पूर्ण", "settings.group": "सेटिंग्स", "settings.back": "ऐप पर लौटें", "settings.eyebrow": "सेटिंग्स", "settings.fallbackTitle": "सेटिंग्स", "settings.fallbackDesc": "Fiitx कॉन्फ़िगरेशन", "settings.language": "भाषा", "settings.languageHelp": "डिफ़ॉल्ट सिस्टम भाषा है। आप इसे यहां बदल सकते हैं.", "nav.agents": "Agent", "nav.approvals": "अनुमोदन", "nav.history": "इतिहास", "nav.audit": "ऑडिट", "nav.policy": "नीति", "nav.models": "मॉडल मार्केट", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "व्यावसायिक agents, चैनल, evals", "nav.approvals.desc": "अनुमति कतार और रिलीज़", "nav.history.desc": "Trace, संस्करण, समीक्षा", "nav.audit.desc": "सुरक्षा और ऑपरेशन लॉग", "nav.policy.desc": "टूल, sandbox, डिफ़ॉल्ट अनुमति", "nav.models.desc": "Provider, profile, routing", "nav.mcp.desc": "बाहरी टूल और डेटा स्रोत", "nav.skills.desc": "कार्य क्षमता विस्तार", "nav.about.desc": "संस्करण और स्थानीय स्थिति", "about.eyebrow": "General", "about.copy1": "Fiitx enterprise और professional workflows के लिए BYOM Agent Desktop है।", "about.copy2": "यह Chat, Coding, Artifacts, MCP/Skill और safety policy को एक traceable loop में जोड़ता है।", "about.platform": "प्लेटफॉर्म", "about.version": "संस्करण", "about.secureStorage": "सुरक्षित संग्रहण", "about.workspace": "वर्तमान वर्कस्पेस", "about.keychainAvailable": "Keychain उपलब्ध", "about.keychainUnavailable": "स्थानीय encryption उपलब्ध नहीं", "about.notSelected": "चयनित नहीं", "terminal.new": "नया टर्मिनल", "terminal.close": "Terminal बंद करें", "terminal.empty": "वर्तमान workspace में build, script और file check के लिए command चलाएं.", "terminal.running": "चल रहा है"
+  },
+  es: {
+    "product.subtitle": "Agente empresarial", "sidebar.newTask": "Nueva tarea", "sidebar.projects": "Proyectos", "sidebar.settings": "Ajustes", "workspace.choose": "Elegir espacio de trabajo", "action.refresh": "Actualizar estado", "action.addAttachment": "Añadir adjunto", "action.voiceInput": "Entrada de voz", "action.stopTask": "Detener tarea actual", "action.stopping": "Deteniendo", "action.sendTask": "Enviar tarea", "action.sendSteer": "Enviar actualización", "pane.sidebar.collapse": "Contraer navegación izquierda", "pane.sidebar.expand": "Expandir navegación izquierda", "pane.right.collapse": "Contraer panel derecho", "pane.right.expand": "Expandir panel derecho", "composer.currentChannel": "Canal actual: {name}", "composer.placeholder": "Escribe un mensaje o tarea", "permissions.ask": "Solicitar aprobación", "permissions.auto": "Autoaprobar", "permissions.full": "Acceso total", "status.running": "En ejecución", "status.waiting": "Pendiente de aprobación", "status.done": "Completado", "settings.group": "Ajustes", "settings.back": "Volver a la app", "settings.eyebrow": "Ajustes", "settings.fallbackTitle": "Ajustes", "settings.fallbackDesc": "Configuración de Fiitx", "settings.language": "Idioma", "settings.languageHelp": "Por defecto usa el idioma del sistema. Puedes cambiarlo aquí.", "nav.agents": "Agent", "nav.approvals": "Aprobaciones", "nav.history": "Historial", "nav.audit": "Auditoría", "nav.policy": "Política", "nav.models": "Mercado de modelos", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Agents, canales y evaluaciones", "nav.approvals.desc": "Cola de permisos", "nav.history.desc": "Trazas, versiones y revisiones", "nav.audit.desc": "Registros de seguridad", "nav.policy.desc": "Herramientas, sandbox y permisos", "nav.models.desc": "Proveedores, perfiles y routing", "nav.mcp.desc": "Herramientas y datos externos", "nav.skills.desc": "Extensiones de capacidades", "nav.about.desc": "Versión y estado local", "about.eyebrow": "General", "about.copy1": "Fiitx es un BYOM Agent Desktop para flujos empresariales y profesionales.", "about.copy2": "Conecta Chat, Coding, Artifacts, MCP/Skill y políticas de seguridad en un flujo auditable.", "about.platform": "Plataforma", "about.version": "Versión", "about.secureStorage": "Almacenamiento seguro", "about.workspace": "Workspace actual", "about.keychainAvailable": "Keychain disponible", "about.keychainUnavailable": "Cifrado local no disponible", "about.notSelected": "No seleccionado", "terminal.new": "Nuevo terminal", "terminal.close": "Cerrar Terminal", "terminal.empty": "Ejecuta comandos en el workspace actual para builds, scripts y comprobaciones.", "terminal.running": "Ejecutando"
+  },
+  fr: {
+    "product.subtitle": "Agent d'entreprise", "sidebar.newTask": "Nouvelle tâche", "sidebar.projects": "Projets", "sidebar.settings": "Paramètres", "workspace.choose": "Choisir l'espace de travail", "action.refresh": "Actualiser l'état", "action.addAttachment": "Ajouter une pièce jointe", "action.voiceInput": "Entrée vocale", "action.stopTask": "Arrêter la tâche", "action.stopping": "Arrêt en cours", "action.sendTask": "Envoyer la tâche", "action.sendSteer": "Envoyer la mise à jour", "pane.sidebar.collapse": "Réduire la navigation gauche", "pane.sidebar.expand": "Afficher la navigation gauche", "pane.right.collapse": "Réduire le panneau droit", "pane.right.expand": "Afficher le panneau droit", "composer.currentChannel": "Canal actuel : {name}", "composer.placeholder": "Saisir un message ou une tâche", "permissions.ask": "Demander l'approbation", "permissions.auto": "Approuver automatiquement", "permissions.full": "Accès complet", "status.running": "En cours", "status.waiting": "En attente d'approbation", "status.done": "Terminé", "settings.group": "Paramètres", "settings.back": "Retour à l'app", "settings.eyebrow": "Paramètres", "settings.fallbackTitle": "Paramètres", "settings.fallbackDesc": "Configuration Fiitx", "settings.language": "Langue", "settings.languageHelp": "Par défaut, la langue du système est utilisée. Vous pouvez la modifier ici.", "nav.agents": "Agent", "nav.approvals": "Approbations", "nav.history": "Historique", "nav.audit": "Audit", "nav.policy": "Politique", "nav.models": "Marché des modèles", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Agents métier, canaux, évaluations", "nav.approvals.desc": "File des autorisations", "nav.history.desc": "Traces, versions, revues", "nav.audit.desc": "Journaux de sécurité", "nav.policy.desc": "Outils, sandbox, permissions", "nav.models.desc": "Providers, profils, routage", "nav.mcp.desc": "Outils et données externes", "nav.skills.desc": "Extensions de capacités", "nav.about.desc": "Version et état local", "about.eyebrow": "General", "about.copy1": "Fiitx est un BYOM Agent Desktop pour les workflows professionnels et d'entreprise.", "about.copy2": "Il relie Chat, Coding, Artifacts, MCP/Skill et les politiques de sécurité dans une boucle traçable.", "about.platform": "Plateforme", "about.version": "Version", "about.secureStorage": "Stockage sécurisé", "about.workspace": "Workspace actuel", "about.keychainAvailable": "Keychain disponible", "about.keychainUnavailable": "Chiffrement local indisponible", "about.notSelected": "Non sélectionné", "terminal.new": "Nouveau terminal", "terminal.close": "Fermer Terminal", "terminal.empty": "Exécutez des commandes dans le workspace actuel pour builds, scripts et contrôles.", "terminal.running": "En cours"
+  },
+  ar: {
+    "product.subtitle": "وكيل مؤسسي", "sidebar.newTask": "مهمة جديدة", "sidebar.projects": "المشاريع", "sidebar.settings": "الإعدادات", "workspace.choose": "اختر مساحة العمل", "action.refresh": "تحديث الحالة", "action.addAttachment": "إضافة مرفق", "action.voiceInput": "إدخال صوتي", "action.stopTask": "إيقاف المهمة الحالية", "action.stopping": "جار الإيقاف", "action.sendTask": "إرسال المهمة", "action.sendSteer": "إرسال تحديث", "pane.sidebar.collapse": "طي التنقل الأيسر", "pane.sidebar.expand": "توسيع التنقل الأيسر", "pane.right.collapse": "طي اللوحة اليمنى", "pane.right.expand": "توسيع اللوحة اليمنى", "composer.currentChannel": "القناة الحالية: {name}", "composer.placeholder": "اكتب رسالة أو مهمة", "permissions.ask": "طلب موافقة", "permissions.auto": "موافقة تلقائية", "permissions.full": "وصول كامل", "status.running": "قيد التشغيل", "status.waiting": "بانتظار الموافقة", "status.done": "مكتمل", "settings.group": "الإعدادات", "settings.back": "العودة إلى التطبيق", "settings.eyebrow": "الإعدادات", "settings.fallbackTitle": "الإعدادات", "settings.fallbackDesc": "إعداد Fiitx", "settings.language": "اللغة", "settings.languageHelp": "الافتراضي هو لغة النظام. يمكنك تغييرها هنا.", "nav.agents": "Agent", "nav.approvals": "الموافقات", "nav.history": "السجل", "nav.audit": "التدقيق", "nav.policy": "السياسة", "nav.models": "سوق النماذج", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Agents وقنوات وتقييمات", "nav.approvals.desc": "قائمة الأذونات", "nav.history.desc": "Traces وإصدارات ومراجعات", "nav.audit.desc": "سجلات الأمان", "nav.policy.desc": "أدوات و sandbox وأذونات", "nav.models.desc": "Providers و profiles و routing", "nav.mcp.desc": "أدوات ومصادر بيانات خارجية", "nav.skills.desc": "توسعات قدرات المهام", "nav.about.desc": "الإصدار والحالة المحلية", "about.eyebrow": "General", "about.copy1": "Fiitx هو BYOM Agent Desktop لسير العمل المؤسسي والمهني.", "about.copy2": "يربط Chat و Coding و Artifacts و MCP/Skill وسياسات الأمان ضمن حلقة قابلة للتتبع.", "about.platform": "النظام", "about.version": "الإصدار", "about.secureStorage": "تخزين آمن", "about.workspace": "مساحة العمل الحالية", "about.keychainAvailable": "Keychain متاح", "about.keychainUnavailable": "التشفير المحلي غير متاح", "about.notSelected": "غير محدد", "terminal.new": "Terminal جديد", "terminal.close": "إغلاق Terminal", "terminal.empty": "شغّل الأوامر في مساحة العمل الحالية للبناء وال scripts وفحص الملفات.", "terminal.running": "قيد التشغيل"
+  },
+  bn: {
+    "product.subtitle": "এন্টারপ্রাইজ এজেন্ট", "sidebar.newTask": "নতুন কাজ", "sidebar.projects": "প্রকল্প", "sidebar.settings": "সেটিংস", "workspace.choose": "ওয়ার্কস্পেস বেছে নিন", "action.refresh": "স্ট্যাটাস রিফ্রেশ", "action.addAttachment": "সংযুক্তি যোগ করুন", "action.voiceInput": "ভয়েস ইনপুট", "action.stopTask": "বর্তমান কাজ থামান", "action.stopping": "থামছে", "action.sendTask": "কাজ পাঠান", "action.sendSteer": "আপডেট পাঠান", "pane.sidebar.collapse": "বাম নেভিগেশন গুটান", "pane.sidebar.expand": "বাম নেভিগেশন খুলুন", "pane.right.collapse": "ডান প্যানেল গুটান", "pane.right.expand": "ডান প্যানেল খুলুন", "composer.currentChannel": "বর্তমান চ্যানেল: {name}", "composer.placeholder": "বার্তা বা কাজ লিখুন", "permissions.ask": "অনুমোদন চান", "permissions.auto": "স্বয়ংক্রিয় অনুমোদন", "permissions.full": "সম্পূর্ণ অ্যাক্সেস", "status.running": "চলছে", "status.waiting": "অনুমোদনের অপেক্ষায়", "status.done": "সম্পন্ন", "settings.group": "সেটিংস", "settings.back": "অ্যাপে ফিরুন", "settings.eyebrow": "সেটিংস", "settings.fallbackTitle": "সেটিংস", "settings.fallbackDesc": "Fiitx কনফিগারেশন", "settings.language": "ভাষা", "settings.languageHelp": "ডিফল্টভাবে সিস্টেম ভাষা ব্যবহার হয়। এখানে বদলাতে পারেন.", "nav.agents": "Agent", "nav.approvals": "অনুমোদন", "nav.history": "ইতিহাস", "nav.audit": "অডিট", "nav.policy": "নীতি", "nav.models": "মডেল মার্কেট", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "ব্যবসায়িক agents, চ্যানেল, evals", "nav.approvals.desc": "অনুমতি queue", "nav.history.desc": "Trace, version, review", "nav.audit.desc": "সিকিউরিটি লগ", "nav.policy.desc": "Tools, sandbox, permission", "nav.models.desc": "Providers, profiles, routing", "nav.mcp.desc": "বাহ্যিক tools ও data", "nav.skills.desc": "কাজের ক্ষমতা সম্প্রসারণ", "nav.about.desc": "ভার্সন ও লোকাল স্টেট", "about.eyebrow": "General", "about.copy1": "Fiitx enterprise ও professional workflow এর জন্য BYOM Agent Desktop.", "about.copy2": "এটি Chat, Coding, Artifacts, MCP/Skill এবং safety policy কে traceable loop এ যুক্ত করে.", "about.platform": "প্ল্যাটফর্ম", "about.version": "ভার্সন", "about.secureStorage": "নিরাপদ স্টোরেজ", "about.workspace": "বর্তমান workspace", "about.keychainAvailable": "Keychain আছে", "about.keychainUnavailable": "Local encryption নেই", "about.notSelected": "নির্বাচিত নয়", "terminal.new": "নতুন terminal", "terminal.close": "Terminal বন্ধ করুন", "terminal.empty": "বর্তমান workspace এ build, script ও file check এর command চালান.", "terminal.running": "চলছে"
+  },
+  ru: {
+    "product.subtitle": "Корпоративный агент", "sidebar.newTask": "Новая задача", "sidebar.projects": "Проекты", "sidebar.settings": "Настройки", "workspace.choose": "Выбрать рабочую область", "action.refresh": "Обновить статус", "action.addAttachment": "Добавить файл", "action.voiceInput": "Голосовой ввод", "action.stopTask": "Остановить задачу", "action.stopping": "Остановка", "action.sendTask": "Отправить задачу", "action.sendSteer": "Отправить обновление", "pane.sidebar.collapse": "Свернуть левую навигацию", "pane.sidebar.expand": "Развернуть левую навигацию", "pane.right.collapse": "Свернуть правую панель", "pane.right.expand": "Развернуть правую панель", "composer.currentChannel": "Текущий канал: {name}", "composer.placeholder": "Введите сообщение или задачу", "permissions.ask": "Запросить одобрение", "permissions.auto": "Автоодобрение", "permissions.full": "Полный доступ", "status.running": "Выполняется", "status.waiting": "Ожидает одобрения", "status.done": "Готово", "settings.group": "Настройки", "settings.back": "Назад в приложение", "settings.eyebrow": "Настройки", "settings.fallbackTitle": "Настройки", "settings.fallbackDesc": "Конфигурация Fiitx", "settings.language": "Язык", "settings.languageHelp": "По умолчанию используется язык системы. Здесь можно изменить.", "nav.agents": "Agent", "nav.approvals": "Одобрения", "nav.history": "История", "nav.audit": "Аудит", "nav.policy": "Политика", "nav.models": "Маркет моделей", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Бизнес agents, каналы, evals", "nav.approvals.desc": "Очередь разрешений", "nav.history.desc": "Traces, версии, разбор", "nav.audit.desc": "Логи безопасности", "nav.policy.desc": "Tools, sandbox, permissions", "nav.models.desc": "Providers, profiles, routing", "nav.mcp.desc": "Внешние tools и data", "nav.skills.desc": "Расширения возможностей", "nav.about.desc": "Версия и локальное состояние", "about.eyebrow": "General", "about.copy1": "Fiitx — BYOM Agent Desktop для корпоративных и профессиональных workflow.", "about.copy2": "Он связывает Chat, Coding, Artifacts, MCP/Skill и политики безопасности в отслеживаемый цикл.", "about.platform": "Платформа", "about.version": "Версия", "about.secureStorage": "Безопасное хранилище", "about.workspace": "Текущий workspace", "about.keychainAvailable": "Keychain доступен", "about.keychainUnavailable": "Локальное шифрование недоступно", "about.notSelected": "Не выбрано", "terminal.new": "Новый terminal", "terminal.close": "Закрыть Terminal", "terminal.empty": "Выполняйте команды в текущем workspace для builds, scripts и проверки файлов.", "terminal.running": "Выполняется"
+  },
+  pt: {
+    "product.subtitle": "Agente empresarial", "sidebar.newTask": "Nova tarefa", "sidebar.projects": "Projetos", "sidebar.settings": "Configurações", "workspace.choose": "Escolher workspace", "action.refresh": "Atualizar status", "action.addAttachment": "Adicionar anexo", "action.voiceInput": "Entrada de voz", "action.stopTask": "Parar tarefa atual", "action.stopping": "Parando", "action.sendTask": "Enviar tarefa", "action.sendSteer": "Enviar atualização", "pane.sidebar.collapse": "Recolher navegação esquerda", "pane.sidebar.expand": "Expandir navegação esquerda", "pane.right.collapse": "Recolher painel direito", "pane.right.expand": "Expandir painel direito", "composer.currentChannel": "Canal atual: {name}", "composer.placeholder": "Digite uma mensagem ou tarefa", "permissions.ask": "Solicitar aprovação", "permissions.auto": "Aprovar automaticamente", "permissions.full": "Acesso total", "status.running": "Em execução", "status.waiting": "Aguardando aprovação", "status.done": "Concluído", "settings.group": "Configurações", "settings.back": "Voltar ao app", "settings.eyebrow": "Configurações", "settings.fallbackTitle": "Configurações", "settings.fallbackDesc": "Configuração do Fiitx", "settings.language": "Idioma", "settings.languageHelp": "Por padrão usa o idioma do sistema. Você pode alterar aqui.", "nav.agents": "Agent", "nav.approvals": "Aprovações", "nav.history": "Histórico", "nav.audit": "Auditoria", "nav.policy": "Política", "nav.models": "Mercado de modelos", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Agents, canais e avaliações", "nav.approvals.desc": "Fila de permissões", "nav.history.desc": "Traces, versões e revisão", "nav.audit.desc": "Logs de segurança", "nav.policy.desc": "Ferramentas, sandbox e permissões", "nav.models.desc": "Providers, profiles e routing", "nav.mcp.desc": "Ferramentas e dados externos", "nav.skills.desc": "Extensões de capacidades", "nav.about.desc": "Versão e estado local", "about.eyebrow": "General", "about.copy1": "Fiitx é um BYOM Agent Desktop para workflows empresariais e profissionais.", "about.copy2": "Ele conecta Chat, Coding, Artifacts, MCP/Skill e políticas de segurança em um fluxo rastreável.", "about.platform": "Plataforma", "about.version": "Versão", "about.secureStorage": "Armazenamento seguro", "about.workspace": "Workspace atual", "about.keychainAvailable": "Keychain disponível", "about.keychainUnavailable": "Criptografia local indisponível", "about.notSelected": "Não selecionado", "terminal.new": "Novo terminal", "terminal.close": "Fechar Terminal", "terminal.empty": "Execute comandos no workspace atual para builds, scripts e verificações.", "terminal.running": "Executando"
+  },
+  id: {
+    "product.subtitle": "Agen perusahaan", "sidebar.newTask": "Tugas baru", "sidebar.projects": "Proyek", "sidebar.settings": "Pengaturan", "workspace.choose": "Pilih workspace", "action.refresh": "Muat ulang status", "action.addAttachment": "Tambah lampiran", "action.voiceInput": "Input suara", "action.stopTask": "Hentikan tugas saat ini", "action.stopping": "Menghentikan", "action.sendTask": "Kirim tugas", "action.sendSteer": "Kirim pembaruan", "pane.sidebar.collapse": "Ciutkan navigasi kiri", "pane.sidebar.expand": "Bentangkan navigasi kiri", "pane.right.collapse": "Ciutkan panel kanan", "pane.right.expand": "Bentangkan panel kanan", "composer.currentChannel": "Kanal saat ini: {name}", "composer.placeholder": "Ketik pesan atau tugas", "permissions.ask": "Minta persetujuan", "permissions.auto": "Setujui otomatis", "permissions.full": "Akses penuh", "status.running": "Berjalan", "status.waiting": "Menunggu persetujuan", "status.done": "Selesai", "settings.group": "Pengaturan", "settings.back": "Kembali ke app", "settings.eyebrow": "Pengaturan", "settings.fallbackTitle": "Pengaturan", "settings.fallbackDesc": "Konfigurasi Fiitx", "settings.language": "Bahasa", "settings.languageHelp": "Default mengikuti bahasa sistem. Anda bisa mengubahnya di sini.", "nav.agents": "Agent", "nav.approvals": "Persetujuan", "nav.history": "Riwayat", "nav.audit": "Audit", "nav.policy": "Kebijakan", "nav.models": "Marketplace model", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Agent bisnis, kanal, evaluasi", "nav.approvals.desc": "Antrean izin dan rilis", "nav.history.desc": "Trace, versi, tinjauan", "nav.audit.desc": "Log keamanan dan operasi", "nav.policy.desc": "Tools, sandbox, izin default", "nav.models.desc": "Provider, profil, routing", "nav.mcp.desc": "Tools dan sumber data eksternal", "nav.skills.desc": "Ekstensi kemampuan tugas", "nav.about.desc": "Versi, posisi, status lokal", "about.eyebrow": "General", "about.copy1": "Fiitx adalah BYOM Agent Desktop untuk workflow perusahaan dan profesional.", "about.copy2": "Fiitx menghubungkan Chat, Coding, Artifacts, MCP/Skill dan kebijakan keamanan dalam loop yang dapat ditelusuri.", "about.platform": "Platform", "about.version": "Versi", "about.secureStorage": "Penyimpanan aman", "about.workspace": "Workspace saat ini", "about.keychainAvailable": "Keychain tersedia", "about.keychainUnavailable": "Enkripsi lokal tidak tersedia", "about.notSelected": "Belum dipilih", "terminal.new": "Terminal baru", "terminal.close": "Tutup Terminal", "terminal.empty": "Jalankan command di workspace saat ini untuk build, script, dan pemeriksaan file.", "terminal.running": "Berjalan"
+  },
+  ur: {
+    "product.subtitle": "انٹرپرائز ایجنٹ", "sidebar.newTask": "نیا کام", "sidebar.projects": "پروجیکٹس", "sidebar.settings": "ترتیبات", "workspace.choose": "ورک اسپیس منتخب کریں", "action.refresh": "حالت تازہ کریں", "action.addAttachment": "اٹیچمنٹ شامل کریں", "action.voiceInput": "آواز سے ان پٹ", "action.stopTask": "موجودہ کام روکیں", "action.stopping": "روکا جا رہا ہے", "action.sendTask": "کام بھیجیں", "action.sendSteer": "اپڈیٹ بھیجیں", "pane.sidebar.collapse": "بائیں نیویگیشن بند کریں", "pane.sidebar.expand": "بائیں نیویگیشن کھولیں", "pane.right.collapse": "دائیں پینل بند کریں", "pane.right.expand": "دائیں پینل کھولیں", "composer.currentChannel": "موجودہ چینل: {name}", "composer.placeholder": "پیغام یا کام لکھیں", "permissions.ask": "منظوری طلب کریں", "permissions.auto": "خودکار منظوری", "permissions.full": "مکمل رسائی", "status.running": "چل رہا ہے", "status.waiting": "منظوری زیر التوا", "status.done": "مکمل", "settings.group": "ترتیبات", "settings.back": "ایپ پر واپس", "settings.eyebrow": "ترتیبات", "settings.fallbackTitle": "ترتیبات", "settings.fallbackDesc": "Fiitx ترتیب", "settings.language": "زبان", "settings.languageHelp": "پہلے سے طے شدہ نظام کی زبان ہے۔ آپ یہاں بدل سکتے ہیں.", "nav.agents": "Agent", "nav.approvals": "منظوریاں", "nav.history": "تاریخ", "nav.audit": "آڈٹ", "nav.policy": "پالیسی", "nav.models": "ماڈل مارکیٹ", "nav.mcp": "MCP", "nav.skills": "Skill", "nav.about": "General", "nav.agents.desc": "Business agents، channels، evals", "nav.approvals.desc": "Permission queue", "nav.history.desc": "Trace، versions، review", "nav.audit.desc": "Security logs", "nav.policy.desc": "Tools، sandbox، permissions", "nav.models.desc": "Providers، profiles، routing", "nav.mcp.desc": "External tools and data", "nav.skills.desc": "Task capability extensions", "nav.about.desc": "Version and local state", "about.eyebrow": "General", "about.copy1": "Fiitx enterprise اور professional workflows کے لیے BYOM Agent Desktop ہے.", "about.copy2": "یہ Chat، Coding، Artifacts، MCP/Skill اور safety policy کو traceable loop میں جوڑتا ہے.", "about.platform": "پلیٹ فارم", "about.version": "ورژن", "about.secureStorage": "محفوظ اسٹوریج", "about.workspace": "موجودہ workspace", "about.keychainAvailable": "Keychain دستیاب", "about.keychainUnavailable": "Local encryption دستیاب نہیں", "about.notSelected": "منتخب نہیں", "terminal.new": "نیا terminal", "terminal.close": "Terminal بند کریں", "terminal.empty": "موجودہ workspace میں build، script اور file check commands چلائیں.", "terminal.running": "چل رہا ہے"
+  }
+};
+
+function normalizeUiLocale(value?: string | null): UiLocale | null {
+  const raw = String(value || "").trim();
+  const normalized = raw.toLowerCase();
+  if (/^zh[-_](tw|hk|mo|hant)/.test(normalized) || normalized === "zh-hant") {
+    return "zh-TW";
+  }
+  const code = normalized.split(/[-_]/)[0];
+  return supportedLocales.some((locale) => locale.id === code) ? code as UiLocale : null;
+}
+
+function getInitialUiLocale(): UiLocale {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+  return normalizeUiLocale(window.localStorage?.getItem(I18N_STORAGE_KEY)) || normalizeUiLocale(window.navigator.language) || "en";
+}
+
+function interpolate(template: string, values?: Record<string, string | number>) {
+  if (!values) {
+    return template;
+  }
+  return Object.entries(values).reduce((text, [key, value]) => text.replace(new RegExp(`\\{${key}\\}`, "g"), String(value)), template);
+}
 
 hljs.registerLanguage("bash", bash);
 hljs.registerLanguage("sh", bash);
@@ -83,7 +351,8 @@ hljs.registerLanguage("xml", xml);
 hljs.registerLanguage("html", xml);
 hljs.registerLanguage("wxml", xml);
 
-type View = "workbench" | "models" | "agents" | "approvals" | "history" | "audit" | "settings";
+type View = "workbench" | "settings";
+type SettingsPage = "agents" | "approvals" | "history" | "audit" | "policy" | "models" | "about" | "mcp" | "skills";
 type ThreadStatus = "running" | "waiting" | "done";
 type ApprovalStatus = "pending" | "approved" | "denied";
 type ArtifactId = "report" | "ppt" | "diff" | "image";
@@ -92,10 +361,16 @@ type RightPaneMode = "preview" | "code";
 type PermissionMode = "ask" | "auto" | "full";
 type ToolPolicyMode = PermissionMode | "block";
 
-type NavItem = {
-  id: View;
+type SettingsNavItem = {
+  id: SettingsPage;
   label: string;
+  description: string;
   icon: LucideIcon;
+};
+
+type SettingsNavGroup = {
+  title: string;
+  items: SettingsNavItem[];
 };
 
 type Thread = {
@@ -120,6 +395,7 @@ type Message = {
   streamBaseBody?: string;
   streamEvents?: FiitxAgentProgress[];
   streamStatus?: "running" | "finished";
+  streamDetailsExpanded?: boolean;
   approvalId?: string;
 };
 
@@ -290,15 +566,24 @@ const DRAFT_THREAD_ID = "draft-thread";
 const AUTO_MODEL = "auto";
 const AUTO_MODEL_LABEL = "自动模型路由";
 
-const navItems: NavItem[] = [
-  { id: "workbench", label: "工作台", icon: LayoutDashboard },
-  { id: "models", label: "模型中心", icon: Brain },
-  { id: "agents", label: "Agent", icon: Bot },
-  { id: "approvals", label: "审批", icon: ClipboardCheck },
-  { id: "history", label: "历史", icon: GitBranch },
-  { id: "audit", label: "审计", icon: Activity },
-  { id: "settings", label: "策略", icon: Settings }
+const settingsNavGroups: SettingsNavGroup[] = [
+  {
+    title: "Settings",
+    items: [
+      { id: "about", label: "General", description: "语言、版本与本机信息", icon: Info },
+      { id: "agents", label: "Agent", description: "业务 Agent、通道、评测", icon: Bot },
+      { id: "approvals", label: "审批", description: "权限队列与放行", icon: ClipboardCheck },
+      { id: "history", label: "历史", description: "Trace、版本、复盘", icon: GitBranch },
+      { id: "audit", label: "审计", description: "安全与操作日志", icon: Activity },
+      { id: "policy", label: "策略", description: "工具、沙箱、默认权限", icon: ShieldCheck },
+      { id: "models", label: "模型广场", description: "Provider、Profile、路由", icon: Brain },
+      { id: "mcp", label: "MCP", description: "外部工具与数据源", icon: Database },
+      { id: "skills", label: "Skill", description: "任务能力扩展", icon: Store }
+    ]
+  }
 ];
+
+const settingsNavItems = settingsNavGroups.flatMap((group) => group.items);
 
 const initialThreads: Thread[] = [];
 
@@ -1085,8 +1370,44 @@ function profileKeyLabel(profile: FiitxModelProfile) {
   return "未保存 API Key，自动路由不会调用";
 }
 
+function formatRouteLatency(profile: FiitxModelProfile) {
+  const latency = profile.routeStats?.averageLatencyMs || profile.routeStats?.lastLatencyMs || profile.expectedLatencyMs || 0;
+  if (!latency) {
+    return "延迟未记录";
+  }
+  return latency >= 1000 ? `${(latency / 1000).toFixed(1)}s` : `${latency}ms`;
+}
+
+function formatRouteSuccess(profile: FiitxModelProfile) {
+  const successRate = profile.routeStats?.successRate;
+  if (typeof successRate !== "number") {
+    return "成功率未记录";
+  }
+  return `成功率 ${(successRate * 100).toFixed(0)}%`;
+}
+
+function formatRouteCost(profile: FiitxModelProfile) {
+  const input = Number(profile.inputCostPer1M || 0);
+  const output = Number(profile.outputCostPer1M || 0);
+  if (!input && !output) {
+    return "成本未配置";
+  }
+  return `$${input}/${output} per 1M`;
+}
+
+function profileRouteLabel(profile: FiitxModelProfile) {
+  const health = profile.routeStats?.circuitOpen
+    ? "熔断中"
+    : profile.routeStats?.consecutiveFailures
+      ? `连续失败 ${profile.routeStats.consecutiveFailures}`
+      : "可路由";
+  return `${health} · ${formatRouteLatency(profile)} · ${formatRouteSuccess(profile)} · ${formatRouteCost(profile)}`;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<View>("workbench");
+  const [uiLocale, setUiLocale] = useState<UiLocale>(() => getInitialUiLocale());
+  const [activeSettingsPage, setActiveSettingsPage] = useState<SettingsPage>("about");
   const [threads, setThreads] = useState(initialThreads);
   const [activeThreadId, setActiveThreadId] = useState(DRAFT_THREAD_ID);
   const [messages, setMessages] = useState(initialMessages);
@@ -1164,6 +1485,32 @@ export default function App() {
   const [evalLoading, setEvalLoading] = useState(false);
   const [harnessSnapshot, setHarnessSnapshot] = useState<FiitxAgentHarnessSnapshot | null>(null);
   const [harnessLoading, setHarnessLoading] = useState(false);
+  const [mcpConfig, setMcpConfig] = useState<FiitxMcpConfig | null>(null);
+  const [mcpSnapshot, setMcpSnapshot] = useState<FiitxMcpSnapshot | null>(null);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpForm, setMcpForm] = useState<FiitxMcpServerConfig>({
+    id: "",
+    name: "",
+    type: "stdio",
+    enabled: true,
+    command: "",
+    args: [],
+    cwd: "",
+    url: "",
+    risk: "medium",
+    timeoutMs: 12000
+  });
+  const [mcpArgsText, setMcpArgsText] = useState("");
+  const [mcpEnvText, setMcpEnvText] = useState("{}");
+  const [mcpHeadersText, setMcpHeadersText] = useState("{}");
+  const [mcpStatusMessage, setMcpStatusMessage] = useState("");
+  const [mcpFormOpen, setMcpFormOpen] = useState(false);
+  const [skillCatalog, setSkillCatalog] = useState<unknown[]>([]);
+  const [installedSkills, setInstalledSkills] = useState<unknown[]>([]);
+  const [skillLoading, setSkillLoading] = useState(false);
+  const [skillInstallRoot, setSkillInstallRoot] = useState("");
+  const [skillStatusMessage, setSkillStatusMessage] = useState("");
+  const [skillSearch, setSkillSearch] = useState("");
   const [agentAdminOpen, setAgentAdminOpen] = useState(false);
   const [agentDebugOpen, setAgentDebugOpen] = useState(false);
   const [historySnapshot, setHistorySnapshot] = useState<FiitxAgentHistorySnapshot | null>(null);
@@ -1211,6 +1558,32 @@ export default function App() {
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const terminalBodyRef = useRef<HTMLDivElement | null>(null);
   const terminalInputRef = useRef<HTMLInputElement | null>(null);
+  const currentLocaleMeta = supportedLocales.find((item) => item.id === uiLocale) ?? supportedLocales[0];
+
+  function t(key: string, values?: Record<string, string | number>) {
+    return interpolate(i18n[uiLocale]?.[key] ?? i18n.en[key] ?? key, values);
+  }
+
+  function updateUiLocale(nextLocale: UiLocale) {
+    setUiLocale(nextLocale);
+    window.localStorage?.setItem(I18N_STORAGE_KEY, nextLocale);
+  }
+
+  function settingsLabel(page: SettingsPage) {
+    return t(`nav.${page}`);
+  }
+
+  function settingsDescription(page: SettingsPage) {
+    return t(`nav.${page}.desc`);
+  }
+
+  function permissionLabel(mode: PermissionMode) {
+    return t(`permissions.${mode}`);
+  }
+
+  function threadStatusLabel(status: ThreadStatus) {
+    return t(`status.${status}`);
+  }
 
   function isPersistableThread(threadId: string) {
     return Boolean(threadId && threadId !== DRAFT_THREAD_ID);
@@ -1298,6 +1671,11 @@ export default function App() {
     window.fiitx?.getPlatform().then((result) => {
 	      setPlatform(result.platform === "darwin" ? "macOS" : result.platform);
 	      setEncryptionAvailable(result.encryptionAvailable);
+	      const storedLocale = window.localStorage?.getItem(I18N_STORAGE_KEY);
+	      const systemLocale = normalizeUiLocale(result.locale);
+	      if (!storedLocale && systemLocale) {
+	        setUiLocale(systemLocale);
+	      }
 	      if (result.defaultWorkspace) {
 	        setWorkspacePath((current) => current || result.defaultWorkspace || "");
 	      }
@@ -1307,6 +1685,11 @@ export default function App() {
       setProfiles(savedProfiles);
     });
 	  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = uiLocale;
+    document.documentElement.dir = currentLocaleMeta.dir;
+  }, [currentLocaleMeta.dir, uiLocale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1588,18 +1971,30 @@ export default function App() {
   }, [messages, visibleAgentProgress.length, agentRunning, executionExpanded, activeView]);
 
   useEffect(() => {
-    if (activeView !== "agents" || harnessSnapshot || harnessLoading) {
+    if (activeView !== "settings" || activeSettingsPage !== "agents" || harnessSnapshot || harnessLoading) {
       return;
     }
     void refreshHarnessSnapshot();
-  }, [activeView, harnessSnapshot, harnessLoading]);
+  }, [activeView, activeSettingsPage, harnessSnapshot, harnessLoading]);
 
   useEffect(() => {
-    if (activeView !== "history" || historySnapshot || historyLoading) {
+    if (activeView !== "settings" || !["mcp", "skills"].includes(activeSettingsPage)) {
+      return;
+    }
+    if (activeSettingsPage === "mcp" && !mcpConfig && !mcpLoading) {
+      void loadMcpManagement(false);
+    }
+    if (activeSettingsPage === "skills" && installedSkills.length === 0 && skillCatalog.length === 0 && !skillLoading) {
+      void loadSkillManagement();
+    }
+  }, [activeView, activeSettingsPage, mcpConfig, mcpLoading, installedSkills.length, skillCatalog.length, skillLoading]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "history" || historySnapshot || historyLoading) {
       return;
     }
     void refreshHistorySnapshot();
-  }, [activeView, historySnapshot, historyLoading]);
+  }, [activeView, activeSettingsPage, historySnapshot, historyLoading]);
 
   useEffect(() => {
     if (!visiblePanels.terminal) {
@@ -1896,7 +2291,20 @@ export default function App() {
       return true;
     }
 
-    return /\.[A-Za-z0-9]{1,12}$/.test(candidate) || (candidate.includes("/") && candidate.endsWith("/"));
+    if (candidate.includes("/") && candidate.endsWith("/")) {
+      return true;
+    }
+
+    if (/^\d+(?:\.\d+)+$/.test(candidate)) {
+      return false;
+    }
+
+    if (!candidate.includes("/") && /\.[A-Za-z0-9]{1,12}$/.test(candidate)) {
+      const extension = candidate.split(".").pop() || "";
+      return /[A-Za-z]/.test(extension);
+    }
+
+    return /\.[A-Za-z0-9]{1,12}$/.test(candidate);
   }
 
   function isShellCommandFragment(candidate: string) {
@@ -2425,19 +2833,62 @@ export default function App() {
     });
   }
 
+  function getResourcePathKey(path: string) {
+    const info = pathInfoMap[path];
+    const resolvedPath = info?.exists && info.path ? info.path : path;
+    return resolvedPath.replace(/\\/g, "/").replace(/\/+$/g, "");
+  }
+
+  function dedupeResourcePaths(paths: string[]) {
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    const sorted = paths.slice().sort((left, right) => {
+      const leftExists = pathInfoMap[left]?.exists === true;
+      const rightExists = pathInfoMap[right]?.exists === true;
+      if (leftExists !== rightExists) {
+        return leftExists ? -1 : 1;
+      }
+      return left.length - right.length;
+    });
+
+    for (const path of sorted) {
+      const key = getResourcePathKey(path);
+      if (!key || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      deduped.push(path);
+    }
+
+    return deduped;
+  }
+
   function renderPathResourceGroup(paths: string[]) {
     if (paths.length === 0) {
       return null;
     }
 
-    const existing = paths.filter((path) => pathInfoMap[path]?.exists);
-    const files = paths.filter((path) => pathInfoMap[path]?.kind === "file");
-    const directories = paths.filter((path) => pathInfoMap[path]?.kind === "directory");
-    const groupKey = `${paths.length}:${paths.slice(0, 6).join("|")}`;
-    const isExpanded = Boolean(expandedResourceGroups[groupKey]);
-    const visiblePaths = isExpanded ? paths : paths.slice(0, 2);
-    const hiddenCount = Math.max(paths.length - visiblePaths.length, 0);
+    const resourcePaths = dedupeResourcePaths(paths).filter((path) => pathInfoMap[path]?.exists === true);
+    if (resourcePaths.length === 0) {
+      return null;
+    }
 
+    const originalExistingCount = paths.filter((path) => pathInfoMap[path]?.exists === true).length;
+    const duplicateCount = Math.max(originalExistingCount - resourcePaths.length, 0);
+    const files = resourcePaths.filter((path) => pathInfoMap[path]?.kind === "file");
+    const directories = resourcePaths.filter((path) => pathInfoMap[path]?.kind === "directory");
+    const groupKey = `${resourcePaths.length}:${resourcePaths.slice(0, 6).map((path) => getResourcePathKey(path)).join("|")}`;
+    const isExpanded = Boolean(expandedResourceGroups[groupKey]);
+    const sortedPaths = resourcePaths.slice().sort((left, right) => {
+      const leftExists = pathInfoMap[left]?.exists === true;
+      const rightExists = pathInfoMap[right]?.exists === true;
+      if (leftExists !== rightExists) {
+        return leftExists ? -1 : 1;
+      }
+      return left.localeCompare(right);
+    });
+    const visiblePaths = isExpanded ? sortedPaths : sortedPaths.slice(0, 2);
+    const hiddenCount = Math.max(resourcePaths.length - visiblePaths.length, 0);
     return (
       <div className="message-resource-card">
         <div className="resource-card-header">
@@ -2447,8 +2898,9 @@ export default function App() {
           <div>
             <strong>本地资源</strong>
             <span>
-              已识别 {paths.length} 个路径
-              {existing.length > 0 ? ` · ${files.length} 个文件 · ${directories.length} 个文件夹` : ""}
+              已识别 {resourcePaths.length} 个可用路径
+              {` · ${files.length} 个文件 · ${directories.length} 个文件夹`}
+              {duplicateCount > 0 ? ` · 已合并 ${duplicateCount} 个重复路径` : ""}
             </span>
           </div>
         </div>
@@ -2456,19 +2908,17 @@ export default function App() {
           {visiblePaths.map((path) => {
             const info = pathInfoMap[path];
             const isDirectory = info?.kind === "directory";
-            const canOpen = Boolean(info?.exists);
-            const stateLabel = !info ? "检查中" : info.exists ? getPathKindLabel(info) : "不存在";
+            const stateLabel = getPathKindLabel(info!);
 
             return (
               <div
-                className={`resource-row ${info?.exists === false ? "missing" : ""}`}
+                className="resource-row"
                 key={path}
-                onContextMenu={(event) => openResourceContextMenu(event, info?.path || path, canOpen)}
+                onContextMenu={(event) => openResourceContextMenu(event, info?.path || path, true)}
                 title={info?.path || path}
               >
                 <button
                   className="resource-row-main"
-                  disabled={!canOpen}
                   onClick={() => activateLocalPath(path)}
                   type="button"
                 >
@@ -2484,7 +2934,7 @@ export default function App() {
               </div>
             );
           })}
-          {paths.length > 2 ? (
+          {resourcePaths.length > 2 ? (
             <button className="resource-list-toggle" onClick={() => toggleResourceGroup(groupKey)} type="button">
               <span>{isExpanded ? "收起" : `再显示 ${hiddenCount} 个路径`}</span>
               <ChevronDown size={15} />
@@ -3068,8 +3518,82 @@ export default function App() {
     );
   }
 
+  function getMessageExecutionEvents(message: Message) {
+    return getRenderableProgressEvents(message.streamEvents || []);
+  }
+
+  function toggleMessageExecutionDetails(messageId: string) {
+    updateMessagesForThread(activeThreadId, (current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              streamDetailsExpanded: !message.streamDetailsExpanded
+            }
+          : message
+      )
+    , true, false);
+  }
+
+  function renderMessageExecutionProcess(message: Message) {
+    const events = getMessageExecutionEvents(message);
+    if (events.length === 0) {
+      return null;
+    }
+
+    const expanded = Boolean(message.streamDetailsExpanded);
+    const latest = events[events.length - 1];
+    const hiddenCount = Math.max(0, events.length - inlineStreamEventLimit);
+    const visibleEvents = events.slice(-inlineStreamEventLimit);
+    const statusClass = message.streamStatus === "running" ? "running" : latest.status;
+    const latestDetail = clipExecutionDetail(latest.detail, 120);
+    const latestClock = formatProgressClock(latest.time);
+
+    return (
+      <div className={expanded ? "agent-message-execution expanded" : "agent-message-execution collapsed"}>
+        <button
+          className={`agent-message-execution-toggle ${statusClass}`}
+          type="button"
+          onClick={() => toggleMessageExecutionDetails(message.id)}
+          aria-expanded={expanded}
+        >
+          {message.streamStatus === "running" ? <Brain size={15} /> : <Activity size={15} />}
+          <span>执行过程</span>
+          <small>
+            {latestClock ? `${latestClock} ` : ""}
+            {latest.title || "执行中"}
+            {latestDetail ? `：${latestDetail}` : ""}
+          </small>
+          <ChevronDown size={15} />
+        </button>
+
+        {expanded ? (
+          <div className="agent-message-execution-list">
+            {hiddenCount > 0 ? <div className="agent-message-execution-hidden">已省略前 {hiddenCount} 步</div> : null}
+            {visibleEvents.map((event) => {
+              const eventClock = formatProgressClock(event.time);
+              return (
+                <div className={`agent-message-execution-step ${event.status}`} key={event.id}>
+                  <span className="execution-dot" />
+                  <div>
+                    <strong>
+                      {eventClock ? `${eventClock} ` : ""}
+                      {event.title || "执行中"}
+                    </strong>
+                    {renderExecutionDetail(event.detail, event.id)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   function renderMessageBody(message: Message) {
-    const paths = extractLocalPaths(message.body);
+    const visibleBody = message.role === "user" ? message.body : stripAgentStreamSection(message.body);
+    const paths = extractLocalPaths(visibleBody);
     const approvalCard = renderApprovalMessage(message);
     if (approvalCard) {
       return approvalCard;
@@ -3082,12 +3606,9 @@ export default function App() {
             className={message.streamStatus === "running" ? "markdown-message agent-streaming-message" : "markdown-message"}
             aria-live={message.streamStatus === "running" ? "polite" : undefined}
           >
-            <button className="markdown-copy-button" onClick={() => copyText(message.body)} title="复制 Markdown">
-              <Copy size={14} />
-              <span>复制</span>
-            </button>
-            {renderMarkdownBlocks(message.body)}
+            {renderMarkdownBlocks(visibleBody)}
           </div>
+          {renderMessageExecutionProcess(message)}
           {renderPathResourceGroup(paths)}
         </>
       );
@@ -3096,11 +3617,7 @@ export default function App() {
     return (
       <>
         <div className="user-message-content">
-          <button className="message-copy-button" onClick={() => copyText(message.body)} title="复制消息">
-            <Copy size={14} />
-            <span>复制</span>
-          </button>
-          {renderInlineMessageText(message.body, paths)}
+          {renderInlineMessageText(visibleBody, paths)}
         </div>
         {renderPathResourceGroup(paths)}
       </>
@@ -3213,11 +3730,56 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   async function addAttachments() {
     const result = await window.fiitx?.chooseFiles();
     const selectedFiles = result && !result.canceled ? result.filePaths : [];
-    const nextFiles = selectedFiles.length > 0 ? selectedFiles : [];
+    appendAttachments(selectedFiles, "选择附件");
+  }
 
-    if (nextFiles.length > 0) {
-      setAttachments((current) => Array.from(new Set(current.concat(nextFiles))));
-      addAudit("Composer", "添加附件", `${nextFiles.length} file(s)`, "info");
+  function appendAttachments(paths: string[], source = "添加附件") {
+    const nextFiles = paths.map((path) => path.trim()).filter(Boolean);
+    if (nextFiles.length === 0) {
+      return;
+    }
+    setAttachments((current) => Array.from(new Set(current.concat(nextFiles))));
+    addAudit("Composer", source, `${nextFiles.length} file(s)`, "info");
+  }
+
+  function getPastedAttachmentName(file: File, index: number) {
+    if (file.name) {
+      return file.name;
+    }
+    const extensionFromMime = file.type.split("/")[1]?.replace(/[^a-z0-9.+-]/gi, "") || "bin";
+    return `pasted-${Date.now()}-${index}.${extensionFromMime}`;
+  }
+
+  async function saveClipboardFile(file: File, index: number) {
+    const localPath = (file as File & { path?: string }).path;
+    if (localPath) {
+      return localPath;
+    }
+    const buffer = await file.arrayBuffer();
+    const result = await window.fiitx?.savePastedAttachment?.({
+      name: getPastedAttachmentName(file, index),
+      mimeType: file.type,
+      buffer
+    });
+    if (!result?.ok || !result.path) {
+      throw new Error("剪贴板附件保存失败");
+    }
+    return result.path;
+  }
+
+  async function handleComposerPaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
+    const clipboardFiles = Array.from(event.clipboardData.files || []);
+    if (clipboardFiles.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    try {
+      const pastedPaths = await Promise.all(clipboardFiles.map((file, index) => saveClipboardFile(file, index)));
+      appendAttachments(pastedPaths, "粘贴附件");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "粘贴附件失败";
+      addAudit("Composer", "粘贴附件失败", message, "warn");
     }
   }
 
@@ -3414,6 +3976,255 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       }
     } finally {
       setHarnessLoading(false);
+    }
+  }
+
+  function parseJsonRecordInput(value: string, label: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error(`${label} 必须是 JSON object`);
+      }
+      return parsed as Record<string, string>;
+    } catch (error) {
+      throw new Error(`${label} JSON 格式错误：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function parseMcpArgsInput(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String);
+      }
+    } catch {
+      // Fall through to shell-like whitespace split for quick local setup.
+    }
+    return trimmed.split(/\s+/).filter(Boolean);
+  }
+
+  function editMcpServer(server: FiitxMcpServerConfig) {
+    setMcpForm({
+      ...server,
+      type: server.type || "stdio",
+      enabled: server.enabled !== false,
+      risk: server.risk || "medium",
+      timeoutMs: server.timeoutMs || 12000
+    });
+    setMcpArgsText(JSON.stringify(server.args || [], null, 2));
+    setMcpEnvText(JSON.stringify(server.env || {}, null, 2));
+    setMcpHeadersText(JSON.stringify(server.headers || {}, null, 2));
+    setMcpStatusMessage(`正在编辑 ${server.id}`);
+    setMcpFormOpen(true);
+  }
+
+  function resetMcpForm() {
+    setMcpForm({
+      id: "",
+      name: "",
+      type: "stdio",
+      enabled: true,
+      command: "",
+      args: [],
+      cwd: "",
+      url: "",
+      risk: "medium",
+      timeoutMs: 12000
+    });
+    setMcpArgsText("");
+    setMcpEnvText("{}");
+    setMcpHeadersText("{}");
+    setMcpStatusMessage("");
+    setMcpFormOpen(false);
+  }
+
+  async function loadMcpManagement(refresh = false) {
+    if (mcpLoading) {
+      return;
+    }
+    setMcpLoading(true);
+    try {
+      const config = await window.fiitx?.getMcpConfig?.();
+      if (config) {
+        setMcpConfig(config);
+      }
+      if (refresh) {
+        const snapshot = await window.fiitx?.refreshMcpRegistry?.();
+        if (snapshot) {
+          setMcpSnapshot(snapshot);
+          setMcpStatusMessage(`已发现 ${snapshot.tools.length} 个 MCP 工具、${snapshot.resources.length} 个资源、${snapshot.prompts.length} 个 prompts`);
+        }
+      }
+    } catch (error) {
+      setMcpStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMcpLoading(false);
+    }
+  }
+
+  async function saveMcpServerFromForm() {
+    if (mcpLoading) {
+      return;
+    }
+    const id = (mcpForm.id || "").trim();
+    if (!id) {
+      setMcpStatusMessage("MCP Server ID 不能为空");
+      return;
+    }
+    setMcpLoading(true);
+    try {
+      const nextServer: FiitxMcpServerConfig = {
+        ...mcpForm,
+        id,
+        name: (mcpForm.name || id).trim(),
+        type: mcpForm.type || "stdio",
+        enabled: mcpForm.enabled !== false,
+        args: parseMcpArgsInput(mcpArgsText),
+        env: parseJsonRecordInput(mcpEnvText, "Env"),
+        headers: parseJsonRecordInput(mcpHeadersText, "Headers"),
+        timeoutMs: Number(mcpForm.timeoutMs || 12000)
+      };
+      const config = await window.fiitx?.upsertMcpServer?.(nextServer);
+      if (config) {
+        setMcpConfig(config);
+      }
+      const snapshot = await window.fiitx?.refreshMcpRegistry?.();
+      if (snapshot) {
+        setMcpSnapshot(snapshot);
+      }
+      setMcpStatusMessage(`已保存 MCP Server：${nextServer.id}`);
+      resetMcpForm();
+    } catch (error) {
+      setMcpStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMcpLoading(false);
+    }
+  }
+
+  async function deleteMcpServer(id: string) {
+    if (!id || mcpLoading) {
+      return;
+    }
+    setMcpLoading(true);
+    try {
+      const config = await window.fiitx?.removeMcpServer?.({ id });
+      if (config) {
+        setMcpConfig(config);
+      }
+      const snapshot = await window.fiitx?.refreshMcpRegistry?.();
+      if (snapshot) {
+        setMcpSnapshot(snapshot);
+      }
+      setMcpStatusMessage(`已删除 MCP Server：${id}`);
+    } catch (error) {
+      setMcpStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMcpLoading(false);
+    }
+  }
+
+  async function toggleMcpServerEnabled(server: FiitxMcpServerConfig, enabled: boolean) {
+    if (!server.id || mcpLoading) {
+      return;
+    }
+    setMcpLoading(true);
+    try {
+      const config = await window.fiitx?.upsertMcpServer?.({ ...server, enabled });
+      if (config) {
+        setMcpConfig(config);
+      }
+      const snapshot = await window.fiitx?.refreshMcpRegistry?.();
+      if (snapshot) {
+        setMcpSnapshot(snapshot);
+      }
+      setMcpStatusMessage(`${enabled ? "已启用" : "已停用"} MCP Server：${server.id}`);
+    } catch (error) {
+      setMcpStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMcpLoading(false);
+    }
+  }
+
+  async function loadSkillManagement() {
+    if (skillLoading) {
+      return;
+    }
+    setSkillLoading(true);
+    try {
+      const [catalog, installed] = await Promise.all([
+        window.fiitx?.listSkillCatalog?.(),
+        window.fiitx?.listInstalledSkills?.()
+      ]);
+      setSkillCatalog(catalog || []);
+      setInstalledSkills(installed || []);
+      setSkillStatusMessage(`已加载 ${installed?.length || 0} 个已安装 Skill`);
+    } catch (error) {
+      setSkillStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillLoading(false);
+    }
+  }
+
+  async function installSkill(root: string) {
+    if (!root || skillLoading) {
+      return;
+    }
+    setSkillLoading(true);
+    try {
+      await window.fiitx?.installLocalSkill?.({ root, enabled: true });
+      const installed = await window.fiitx?.listInstalledSkills?.();
+      setInstalledSkills(installed || []);
+      setSkillInstallRoot("");
+      setSkillStatusMessage(`已安装 Skill：${root}`);
+      setHarnessSnapshot(null);
+    } catch (error) {
+      setSkillStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillLoading(false);
+    }
+  }
+
+  async function uninstallSkill(id: string) {
+    if (!id || skillLoading) {
+      return;
+    }
+    setSkillLoading(true);
+    try {
+      await window.fiitx?.uninstallSkill?.({ id });
+      const installed = await window.fiitx?.listInstalledSkills?.();
+      setInstalledSkills(installed || []);
+      setSkillStatusMessage(`已卸载 Skill：${id}`);
+      setHarnessSnapshot(null);
+    } catch (error) {
+      setSkillStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillLoading(false);
+    }
+  }
+
+  async function toggleInstalledSkill(id: string, enabled: boolean) {
+    if (!id || skillLoading) {
+      return;
+    }
+    setSkillLoading(true);
+    try {
+      await window.fiitx?.setSkillEnabled?.({ id, enabled });
+      const installed = await window.fiitx?.listInstalledSkills?.();
+      setInstalledSkills(installed || []);
+      setSkillStatusMessage(`${enabled ? "已启用" : "已停用"} Skill：${id}`);
+      setHarnessSnapshot(null);
+    } catch (error) {
+      setSkillStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSkillLoading(false);
     }
   }
 
@@ -3658,7 +4469,12 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     } satisfies FiitxChannelContext;
   }
 
-  function updateMessagesForThread(threadId: string, updater: Message[] | ((current: Message[]) => Message[]), display = threadId === activeThreadId) {
+  function updateMessagesForThread(
+    threadId: string,
+    updater: Message[] | ((current: Message[]) => Message[]),
+    display = threadId === activeThreadId,
+    recordSession = true
+  ) {
     let nextMessagesForEntry: Message[] = [];
     if (display) {
       setMessages((current) => {
@@ -3668,9 +4484,11 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       });
     }
     updateThreadRecord(threadId, (record) => ({
-      ...appendSessionEntryToRecord(record, "message", {
-        messages: (nextMessagesForEntry.length > 0 ? nextMessagesForEntry : applyStateUpdate(record.messages, updater).slice(record.messages.length))
-      }),
+      ...(recordSession
+        ? appendSessionEntryToRecord(record, "message", {
+            messages: (nextMessagesForEntry.length > 0 ? nextMessagesForEntry : applyStateUpdate(record.messages, updater).slice(record.messages.length))
+          })
+        : record),
       messages: applyStateUpdate(record.messages, updater)
     }));
   }
@@ -3798,8 +4616,22 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       .trim();
   }
 
-  function clipExecutionDetail(value?: string, limit = 170) {
-    const normalized = stripMarkdownForSummary(value);
+  function formatExecutionDetail(value?: unknown) {
+    if (value == null) {
+      return "";
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+
+  function clipExecutionDetail(value?: unknown, limit = 170) {
+    const normalized = stripMarkdownForSummary(formatExecutionDetail(value));
     if (!normalized) {
       return "";
     }
@@ -3828,22 +4660,31 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     }).format(date);
   }
 
-  function progressStatusText(status: FiitxAgentProgress["status"]) {
-    if (status === "success") {
-      return "完成";
-    }
-    if (status === "warn") {
-      return "注意";
-    }
-    if (status === "info") {
-      return "信息";
-    }
-    return "运行中";
+  function normalizeProgressEvent(event: unknown, index: number): FiitxAgentProgress {
+    const record = isRecord(event) ? event : {};
+    const rawStatus = String(record.status || "info");
+    const status: FiitxAgentProgress["status"] =
+      rawStatus === "running" || rawStatus === "success" || rawStatus === "warn" || rawStatus === "info" ? rawStatus : "info";
+    const detail = formatExecutionDetail(record.detail).trim();
+    const time = typeof record.time === "string" && record.time ? record.time : new Date().toISOString();
+    const rawTitle = typeof record.title === "string" ? record.title.trim() : "";
+    const title = rawTitle || (detail ? "执行中" : "");
+    const taskId = typeof record.taskId === "string" ? record.taskId : "";
+    const id = typeof record.id === "string" && record.id ? record.id : `progress-${taskId || "unknown"}-${time}-${index}`;
+    return {
+      id,
+      taskId,
+      threadId: typeof record.threadId === "string" ? record.threadId : undefined,
+      title,
+      detail,
+      status,
+      time
+    };
   }
 
-  function dedupeProgressEvents(events: FiitxAgentProgress[]) {
+  function dedupeProgressEvents(events: unknown[]) {
     const seen = new Set<string>();
-    return events.filter((event) => {
+    return (Array.isArray(events) ? events : []).map(normalizeProgressEvent).filter((event) => {
       const key = event.id || `${event.taskId}:${event.title}:${event.detail}:${event.time}`;
       if (seen.has(key)) {
         return false;
@@ -3853,40 +4694,17 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     });
   }
 
-  function formatInlineProgressEvent(event: FiitxAgentProgress) {
-    const clock = formatProgressClock(event.time);
-    const detail = clipExecutionDetail(event.detail, 130);
-    return [
-      "-",
-      clock ? `\`${clock}\`` : "",
-      `[${progressStatusText(event.status)}]`,
-      event.title || "执行中",
-      detail ? `：${detail}` : ""
-    ].filter(Boolean).join(" ");
+  function getRenderableProgressEvents(events: unknown[]) {
+    return dedupeProgressEvents(events).filter((event) => {
+      const title = stripMarkdownForSummary(event.title);
+      const detail = stripMarkdownForSummary(event.detail);
+      return Boolean(title || detail);
+    });
   }
 
-  function buildAgentStreamingBody(baseBody: string, events: FiitxAgentProgress[], status: Message["streamStatus"] = "running") {
+  function buildAgentStreamingBody(baseBody: string, _events: FiitxAgentProgress[], _status: Message["streamStatus"] = "running") {
     const cleanBase = stripAgentStreamSection(baseBody) || "正在执行任务。";
-    const cleanEvents = dedupeProgressEvents(events).filter((event) => event.title || event.detail);
-    if (cleanEvents.length === 0) {
-      return cleanBase;
-    }
-
-    const hiddenCount = Math.max(0, cleanEvents.length - inlineStreamEventLimit);
-    const visibleEvents = cleanEvents.slice(-inlineStreamEventLimit);
-    const heading = status === "finished" ? "执行过程" : "实时执行";
-    const footer = status === "finished" ? "" : "\n结果会随执行进度继续更新。";
-
-    return [
-      cleanBase,
-      "",
-      "---",
-      "",
-      `### ${heading}`,
-      hiddenCount > 0 ? `已省略前 ${hiddenCount} 步，完整记录见下方执行时间线。` : "",
-      visibleEvents.map(formatInlineProgressEvent).join("\n"),
-      footer
-    ].filter(Boolean).join("\n");
+    return cleanBase;
   }
 
   function applyAgentStreamEventToMessages(current: Message[], event: FiitxAgentProgress) {
@@ -3916,29 +4734,118 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       const streamEvents = dedupeProgressEvents([...(message.streamEvents || []), event]).slice(-64);
       const baseBody = message.streamBaseBody || stripAgentStreamSection(message.body);
       const streamStatus = message.streamStatus || "running";
-      return {
-        ...message,
-        streamBaseBody: baseBody,
-        streamEvents,
-        streamStatus,
-        body: buildAgentStreamingBody(baseBody, streamEvents, streamStatus)
-      };
+      return updateAgentStreamMessageBody(
+        {
+          ...message,
+          streamEvents
+        },
+        baseBody,
+        streamStatus
+      );
     });
   }
 
-  function finalizeAgentStreamMessage(message: Message, body: string) {
+  function updateAgentStreamMessageBody(message: Message, body: string, streamStatus: Message["streamStatus"] = "running") {
     const streamEvents = dedupeProgressEvents(message.streamEvents || []).slice(-64);
     return {
       ...message,
       streamBaseBody: body,
       streamEvents,
-      streamStatus: "finished" as const,
-      body: buildAgentStreamingBody(body, streamEvents, "finished")
+      streamStatus,
+      body: buildAgentStreamingBody(body, streamEvents, streamStatus)
     };
   }
 
-  function renderExecutionDetail(detail: string, key: string) {
-    const normalized = detail.trim();
+  function finalizeAgentStreamMessage(message: Message, body: string) {
+    return updateAgentStreamMessageBody(message, body, "finished");
+  }
+
+  function splitAgentFinalStreamText(value: string) {
+    const text = stripAgentStreamSection(value) || "Agent 没有返回可展示内容。";
+    const chunkSize = Math.max(72, Math.ceil(text.length / 180));
+    const chunks: string[] = [];
+    for (let index = 0; index < text.length; index += chunkSize) {
+      chunks.push(text.slice(index, index + chunkSize));
+    }
+    return chunks.length > 0 ? chunks : [text];
+  }
+
+  function waitForAgentFinalStreamFrame() {
+    return new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 14);
+    });
+  }
+
+  async function streamAgentFinalMessage({
+    threadId,
+    agentMessageId,
+    author,
+    body,
+    display = threadId === activeThreadId
+  }: {
+    threadId: string;
+    agentMessageId: string;
+    author?: string;
+    body: string;
+    display?: boolean;
+  }) {
+    const chunks = splitAgentFinalStreamText(body);
+    const finalBody = chunks.join("");
+
+    if (!display || chunks.length <= 1) {
+      updateMessagesForThread(threadId, (current) =>
+        current.map((message) =>
+          message.id === agentMessageId
+            ? finalizeAgentStreamMessage(
+                {
+                  ...message,
+                  author: author || message.author
+                },
+                finalBody
+              )
+            : message
+        )
+      , display);
+      return;
+    }
+
+    let nextBody = "";
+    for (const chunk of chunks) {
+      nextBody += chunk;
+      updateMessagesForThread(threadId, (current) =>
+        current.map((message) =>
+          message.id === agentMessageId
+            ? updateAgentStreamMessageBody(
+                {
+                  ...message,
+                  author: author || message.author
+                },
+                nextBody,
+                "running"
+              )
+            : message
+        )
+      , true, false);
+      await waitForAgentFinalStreamFrame();
+    }
+
+    updateMessagesForThread(threadId, (current) =>
+      current.map((message) =>
+        message.id === agentMessageId
+          ? finalizeAgentStreamMessage(
+              {
+                ...message,
+                author: author || message.author
+              },
+              finalBody
+            )
+          : message
+      )
+    , true);
+  }
+
+  function renderExecutionDetail(detail: unknown, key: string) {
+    const normalized = formatExecutionDetail(detail).trim();
     if (!normalized) {
       return null;
     }
@@ -3969,7 +4876,8 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   }
 
   function renderExecutionActivity() {
-    if (visibleAgentProgress.length === 0) {
+    const renderableProgress = getRenderableProgressEvents(visibleAgentProgress);
+    if (renderableProgress.length === 0) {
       return null;
     }
 
@@ -4029,7 +4937,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                   <span>查看执行结果</span>
                 </button>
               ) : null}
-              {visibleAgentProgress.map((event) => (
+              {renderableProgress.map((event) => (
                 <div className={`execution-step ${event.status}`} key={event.id}>
                   <span className="execution-dot" />
                   <div>
@@ -4413,7 +5321,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     };
   }
 
-  function appendAgentResultToWorkbench({
+  async function appendAgentResultToWorkbench({
     result,
     threadId,
     taskId,
@@ -4431,19 +5339,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     showArtifact?: boolean;
   }) {
     const summary = result.summary || result.message || result.errorMessage || "Agent 没有返回可展示内容。";
-    updateMessagesForThread(threadId, (current) =>
-      current.map((message) =>
-        message.id === agentMessageId
-          ? finalizeAgentStreamMessage(
-              {
-                ...message,
-                author: result.agentName ?? (result.ok ? fallbackAuthor : "Agent Runtime")
-              },
-              summary
-            )
-          : message
-      )
-    , threadId === activeThreadId);
+    await streamAgentFinalMessage({
+      threadId,
+      agentMessageId,
+      author: result.agentName ?? (result.ok ? fallbackAuthor : "Agent Runtime"),
+      body: summary,
+      display: threadId === activeThreadId
+    });
 
     const artifact = result.artifact as FileArtifact | null | undefined;
     const nextArtifact = artifact || (showArtifact ? createSummaryArtifact(fallbackArtifactTitle, summary) : null);
@@ -4543,7 +5445,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       if (!result) {
         throw new Error("continueAgent 没有返回结果。");
       }
-      appendAgentResultToWorkbench({
+      await appendAgentResultToWorkbench({
         result,
         threadId,
         taskId,
@@ -4552,19 +5454,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "继续执行失败";
-      updateMessagesForThread(threadId, (current) =>
-        current.map((item) =>
-          item.id === agentMessageId
-            ? finalizeAgentStreamMessage(
-                {
-                  ...item,
-                  author: "Agent Runtime"
-                },
-                `继续执行失败：${message}`
-              )
-            : item
-        )
-      , true);
+      await streamAgentFinalMessage({
+        threadId,
+        agentMessageId,
+        author: "Agent Runtime",
+        body: `继续执行失败：${message}`,
+        display: true
+      });
       recordAgentProgress(taskId, "继续失败", message, "warn", threadId, true);
       addAudit("Agent Runtime", "继续执行失败", message, "warn");
       setThreads((current) =>
@@ -4730,19 +5626,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       if (result.title) {
         renameThread(runtimeThread.id, result.title);
       }
-      updateMessagesForThread(runtimeThread.id, (current) =>
-        current.map((message) =>
-          message.id === agentMessageId
-            ? finalizeAgentStreamMessage(
-                {
-                  ...message,
-                  author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime")
-                },
-                result.summary
-              )
-            : message
-        )
-      , true);
+      await streamAgentFinalMessage({
+        threadId: runtimeThread.id,
+        agentMessageId,
+        author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
+        body: result.summary,
+        display: true
+      });
 
       if (result.artifact) {
         const artifact = result.artifact as FileArtifact;
@@ -4783,19 +5673,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Agent runtime 执行失败";
-      updateMessagesForThread(runtimeThread.id, (current) =>
-        current.map((item) =>
-          item.id === agentMessageId
-            ? finalizeAgentStreamMessage(
-                {
-                  ...item,
-                  author: "Agent Runtime"
-                },
-                `任务失败：${message}`
-              )
-            : item
-        )
-      , true);
+      await streamAgentFinalMessage({
+        threadId: runtimeThread.id,
+        agentMessageId,
+        author: "Agent Runtime",
+        body: `任务失败：${message}`,
+        display: true
+      });
       addAudit("Agent Runtime", "任务失败", message, "warn");
       recordAgentProgress(taskId, "任务失败", message, "warn", runtimeThread.id, true);
     } finally {
@@ -4869,19 +5753,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       if (result.title) {
         renameThread(payload.threadId, result.title);
       }
-      updateMessagesForThread(payload.threadId, (current) =>
-        current.map((message) =>
-          message.id === agentMessageId
-            ? finalizeAgentStreamMessage(
-                {
-                  ...message,
-                  author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime")
-                },
-                result.summary
-              )
-            : message
-        )
-      , payload.threadId === activeThreadId);
+      await streamAgentFinalMessage({
+        threadId: payload.threadId,
+        agentMessageId,
+        author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
+        body: result.summary,
+        display: payload.threadId === activeThreadId
+      });
       if (result.artifact) {
         const artifact = result.artifact as FileArtifact;
         updateArtifactsForThread(payload.threadId, (current) => [artifact, ...current], payload.threadId === activeThreadId);
@@ -4907,19 +5785,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       recordAgentProgress(taskId, result.ok ? "执行完成" : "执行异常", result.summary, result.ok ? "success" : "warn", payload.threadId, payload.threadId === activeThreadId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "审批后恢复执行失败";
-      updateMessagesForThread(payload.threadId, (current) =>
-        current.map((item) =>
-          item.id === agentMessageId
-            ? finalizeAgentStreamMessage(
-                {
-                  ...item,
-                  author: "Agent Runtime"
-                },
-                `审批后恢复执行失败：${message}`
-              )
-            : item
-        )
-      , payload.threadId === activeThreadId);
+      await streamAgentFinalMessage({
+        threadId: payload.threadId,
+        agentMessageId,
+        author: "Agent Runtime",
+        body: `审批后恢复执行失败：${message}`,
+        display: payload.threadId === activeThreadId
+      });
       recordAgentProgress(taskId, "恢复失败", message, "warn", payload.threadId, payload.threadId === activeThreadId);
       addAudit("Agent Runtime", "审批后恢复失败", message, "warn");
     } finally {
@@ -5068,23 +5940,24 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   }
 
   function renderHeader() {
-    const workspaceLabel = workspacePath ? workspacePath.split("/").filter(Boolean).slice(-1)[0] : "选择工作区";
-    const headerTitle = activeView === "workbench" ? activeThread.title : navItems.find((item) => item.id === activeView)?.label;
+    const workspaceLabel = workspacePath ? workspacePath.split("/").filter(Boolean).slice(-1)[0] : t("workspace.choose");
+    const activeSettingsItem = settingsNavItems.find((item) => item.id === activeSettingsPage);
+    const headerTitle = activeView === "workbench" ? activeThread.title : activeSettingsItem ? settingsLabel(activeSettingsItem.id) : t("settings.fallbackTitle");
     return (
       <header className="topbar">
         <div className="topbar-title-group">
-          {!visiblePanels.sidebar ? renderPaneToggleButton("sidebar", "topbar-pane-toggle") : null}
+          {activeView !== "settings" && !visiblePanels.sidebar ? renderPaneToggleButton("sidebar", "topbar-pane-toggle") : null}
           <div className="topbar-title-copy">
           <div className="eyebrow">{PRODUCT_EYEBROW}</div>
           <h1 title={headerTitle}>{headerTitle}</h1>
           </div>
         </div>
         <div className="topbar-actions">
-          <button className="icon-text-button ghost" onClick={chooseWorkspace} title="选择工作区">
+          <button className="icon-text-button ghost" onClick={chooseWorkspace} title={t("workspace.choose")}>
             <FolderOpen size={17} />
             <span>{workspaceLabel}</span>
           </button>
-          <button className="icon-button ghost" title="刷新状态">
+          <button className="icon-button ghost" title={t("action.refresh")}>
             <RefreshCw size={18} />
           </button>
           {activeView === "workbench" ? renderPaneToggleButton("artifact", "topbar-pane-toggle") : null}
@@ -5121,10 +5994,10 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           <button
             className={selectedProjectFolderId ? "section-label project-root-button" : "section-label project-root-button active"}
             onClick={() => setSelectedProjectFolderId(null)}
-            title="选择项目根目录"
+            title={t("sidebar.projects")}
             type="button"
           >
-            项目
+            {t("sidebar.projects")}
           </button>
           <div className="project-menu-wrap">
             <button className="section-icon-button" onClick={() => setProjectMenuOpen((open) => !open)} title="添加项目文件夹">
@@ -5228,8 +6101,8 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     const isVisible = visiblePanels[panel];
     const title =
       panel === "sidebar"
-        ? isVisible ? "收起左侧导航" : "展开左侧导航"
-        : isVisible ? "收起右侧面板" : "展开右侧面板";
+        ? isVisible ? t("pane.sidebar.collapse") : t("pane.sidebar.expand")
+        : isVisible ? t("pane.right.collapse") : t("pane.right.expand");
 
     return (
       <button
@@ -5250,7 +6123,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         <div className="brand">
           <img src={logoUrl} alt={PRODUCT_NAME} />
           <div className="brand-copy">
-            <span>{PRODUCT_SUBTITLE}</span>
+            <span>{t("product.subtitle")}</span>
           </div>
           {renderPaneToggleButton("sidebar", "sidebar-brand-toggle")}
         </div>
@@ -5258,46 +6131,22 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         <div className="sidebar-action-list">
           <button className="sidebar-action-button" onClick={createThread} type="button">
             <SquarePen size={18} />
-            <span>新建任务</span>
+            <span>{t("sidebar.newTask")}</span>
           </button>
         </div>
 
         {renderProjectSection()}
 
-        <nav className="nav-list">
-          {navItems.filter((item) => !["workbench", "models"].includes(item.id)).map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                className={activeView === item.id ? "nav-item active" : "nav-item"}
-                onClick={() => setActiveView(item.id)}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-                {item.id === "approvals" && pendingApprovalCount > 0 ? (
-                  <b className="nav-badge">{pendingApprovalCount}</b>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-section">
-          <div className="section-label">模型路由</div>
-          <button className={activeView === "models" ? "route-pill route-button active" : "route-pill route-button"} onClick={() => setActiveView("models")}>
-            <Store size={15} />
-            <span>模型中心</span>
-          </button>
-          <div className="route-pill muted">
-            <LockKeyhole size={15} />
-            <span>{encryptionAvailable ? "Keychain 加密" : "本地加密不可用"}</span>
-          </div>
-        </div>
-
         <footer className="sidebar-footer">
-          <span>{platform}</span>
-          <span>v0.1.0</span>
+          <button
+            className={activeView === "settings" ? "sidebar-settings-button active" : "sidebar-settings-button"}
+            onClick={() => setActiveView("settings")}
+            type="button"
+            title={t("sidebar.settings")}
+          >
+            <Settings size={17} />
+            <span>{t("sidebar.settings")}</span>
+          </button>
         </footer>
       </aside>
     );
@@ -5327,7 +6176,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 />
                 <p>{activeThread.kind} · {activeThread.model}</p>
               </div>
-              {activeThread.id !== DRAFT_THREAD_ID ? <div className={`task-status ${activeThread.status}`}>{statusLabel(activeThread.status)}</div> : null}
+              {activeThread.id !== DRAFT_THREAD_ID ? <div className={`task-status ${activeThread.status}`}>{threadStatusLabel(activeThread.status)}</div> : null}
             </div>
 
             {artifacts.length > 0 ? (
@@ -5363,6 +6212,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
               messages={messages}
               renderMessageBody={renderMessageBody}
               renderExecutionActivity={renderExecutionActivity}
+              onCopyMessage={(message) => copyText(message.role === "user" ? message.body : stripAgentStreamSection(message.body))}
             />
             <div className="message-end-anchor" ref={messageEndRef} />
           </div>
@@ -5374,7 +6224,13 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                   <button className="attachment-chip" key={path} onClick={() => selectAttachmentArtifact(path)} title="查看附件内容">
                     <FileText size={14} />
                     <span>{path.split("/").pop()}</span>
-                    <X size={13} />
+                    <X
+                      size={13}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeAttachment(path);
+                      }}
+                    />
                   </button>
                 ))}
               </div>
@@ -5383,7 +6239,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
               <div className="composer-channel-row">
                 <div className="composer-channel-chip" title={activeChannelAdapter.description}>
                   <MessageSquare size={14} />
-                  <span>当前通道：{activeChannelAdapter.name}</span>
+                  <span>{t("composer.currentChannel", { name: activeChannelAdapter.name })}</span>
                 </div>
               </div>
             ) : null}
@@ -5391,18 +6247,19 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
               <textarea
                 value={composer}
                 onChange={(event) => setComposer(event.target.value)}
+                onPaste={handleComposerPaste}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     void sendMessage();
                   }
                 }}
-                placeholder="输入消息或任务"
+                placeholder={t("composer.placeholder")}
               />
             </div>
             <div className="composer-actions">
               <div className="composer-actions-left">
-                <button className="composer-icon-button" onClick={addAttachments} title="添加附件">
+                <button className="composer-icon-button" onClick={addAttachments} title={t("action.addAttachment")}>
                   <Plus size={21} />
                 </button>
                 <label className={`composer-select permission-control ${permissionMode}`}>
@@ -5410,7 +6267,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                   <select value={permissionMode} onChange={(event) => setPermissionMode(event.target.value as PermissionMode)}>
                     {permissionOptions.map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.label}
+                        {permissionLabel(option.id)}
                       </option>
                     ))}
                   </select>
@@ -5418,14 +6275,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 </label>
               </div>
               <div className="composer-actions-right">
-                <button className="composer-icon-button" onClick={startVoiceInput} title="语音输入">
+                <button className="composer-icon-button" onClick={startVoiceInput} title={t("action.voiceInput")}>
                   <Mic size={19} />
                 </button>
                 {agentRunning ? (
                   <button
                     className="composer-icon-button stop-task-button"
                     onClick={abortActiveTask}
-                    title={abortPending ? "正在停止" : "停止当前任务"}
+                    title={abortPending ? t("action.stopping") : t("action.stopTask")}
                     disabled={abortPending}
                     type="button"
                   >
@@ -5435,7 +6292,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 <button
                   className={agentRunning ? "send-button steering" : "send-button"}
                   onClick={sendMessage}
-                  title={agentRunning ? "发送中途补充" : "发送任务"}
+                  title={agentRunning ? t("action.sendSteer") : t("action.sendTask")}
                   disabled={!composer.trim() && attachments.length === 0}
                   type="button"
                 >
@@ -5748,6 +6605,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                   <strong>{profile.model}</strong>
                   <span>{profile.provider} · {profileSummary(profile)}</span>
                   <small>{profileKeyLabel(profile)}</small>
+                  <small className="profile-route-meta">{profileRouteLabel(profile)}</small>
                 </div>
               </div>
             ))}
@@ -6171,7 +7029,7 @@ ${adapter.sampleEvent}
                       <span>审批规则</span>
                       <select value={selectedAgent.policy} onChange={(event) => updateAgentSpec(selectedAgent.id, { policy: event.target.value as PermissionMode })}>
                         {permissionOptions.map((option) => (
-                          <option value={option.id} key={option.id}>{option.label}</option>
+                          <option value={option.id} key={option.id}>{permissionLabel(option.id)}</option>
                         ))}
                       </select>
                     </label>
@@ -6864,93 +7722,298 @@ ${adapter.sampleEvent}
     );
   }
 
-  function renderSettings() {
+  function renderPolicySettings() {
     const policyRows = [
       ["web.fetch_url", "外部文档读取", "读取用户消息中的 URL，并作为 pi transformContext 外部上下文。"],
       ["workspace.scan", "Workspace 扫描", "读取文件列表和安全文本片段，构建 coding 上下文。"],
       ["workspace.write_manifest", "文件写入", "模型返回 file manifest 后写入当前 workspace。"],
+      ["mcp.read", "MCP 资源读取", "列出或读取 MCP server 暴露的 resources/prompts。"],
+      ["mcp.tool.call", "MCP 工具调用", "调用外部 MCP server 的工具，并纳入审批、审计和执行过程。"],
       ["shell.exec", "Shell 命令", "执行 bash/npm/git 等本地命令。"],
       ["network.request", "网络访问", "访问外部 URL、下载依赖或查询远程资源。"],
       ["sensitive.read", "敏感读取", "读取 .env、ssh key、token、证书等敏感文件。"]
     ] as const;
 
     return (
-      <div className="settings-layout">
-        <section className="panel policy-panel">
-          <div className="panel-header">
-            <div>
-              <span>安全策略</span>
-              <small>默认企业级边界</small>
-            </div>
-          </div>
-          <div className="policy-controls">
-            <label>
-              <span>默认权限</span>
-              <select value={policySettings.defaultPermissionMode} onChange={(event) => setDefaultPolicyMode(event.target.value as PermissionMode)}>
-                {permissionOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>工具执行</span>
-              <select value={policySettings.toolExecution} onChange={(event) => setPolicySettings((current) => ({ ...current, toolExecution: event.target.value as PolicySettings["toolExecution"] }))}>
-                <option value="sequential">sequential</option>
-                <option value="parallel">parallel</option>
-              </select>
-            </label>
-            <label>
-              <span>Sandbox</span>
-              <select value={policySettings.sandboxMode} onChange={(event) => setPolicySettings((current) => ({ ...current, sandboxMode: event.target.value as PolicySettings["sandboxMode"] }))}>
-                <option value="read-only">read-only</option>
-                <option value="workspace-write">workspace-write</option>
-                <option value="danger-full-access">danger-full-access</option>
-              </select>
-            </label>
-          </div>
-          {policyRows.map(([action, title, detail]) => (
-            <div className="policy-row" key={action}>
-              <ShieldCheck size={18} />
+      <div className="settings-layout policy-settings-layout">
+        <div className="settings-column">
+          <section className="panel policy-panel">
+            <div className="panel-header">
               <div>
-                <strong>{title}</strong>
-                <span>{detail}</span>
-                <code>{action}</code>
+                <span>安全策略</span>
+                <small>默认企业级边界</small>
               </div>
-              <select value={policySettings.actionModes[action] ?? "ask"} onChange={(event) => setPolicyActionMode(action, event.target.value as ToolPolicyMode)}>
-                <option value="ask">请求批准</option>
-                <option value="auto">替我审批</option>
-                <option value="full">完全访问</option>
-                <option value="block">禁止</option>
-              </select>
             </div>
-          ))}
+            <div className="policy-controls">
+              <label>
+                <span>默认权限</span>
+                <select value={policySettings.defaultPermissionMode} onChange={(event) => setDefaultPolicyMode(event.target.value as PermissionMode)}>
+                  {permissionOptions.map((option) => <option key={option.id} value={option.id}>{permissionLabel(option.id)}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>工具执行</span>
+                <select value={policySettings.toolExecution} onChange={(event) => setPolicySettings((current) => ({ ...current, toolExecution: event.target.value as PolicySettings["toolExecution"] }))}>
+                  <option value="sequential">sequential</option>
+                  <option value="parallel">parallel</option>
+                </select>
+              </label>
+              <label>
+                <span>Sandbox</span>
+                <select value={policySettings.sandboxMode} onChange={(event) => setPolicySettings((current) => ({ ...current, sandboxMode: event.target.value as PolicySettings["sandboxMode"] }))}>
+                  <option value="read-only">read-only</option>
+                  <option value="workspace-write">workspace-write</option>
+                  <option value="danger-full-access">danger-full-access</option>
+                </select>
+              </label>
+            </div>
+            {policyRows.map(([action, title, detail]) => (
+              <div className="policy-row" key={action}>
+                <ShieldCheck size={18} />
+                <div>
+                  <strong>{title}</strong>
+                  <span>{detail}</span>
+                  <code>{action}</code>
+                </div>
+                <select value={policySettings.actionModes[action] ?? "ask"} onChange={(event) => setPolicyActionMode(action, event.target.value as ToolPolicyMode)}>
+                  <option value="ask">请求批准</option>
+                  <option value="auto">替我审批</option>
+                  <option value="full">完全访问</option>
+                  <option value="block">禁止</option>
+                </select>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div className="settings-column">
+          <section className="panel metrics-panel">
+            <div className="panel-header">
+              <div>
+                <span>本地状态</span>
+                <small>桌面客户端</small>
+              </div>
+            </div>
+            <div className="metric-grid">
+              <div>
+                <Database size={18} />
+                <strong>SQLite</strong>
+                <span>session / history</span>
+              </div>
+              <div>
+                <Terminal size={18} />
+                <strong>Sandbox</strong>
+                <span>tool runtime</span>
+              </div>
+              <div>
+                <Eye size={18} />
+                <strong>Audit</strong>
+                <span>{auditLogs.length} events</span>
+              </div>
+              <div>
+                <MessageSquare size={18} />
+                <strong>Threads</strong>
+                <span>{threads.length} active</span>
+              </div>
+              <div>
+                <KeyRound size={18} />
+                <strong>Keychain</strong>
+                <span>{encryptionAvailable ? "available" : "unavailable"}</span>
+              </div>
+              <div>
+                <Shield size={18} />
+                <strong>Default</strong>
+                <span>{policySettings.defaultPermissionMode}</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderMcpSettings() {
+    const mcpServers = Object.values(mcpConfig?.mcpServers ?? {});
+    const currentMcpSnapshot = mcpSnapshot ?? harnessSnapshot?.mcp ?? null;
+    const mcpTools = currentMcpSnapshot?.tools ?? [];
+    const mcpResources = currentMcpSnapshot?.resources ?? [];
+    const mcpPrompts = currentMcpSnapshot?.prompts ?? [];
+
+    return (
+      <div className="settings-single-page integration-management-page">
+        <section className="integration-hero">
+          <div>
+            <h3>MCP servers</h3>
+            <p>Connect external tools and data sources. Fiitx will discover tools, resources and prompts, then route calls through policy approval and audit.</p>
+            <small>{mcpConfig?.path || "mcp.json 未加载"}</small>
+          </div>
+          <div className="integration-hero-actions">
+            <button className="icon-text-button" onClick={() => loadMcpManagement(true)} disabled={mcpLoading}>
+              <RefreshCw size={16} />
+              <span>{mcpLoading ? "刷新中" : "刷新"}</span>
+            </button>
+          </div>
         </section>
 
-        <section className="panel metrics-panel">
-          <div className="panel-header">
-            <div>
-              <span>本地状态</span>
-              <small>桌面客户端</small>
+        <section className="integration-section">
+          <div className="integration-section-header">
+            <h4>Servers</h4>
+            <button
+              className="integration-add-button"
+              onClick={() => {
+                resetMcpForm();
+                setMcpFormOpen(true);
+              }}
+              type="button"
+            >
+              <Plus size={17} />
+              <span>Add server</span>
+            </button>
+          </div>
+
+          <div className="mcp-server-list">
+            {mcpServers.length === 0 ? <div className="integration-empty">暂无 MCP server。点击 Add server 添加。</div> : null}
+            {mcpServers.map((server) => {
+              const enabled = server.enabled !== false;
+              const discovered = (currentMcpSnapshot?.servers || []).find((item) => pickString(item, ["id"], "") === server.id);
+              const connection = server.enabled === false ? "disabled" : pickString(discovered, ["connected"], "enabled");
+              return (
+                <div className="mcp-server-row" key={server.id}>
+                  <div>
+                    <strong>{server.name || server.id}</strong>
+                    <span>{server.type || "stdio"} · {connection}</span>
+                    <code>{server.type === "stdio" ? `${server.command || ""} ${(server.args || []).join(" ")}` : server.url}</code>
+                  </div>
+                  <button className="icon-button ghost" onClick={() => editMcpServer(server)} title="配置">
+                    <Settings size={16} />
+                  </button>
+                  <label className="switch-control" title={enabled ? "停用" : "启用"}>
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      disabled={mcpLoading}
+                      onChange={(event) => void toggleMcpServerEnabled(server, event.target.checked)}
+                    />
+                    <span />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {mcpStatusMessage ? <div className="integration-status">{mcpStatusMessage}</div> : null}
+        </section>
+
+        {mcpFormOpen ? (
+          <section className="panel integration-panel">
+            <div className="panel-header">
+              <div>
+                <span>{mcpForm.id ? "编辑 MCP Server" : "Add server"}</span>
+                <small>支持 stdio、SSE 和 Streamable HTTP。</small>
+              </div>
+              <button className="icon-button ghost" onClick={resetMcpForm} type="button" title="关闭">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="integration-form">
+              <label>
+                <span>Server ID</span>
+                <input value={mcpForm.id} onChange={(event) => setMcpForm((current) => ({ ...current, id: event.target.value }))} placeholder="filesystem" />
+              </label>
+              <label>
+                <span>名称</span>
+                <input value={mcpForm.name || ""} onChange={(event) => setMcpForm((current) => ({ ...current, name: event.target.value }))} placeholder="Filesystem MCP" />
+              </label>
+              <label>
+                <span>Transport</span>
+                <select value={mcpForm.type || "stdio"} onChange={(event) => setMcpForm((current) => ({ ...current, type: event.target.value as FiitxMcpServerConfig["type"] }))}>
+                  <option value="stdio">stdio</option>
+                  <option value="streamable-http">streamable-http</option>
+                  <option value="sse">sse</option>
+                </select>
+              </label>
+              {mcpForm.type === "stdio" ? (
+                <>
+                  <label className="wide">
+                    <span>Command</span>
+                    <input value={mcpForm.command || ""} onChange={(event) => setMcpForm((current) => ({ ...current, command: event.target.value }))} placeholder="npx" />
+                  </label>
+                  <label className="wide">
+                    <span>Args JSON 或空格分隔</span>
+                    <input value={mcpArgsText} onChange={(event) => setMcpArgsText(event.target.value)} placeholder='["@modelcontextprotocol/server-filesystem", "/path"]' />
+                  </label>
+                  <label className="wide">
+                    <span>CWD</span>
+                    <input value={mcpForm.cwd || ""} onChange={(event) => setMcpForm((current) => ({ ...current, cwd: event.target.value }))} placeholder="可选" />
+                  </label>
+                </>
+              ) : (
+                <label className="wide">
+                  <span>URL</span>
+                  <input value={mcpForm.url || ""} onChange={(event) => setMcpForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://example.com/mcp" />
+                </label>
+              )}
+              <label>
+                <span>风险</span>
+                <select value={mcpForm.risk || "medium"} onChange={(event) => setMcpForm((current) => ({ ...current, risk: event.target.value as FiitxMcpServerConfig["risk"] }))}>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+              <label>
+                <span>超时 ms</span>
+                <input type="number" value={mcpForm.timeoutMs || 12000} onChange={(event) => setMcpForm((current) => ({ ...current, timeoutMs: Number(event.target.value) }))} />
+              </label>
+              <label className="checkbox-field">
+                <input type="checkbox" checked={mcpForm.enabled !== false} onChange={(event) => setMcpForm((current) => ({ ...current, enabled: event.target.checked }))} />
+                <span>启用</span>
+              </label>
+              <label className="wide">
+                <span>Env JSON</span>
+                <textarea value={mcpEnvText} onChange={(event) => setMcpEnvText(event.target.value)} rows={3} />
+              </label>
+              <label className="wide">
+                <span>Headers JSON</span>
+                <textarea value={mcpHeadersText} onChange={(event) => setMcpHeadersText(event.target.value)} rows={3} />
+              </label>
+              <div className="integration-actions">
+                <button className="primary-button" onClick={saveMcpServerFromForm} disabled={mcpLoading}>
+                  <Save size={16} />
+                  <span>保存 Server</span>
+                </button>
+                {mcpForm.id ? (
+                  <button className="icon-text-button" onClick={() => deleteMcpServer(mcpForm.id)} disabled={mcpLoading} type="button">
+                    <X size={16} />
+                    <span>删除</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="integration-capability-grid mcp-capability-grid">
+          <div>
+            <strong>Tools</strong>
+            <span>{mcpTools.length}</span>
+            <div className="route-chip-list">
+              {mcpTools.slice(0, 8).map((tool, index) => <span className="route-chip" key={`mcp-tool-${index}`}>{pickString(tool, ["fiitxToolName", "name"], "tool")}</span>)}
             </div>
           </div>
-          <div className="metric-grid">
-            <div>
-              <Database size={18} />
-              <strong>SQLite</strong>
-              <span>session / history</span>
+          <div>
+            <strong>Resources</strong>
+            <span>{mcpResources.length}</span>
+            <div className="route-chip-list">
+              {mcpResources.slice(0, 5).map((resource, index) => <span className="route-chip" key={`mcp-resource-${index}`}>{pickString(resource, ["name", "uri"], "resource")}</span>)}
             </div>
-            <div>
-              <Terminal size={18} />
-              <strong>Sandbox</strong>
-              <span>tool runtime</span>
-            </div>
-            <div>
-              <Eye size={18} />
-              <strong>Audit</strong>
-              <span>{auditLogs.length} events</span>
-            </div>
-            <div>
-              <MessageSquare size={18} />
-              <strong>Threads</strong>
-              <span>{threads.length} active</span>
+          </div>
+          <div>
+            <strong>Prompts</strong>
+            <span>{mcpPrompts.length}</span>
+            <div className="route-chip-list">
+              {mcpPrompts.slice(0, 5).map((prompt, index) => <span className="route-chip" key={`mcp-prompt-${index}`}>{pickString(prompt, ["name"], "prompt")}</span>)}
             </div>
           </div>
         </section>
@@ -6958,22 +8021,259 @@ ${adapter.sampleEvent}
     );
   }
 
-  function renderContent() {
-    if (activeView === "models") {
+  function renderSkillSettings() {
+    const query = skillSearch.trim().toLowerCase();
+    const skillMatches = (skill: unknown) => {
+      if (!query) {
+        return true;
+      }
+      return [
+        pickString(skill, ["name", "id"], ""),
+        pickString(skill, ["description", "summary"], ""),
+        pickString(skill, ["root", "source"], "")
+      ].join(" ").toLowerCase().includes(query);
+    };
+    const visibleInstalledSkills = installedSkills.filter(skillMatches);
+    const visibleCatalogSkills = skillCatalog.filter(skillMatches);
+
+    return (
+      <div className="settings-single-page skill-management-page">
+        <section className="integration-hero">
+          <div>
+            <h3>Skills</h3>
+            <p>Extend Fiitx with task-specific skills. Installed skills can contribute prompts, MCP servers, tools and workflow instructions.</p>
+          </div>
+          <div className="integration-hero-actions">
+            <button className="icon-text-button" onClick={loadSkillManagement} disabled={skillLoading}>
+              <RefreshCw size={16} />
+              <span>{skillLoading ? "加载中" : "刷新"}</span>
+            </button>
+          </div>
+        </section>
+
+        <div className="skill-search-row">
+          <label className="skill-search">
+            <Search size={18} />
+            <input value={skillSearch} onChange={(event) => setSkillSearch(event.target.value)} placeholder="Search skills" />
+          </label>
+          <button className="icon-text-button" onClick={() => setSkillInstallRoot((current) => current || workspacePath)} type="button">
+            <Plus size={16} />
+            <span>本地 Skill</span>
+          </button>
+        </div>
+
+        <section className="panel integration-panel local-skill-install-panel">
+          <div className="panel-header">
+            <div>
+              <span>安装本地 Skill</span>
+              <small>选择包含 SKILL.md 或 mcp.json 的目录。</small>
+            </div>
+          </div>
+
+          <div className="integration-form single">
+            <label className="wide">
+              <span>本地 Skill Root</span>
+              <input value={skillInstallRoot} onChange={(event) => setSkillInstallRoot(event.target.value)} placeholder="/path/to/skill-with-SKILL.md-or-mcp.json" />
+            </label>
+            <div className="integration-actions">
+              <button className="icon-text-button" onClick={() => installSkill(skillInstallRoot)} disabled={skillLoading || !skillInstallRoot.trim()}>
+                <Plus size={16} />
+                <span>安装本地 Skill</span>
+              </button>
+            </div>
+          </div>
+
+          {skillStatusMessage ? <div className="integration-status">{skillStatusMessage}</div> : null}
+        </section>
+
+        <section className="skill-list-section">
+          <h4>Installed</h4>
+          <div className="skill-list">
+            {visibleInstalledSkills.length === 0 ? <div className="integration-empty">暂无已安装 Skill。</div> : null}
+            {visibleInstalledSkills.map((skill, index) => {
+              const id = pickString(skill, ["id"], `skill-${index}`);
+              const enabled = !(isRecord(skill) && skill.enabled === false);
+              const source = pickString(skill, ["source"], "local");
+              const hasError = Boolean(isRecord(skill) && skill.error);
+              return (
+                <div className={`skill-row ${enabled ? "" : "disabled"} ${hasError ? "error" : ""}`} key={id}>
+                  <div className="skill-icon">
+                    <Store size={18} />
+                  </div>
+                  <div className="skill-main">
+                    <strong>{pickString(skill, ["name", "id"], id)}</strong>
+                    <span>{hasError ? pickString(skill, ["error"], "Skill 读取失败") : pickString(skill, ["description", "summary"], pickString(skill, ["root"], "本地 Skill"))}</span>
+                    <small>{pickString(skill, ["version"], "0.0.0")} · {source} · {enabled ? "enabled" : "disabled"}</small>
+                  </div>
+                  <button className={`skill-toggle ${enabled ? "on" : ""}`} onClick={() => toggleInstalledSkill(id, !enabled)} title={enabled ? "停用" : "启用"}>
+                    <span />
+                  </button>
+                  <button className="icon-button ghost" onClick={() => uninstallSkill(id)} title="卸载">
+                    <X size={15} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="skill-list-section">
+          <h4>Local Catalog</h4>
+          <div className="skill-list">
+            {visibleCatalogSkills.length === 0 ? <div className="integration-empty">暂无匹配的 Catalog Skill。</div> : null}
+            {visibleCatalogSkills.slice(0, 16).map((skill, index) => {
+              const root = pickString(skill, ["root"], "");
+              return (
+                <div className="skill-row" key={`${root}-${index}`}>
+                  <div className="skill-icon cube">
+                    <Folder size={18} />
+                  </div>
+                  <div className="skill-main">
+                    <strong>{pickString(skill, ["name", "id"], "Skill")}</strong>
+                    <span>{pickString(skill, ["description", "summary"], root || "本地可安装 Skill")}</span>
+                    <small>{pickString(skill, ["version", "source"], "local-catalog")}</small>
+                  </div>
+                  <button className="icon-button ghost" onClick={() => installSkill(root)} title="安装">
+                    <Plus size={15} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderAboutSettings() {
+    return (
+      <div className="settings-single-page">
+        <section className="panel about-panel">
+          <div className="about-hero">
+            <img src={logoUrl} alt={PRODUCT_NAME} />
+            <div>
+              <span>{t("about.eyebrow")}</span>
+              <h2>{PRODUCT_NAME}</h2>
+              <p>{PRODUCT_EYEBROW}</p>
+            </div>
+          </div>
+          <div className="about-copy">
+            <p>{t("about.copy1")}</p>
+            <p>{t("about.copy2")}</p>
+          </div>
+          <div className="about-info-grid">
+            <div>
+              <span>{t("about.platform")}</span>
+              <strong>{platform}</strong>
+            </div>
+            <div>
+              <span>{t("about.version")}</span>
+              <strong>v0.1.0</strong>
+            </div>
+            <div>
+              <span>{t("about.secureStorage")}</span>
+              <strong>{encryptionAvailable ? t("about.keychainAvailable") : t("about.keychainUnavailable")}</strong>
+            </div>
+            <div>
+              <span>{t("about.workspace")}</span>
+              <strong>{workspacePath || t("about.notSelected")}</strong>
+            </div>
+            <div>
+              <span>{t("settings.language")}</span>
+              <label className="language-select">
+                <select value={uiLocale} onChange={(event) => updateUiLocale(event.target.value as UiLocale)}>
+                  {supportedLocales.map((locale) => (
+                    <option key={locale.id} value={locale.id}>
+                      {locale.nativeName} · {locale.englishName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <small>{t("settings.languageHelp")}</small>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderSettingsPageContent() {
+    if (activeSettingsPage === "models") {
       return renderModels();
     }
-    if (activeView === "agents") {
+    if (activeSettingsPage === "agents") {
       return renderAgents();
     }
-    if (activeView === "approvals") {
+    if (activeSettingsPage === "approvals") {
       return renderApprovals();
     }
-    if (activeView === "history") {
+    if (activeSettingsPage === "history") {
       return renderHistory();
     }
-    if (activeView === "audit") {
+    if (activeSettingsPage === "audit") {
       return renderAudit();
     }
+    if (activeSettingsPage === "mcp") {
+      return renderMcpSettings();
+    }
+    if (activeSettingsPage === "skills") {
+      return renderSkillSettings();
+    }
+    if (activeSettingsPage === "about") {
+      return renderAboutSettings();
+    }
+    return renderPolicySettings();
+  }
+
+  function renderSettings() {
+    const activeSettingsItem = settingsNavItems.find((item) => item.id === activeSettingsPage) ?? settingsNavItems[0];
+
+    return (
+      <div className="settings-page">
+        <aside className="settings-sidebar">
+          <button className="settings-back-button" onClick={() => setActiveView("workbench")} type="button">
+            <ArrowLeft size={17} />
+            <span>{t("settings.back")}</span>
+          </button>
+          {settingsNavGroups.map((group) => (
+            <div className="settings-nav-group" key={group.title}>
+              <div className="settings-nav-heading">{t("settings.group")}</div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    className={activeSettingsPage === item.id ? "settings-nav-item active" : "settings-nav-item"}
+                    key={item.id}
+                    onClick={() => setActiveSettingsPage(item.id)}
+                    type="button"
+                  >
+                    <Icon size={18} />
+                    <span>
+                      <strong>{settingsLabel(item.id)}</strong>
+                      <small>{settingsDescription(item.id)}</small>
+                    </span>
+                    {item.id === "approvals" && pendingApprovalCount > 0 ? <b className="nav-badge">{pendingApprovalCount}</b> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </aside>
+        <section className="settings-detail">
+          <div className="settings-detail-header">
+            <span>{t("settings.eyebrow")}</span>
+            <h2>{activeSettingsItem ? settingsLabel(activeSettingsItem.id) : t("settings.fallbackTitle")}</h2>
+            <p>{activeSettingsItem ? settingsDescription(activeSettingsItem.id) : t("settings.fallbackDesc")}</p>
+          </div>
+          <div className="settings-detail-body">
+            {renderSettingsPageContent()}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderContent() {
     if (activeView === "settings") {
       return renderSettings();
     }
@@ -6990,10 +8290,10 @@ ${adapter.sampleEvent}
             <Terminal size={15} />
             <span>{PRODUCT_NAME}</span>
           </button>
-          <button className="terminal-tab plus" title="新建终端" onClick={resetTerminal}>
+          <button className="terminal-tab plus" title={t("terminal.new")} onClick={resetTerminal}>
             <Plus size={15} />
           </button>
-          <button className="terminal-close" title="关闭 Terminal" onClick={() => togglePanel("terminal")}>
+          <button className="terminal-close" title={t("terminal.close")} onClick={() => togglePanel("terminal")}>
             <X size={16} />
           </button>
         </div>
@@ -7001,7 +8301,7 @@ ${adapter.sampleEvent}
           {terminalEntries.length === 0 ? (
             <div className="terminal-empty">
               <Terminal size={16} />
-              <span>在当前工作区执行命令，适合运行构建、脚本和文件检查。</span>
+              <span>{t("terminal.empty")}</span>
             </div>
           ) : (
             <div className="terminal-output-list">
@@ -7015,7 +8315,7 @@ ${adapter.sampleEvent}
                       <code className="terminal-prompt">{entryPromptLabel}</code>
                       <code className="terminal-command-text">{entry.command}</code>
                       <span className="terminal-command-status">
-                        {entry.status === "running" ? "执行中" : `exit ${entry.exitCode ?? 0}`} · {elapsed}
+                        {entry.status === "running" ? t("terminal.running") : `exit ${entry.exitCode ?? 0}`} · {elapsed}
                       </span>
                     </div>
                     {entry.stdout ? <pre className="terminal-output">{entry.stdout}</pre> : null}
@@ -7064,10 +8364,12 @@ ${adapter.sampleEvent}
     );
   }
 
+  const showMainSidebar = activeView !== "settings" && visiblePanels.sidebar;
+
   return (
-    <main className={visiblePanels.sidebar ? "app-shell" : "app-shell sidebar-collapsed"}>
+    <main className={showMainSidebar ? "app-shell" : "app-shell sidebar-collapsed"}>
       {renderEdgeHotspots()}
-      {visiblePanels.sidebar ? renderSidebar() : null}
+      {showMainSidebar ? renderSidebar() : null}
       <section className={visiblePanels.terminal ? "content-shell" : "content-shell terminal-collapsed"}>
         {renderHeader()}
         {renderContent()}

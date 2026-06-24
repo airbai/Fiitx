@@ -6,6 +6,7 @@ const {
   createLlmMessage,
   createToolCallMessage,
   createToolResultMessage,
+  extractReasoningContent,
   fromUiContextMessage,
   transformContext
 } = require("./agent-messages.cjs");
@@ -321,10 +322,14 @@ function latestCompactSummary(entries = []) {
 function replayEntriesToContextMessages(entries = []) {
   const context = [];
   for (const entry of entries) {
-    if (entry?.type === "message" && ["user", "assistant"].includes(entry.role) && entry.content) {
+    const entryToolCalls = Array.isArray(entry?.tool_calls) ? entry.tool_calls : Array.isArray(entry?.toolCalls) ? entry.toolCalls : [];
+    const entryReasoningContent = extractReasoningContent(entry);
+    if (entry?.type === "message" && ["user", "assistant"].includes(entry.role) && (entry.content || entryReasoningContent || entryToolCalls.length)) {
       context.push(createLlmMessage(entry.role, entry.content, {
         source: "session_jsonl",
-        entryId: entry.id
+        entryId: entry.id,
+        reasoningContent: entryReasoningContent,
+        toolCalls: entryToolCalls
       }));
     }
     if (entry?.type === "steer" && entry.content) {
@@ -526,27 +531,50 @@ function createToolCallingAgentSession({
           tools: registry.getOpenAiTools(),
           toolChoice: "auto",
           timeoutMs: 180000,
-          signal: controller.signal
+          signal: controller.signal,
+          intent: payload.intent,
+          payload,
+          onAttempt: (candidateProfile) => {
+            emitProgress({
+              status: "running",
+              title: turn === 0 ? "正在思考" : "继续推理",
+              detail: `${candidateProfile.provider} / ${candidateProfile.model}`
+            });
+          }
         });
         throwIfAborted();
+        const effectiveProfile = response.profile || profile;
 
         localMessages.push(response.message);
+        const assistantToolCalls = Array.isArray(response.message?.tool_calls) ? response.message.tool_calls : [];
+        const reasoningContent = response.reasoningContent || extractReasoningContent(response.message);
+        const hasAssistantMessage = Boolean(response.content || reasoningContent || assistantToolCalls.length);
         if (response.content) {
           finalText = response.content;
           pushTranscript("assistant", response.content);
+        }
+        if (hasAssistantMessage) {
           appendLog({
             type: "message",
             role: "assistant",
             content: response.content,
+            reasoning_content: reasoningContent,
+            tool_calls: assistantToolCalls,
             metadata: {
               finishReason: response.finishReason,
-              model: profile.model,
-              provider: profile.provider
+              model: effectiveProfile.model,
+              provider: effectiveProfile.provider,
+              routing: response.routing,
+              reasoningContent,
+              toolCalls: assistantToolCalls
             },
             agentMessage: createLlmMessage("assistant", response.content, {
               finishReason: response.finishReason,
-              model: profile.model,
-              provider: profile.provider
+              model: effectiveProfile.model,
+              provider: effectiveProfile.provider,
+              routing: response.routing,
+              reasoningContent,
+              toolCalls: assistantToolCalls
             })
           });
         }
@@ -580,6 +608,7 @@ function createToolCallingAgentSession({
         appendLog({
           type: "assistant_tool_calls",
           role: "assistant",
+          reasoning_content: reasoningContent,
           toolCalls: response.toolCalls.map((call) => ({
             id: call.id,
             name: call.name,

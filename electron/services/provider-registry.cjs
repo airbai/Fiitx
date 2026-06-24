@@ -11,7 +11,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["coding", "research", "vision", "image", "cheap"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 0.28,
+    outputCostPer1M: 0.42,
+    expectedLatencyMs: 4500,
+    priority: 90
   },
   {
     id: "default-minimax",
@@ -25,7 +29,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["writing", "research", "long-context"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 0.6,
+    outputCostPer1M: 1.2,
+    expectedLatencyMs: 6500,
+    priority: 65
   },
   {
     id: "default-openrouter-auto",
@@ -39,7 +47,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["coding", "research", "vision", "image", "video", "long-context"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 1,
+    outputCostPer1M: 2,
+    expectedLatencyMs: 7500,
+    priority: 55
   },
   {
     id: "default-siliconflow",
@@ -53,7 +65,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["coding", "research", "cheap"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 0.3,
+    outputCostPer1M: 0.6,
+    expectedLatencyMs: 5200,
+    priority: 80
   },
   {
     id: "default-kimi",
@@ -67,7 +83,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["research", "writing", "long-context"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 1.5,
+    outputCostPer1M: 1.5,
+    expectedLatencyMs: 6000,
+    priority: 70
   },
   {
     id: "default-glm",
@@ -81,7 +101,11 @@ const defaultProfileSeeds = [
     supportsStreaming: true,
     supportsJsonMode: true,
     bestFor: ["research", "writing", "cheap"],
-    toolCallStyle: "openai"
+    toolCallStyle: "openai",
+    inputCostPer1M: 0.15,
+    outputCostPer1M: 0.15,
+    expectedLatencyMs: 5000,
+    priority: 72
   }
 ];
 
