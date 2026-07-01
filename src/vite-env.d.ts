@@ -11,6 +11,18 @@ type FiitxModelPayload = {
   supportsVision: boolean;
   supportsStreaming: boolean;
   supportsJsonMode: boolean;
+  inputModalities?: string[];
+  outputModalities?: string[];
+  capabilities?: {
+    chat?: boolean;
+    tools?: boolean;
+    streaming?: boolean;
+    jsonMode?: boolean;
+    imageInput?: boolean;
+    imageGeneration?: boolean;
+    videoGeneration?: boolean;
+    audioGeneration?: boolean;
+  };
   bestFor: string[];
   toolCallStyle: string;
   inputCostPer1M?: number;
@@ -119,7 +131,7 @@ type FiitxChannelContext = {
 type FiitxChannelAdapterSpec = {
   id: string;
   name: string;
-  channelType: "desktop-ui" | "wechat-miniprogram-ai";
+  channelType: "desktop-ui" | "wechat-miniprogram-ai" | "vscode-extension";
   description?: string;
   transport?: string;
   entrypoint?: string;
@@ -132,6 +144,18 @@ type FiitxChannelAdapterSpec = {
   agentBindings?: string[];
   systemPrompt?: string;
   sampleEvent?: string;
+};
+
+type FiitxRuntimeChannel = FiitxChannelAdapterSpec & {
+  runtimeStatus?: "running" | "available" | "blocked" | "stopped" | string;
+  configured?: boolean;
+  endpoints?: string[];
+  requirements?: string[];
+  warnings?: string[];
+  docs?: string[];
+  packageStatus?: unknown;
+  configuredAdapter?: FiitxChannelAdapterSpec | null;
+  binding?: FiitxWechatBindStatus;
 };
 
 type FiitxAgentTaskPayload = {
@@ -210,6 +234,9 @@ type FiitxAgentSessionCommand = {
   text?: string;
   prompt?: string;
   instructions?: string;
+  approvalId?: string;
+  approved?: boolean;
+  permissionMode?: "ask" | "auto" | "full";
 };
 
 type FiitxAgentSessionResult = {
@@ -220,6 +247,17 @@ type FiitxAgentSessionResult = {
   summary?: string;
   errorMessage?: string;
   messageCount?: number;
+  mode?: "chat" | "coding";
+  model?: string;
+  provider?: string;
+  title?: string;
+  agentId?: string;
+  agentName?: string;
+  channelId?: string;
+  channelName?: string;
+  artifact?: FiitxFileArtifact | null;
+  toolEvents?: FiitxAgentToolEvent[];
+  approvalRequests?: FiitxApprovalRequest[];
 };
 
 type FiitxAgentRouteInspection = {
@@ -409,9 +447,15 @@ type FiitxAgentProgress = {
   id: string;
   taskId: string;
   threadId?: string;
+  threadTitle?: string;
+  threadKind?: string;
+  threadModel?: string;
+  threadWorkspacePath?: string;
+  cronJobId?: string;
+  cronSource?: string;
   title: string;
   detail: string;
-  status: "running" | "success" | "warn" | "info";
+  status: "running" | "success" | "warn" | "info" | "finished" | "error";
   time: string;
 };
 
@@ -560,8 +604,44 @@ type FiitxWechatChannelStatus = {
   host: string;
   port: number;
   baseUrl: string;
+  lanBaseUrl?: string;
   messageEndpoint: string;
+  actionEndpoint?: string;
   healthEndpoint: string;
+  deliveryEndpoint?: string;
+  bindStartEndpoint?: string;
+  bindStatusEndpoint?: string;
+  bindConfirmEndpoint?: string;
+  binding?: FiitxWechatBindStatus;
+};
+
+type FiitxWechatBindStatus = {
+  ok: boolean;
+  channelId: string;
+  bound: boolean;
+  status: "idle" | "pending" | "bound" | "expired" | "cancelled" | string;
+  localBaseUrl?: string;
+  lanBaseUrl?: string;
+  binding?: {
+    bound: boolean;
+    channelId: string;
+    accountId?: string;
+    displayName?: string;
+    openId?: string;
+    boundAt?: string;
+    lastSeenAt?: string;
+    endpoint?: string;
+  } | null;
+  session?: {
+    id: string;
+    status: "pending" | "bound" | "expired" | "cancelled" | string;
+    createdAt: string;
+    expiresAt: string;
+    bindUrl: string;
+    qrDataUrl: string;
+    instructions?: string[];
+    binding?: unknown;
+  } | null;
 };
 
 type FiitxWechatChannelInbound = {
@@ -589,6 +669,8 @@ type FiitxWechatChannelInbound = {
     cards?: unknown[];
   };
   gateway?: unknown;
+  approvalRequests?: FiitxApprovalRequest[];
+  approvalResumePayload?: FiitxAgentTaskPayload | null;
   apiCalls?: unknown[];
   toolEvents?: unknown[];
 };
@@ -608,6 +690,107 @@ type FiitxTerminalCommandResult = {
   stderr: string;
 };
 
+type FiitxPlatformSnapshot = {
+  path?: string;
+  daemon?: {
+    running?: boolean;
+    enabled?: boolean;
+    autoStart?: boolean;
+    keepChannelsWarm?: boolean;
+    startedAt?: string | null;
+    uptimeMs?: number;
+    cronTickMs?: number;
+    events?: unknown[];
+  };
+  cronJobs?: unknown[];
+  learnedSkills?: unknown[];
+  profileIsolation?: unknown;
+  sessionIndex?: {
+    sessionCount?: number;
+  };
+};
+
+type FiitxCronJobPayload = {
+  id?: string;
+  name?: string;
+  prompt?: string;
+  channelId?: string;
+  model?: string;
+  enabled?: boolean;
+  everyMinutes?: number;
+  nextRunAt?: string;
+  workspacePath?: string;
+  permissionMode?: "ask" | "auto" | "full";
+};
+
+type FiitxSessionSearchResult = {
+  threadId: string;
+  title: string;
+  updatedAt?: string;
+  entryCount?: number;
+  score?: number;
+  snippet?: string;
+};
+
+type FiitxMemoryEntry = {
+  id: string;
+  dedupeKey?: string;
+  kind: string;
+  scope: string;
+  text: string;
+  workspacePath?: string;
+  channelId?: string;
+  threadId?: string;
+  source?: string;
+  tags?: string[];
+  confidence?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
+  lastUsedAt?: string;
+  useCount?: number;
+  score?: number;
+};
+
+type FiitxMemoryProvider = {
+  id: string;
+  name: string;
+  status?: string;
+  type?: string;
+  description?: string;
+};
+
+type FiitxMemorySnapshot = {
+  storePath: string;
+  memoryPath?: string;
+  userProfilePath?: string;
+  count: number;
+  byKind: Record<string, number>;
+  byScope: Record<string, number>;
+  latest: FiitxMemoryEntry[];
+  layers?: {
+    curatedMemory?: {
+      enabled?: boolean;
+      memoryPath?: string;
+      userProfilePath?: string;
+      memoryChars?: number;
+      memoryLimit?: number;
+      userProfileChars?: number;
+      userProfileLimit?: number;
+    };
+    sessionSearch?: {
+      enabled?: boolean;
+      sessionCount?: number;
+      engine?: string;
+      storePath?: string;
+    };
+    provider?: {
+      activeProvider?: string;
+      providers?: FiitxMemoryProvider[];
+    };
+  };
+};
+
 interface Window {
   fiitx?: {
     getPlatform: () => Promise<{
@@ -625,14 +808,30 @@ interface Window {
       canceled: boolean;
       filePaths: string[];
     }>;
+    importAttachment: (payload: {
+      sourcePath: string;
+      workspacePath?: string;
+    }) => Promise<{
+      ok: boolean;
+      path: string;
+      absolutePath?: string;
+      sourcePath?: string;
+      bytes: number;
+      imported?: boolean;
+      name?: string;
+    }>;
     savePastedAttachment: (payload: {
       name: string;
       mimeType?: string;
       buffer: ArrayBuffer;
+      workspacePath?: string;
     }) => Promise<{
       ok: boolean;
       path: string;
+      absolutePath?: string;
       bytes: number;
+      imported?: boolean;
+      name?: string;
     }>;
     listWorkspaceFiles: (payload?: {
       workspacePath?: string;
@@ -662,6 +861,10 @@ interface Window {
       message: string;
     }>;
     previewPath: (path: string, basePath?: string) => Promise<FiitxPathPreview>;
+    getMediaDataUrl: (path: string, basePath?: string) => Promise<FiitxPathInfo & {
+      mimeType: string;
+      dataUrl: string;
+    }>;
     listModelProfiles: () => Promise<FiitxModelProfile[]>;
     saveModelProfile: (payload: FiitxModelPayload) => Promise<FiitxModelProfile>;
     testModelConnection: (payload: FiitxModelPayload) => Promise<{
@@ -693,6 +896,33 @@ interface Window {
     uninstallSkill: (payload: { id: string }) => Promise<unknown>;
     setSkillEnabled: (payload: { id: string; enabled: boolean }) => Promise<unknown>;
     getWechatChannelStatus: () => Promise<FiitxWechatChannelStatus>;
+    getWechatChannelBindStatus: () => Promise<FiitxWechatBindStatus>;
+    startWechatChannelBind: (payload?: Record<string, unknown>) => Promise<FiitxWechatBindStatus>;
+    cancelWechatChannelBind: () => Promise<FiitxWechatBindStatus>;
+    listChannels: (payload?: { adapters?: FiitxChannelAdapterSpec[]; channelAdapters?: FiitxChannelAdapterSpec[] }) => Promise<FiitxRuntimeChannel[]>;
+    getChatSdkStatus: () => Promise<unknown>;
+    getWeixinIlinkStatus: () => Promise<unknown>;
+    startWeixinIlink: (payload?: Record<string, unknown>) => Promise<unknown>;
+    stopWeixinIlink: () => Promise<unknown>;
+    getAgentPlatformSnapshot: () => Promise<FiitxPlatformSnapshot>;
+    startAgentDaemon: () => Promise<FiitxPlatformSnapshot>;
+    stopAgentDaemon: () => Promise<FiitxPlatformSnapshot>;
+    upsertCronJob: (payload: FiitxCronJobPayload) => Promise<unknown>;
+    removeCronJob: (payload: { id: string }) => Promise<unknown[]>;
+    runCronJobNow: (payload: { id: string }) => Promise<unknown>;
+    searchSessions: (payload?: { query?: string; limit?: number }) => Promise<FiitxSessionSearchResult[]>;
+    learnSkillFromThread: (payload: { threadId: string; name?: string }) => Promise<unknown>;
+    installLearnedSkill: (payload: { id: string }) => Promise<unknown>;
+    removeLearnedSkill: (payload: { id: string }) => Promise<unknown[]>;
+    saveProfileIsolation: (payload: { profileIsolation: unknown }) => Promise<unknown>;
+    getMemorySnapshot: () => Promise<FiitxMemorySnapshot>;
+    listMemory: (payload?: { kind?: string; workspacePath?: string; channelId?: string; limit?: number }) => Promise<FiitxMemoryEntry[]>;
+    recallMemory: (payload?: { query?: string; workspacePath?: string; channelId?: string; threadId?: string; limit?: number }) => Promise<FiitxMemoryEntry[]>;
+    rememberMemory: (payload: Partial<FiitxMemoryEntry> & { text: string }) => Promise<FiitxMemoryEntry | null>;
+    removeMemory: (payload: { id: string }) => Promise<{ ok: boolean; removed: number }>;
+    listMemoryProviders: () => Promise<FiitxMemoryProvider[]>;
+    setMemoryProvider: (payload: { providerId?: string; id?: string }) => Promise<unknown>;
+    extractThreadMemory: (payload: { threadId: string; workspacePath?: string; channelId?: string; limit?: number }) => Promise<FiitxMemoryEntry[]>;
     runTerminalCommand: (payload: FiitxTerminalCommandPayload) => Promise<FiitxTerminalCommandResult>;
     onWechatChannelInbound: (callback: (payload: FiitxWechatChannelInbound) => void) => () => void;
     runAgentTask: (payload: FiitxAgentTaskPayload) => Promise<FiitxAgentTaskResult>;

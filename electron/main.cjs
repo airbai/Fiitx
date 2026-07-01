@@ -7,6 +7,7 @@ const artifactEngine = require("./services/artifact-engine.cjs");
 const policyEngine = require("./services/policy-engine.cjs");
 const { createAgentRuntime } = require("./services/agent-runtime.cjs");
 const { createAgentHistoryService } = require("./services/agent-history.cjs");
+const { createMemoryStore } = require("./services/memory-store.cjs");
 const { createModelRouter } = require("./services/model-router.cjs");
 const { createSessionLogStore } = require("./services/session-log-store.cjs");
 const { createTelemetryStore } = require("./services/telemetry-store.cjs");
@@ -15,12 +16,17 @@ const { createToolRuntime } = require("./services/tool-runtime.cjs");
 const { createWorkspaceManager } = require("./services/workspace-manager.cjs");
 const { createMcpService } = require("./services/mcp-service.cjs");
 const { createSkillMarketplace } = require("./services/skill-marketplace.cjs");
+const { createAgentPlatformService } = require("./services/agent-platform-service.cjs");
+const { createChannelGateway } = require("./services/channel-gateway.cjs");
+const { createChannelRegistry } = require("./services/channel-registry.cjs");
+const { createChatSdkWeixinChannel } = require("./services/chat-sdk-weixin-channel.cjs");
 const { createWechatChannelServer } = require("./services/wechat-channel-server.cjs");
 const { createVscodeChannelServer } = require("./services/vscode-channel-server.cjs");
 const { createWechatAiSkillGateway } = require("./services/wechat-ai-skill-gateway.cjs");
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let mainWindow = null;
+let isQuitting = false;
 
 app.setName("Fiitx");
 
@@ -29,6 +35,39 @@ function getDefaultWorkspaceRoot() {
   const root = path.join(documentsPath, "Fiitx Workspaces");
   fs.mkdirSync(root, { recursive: true });
   return root;
+}
+
+function sanitizeAttachmentName(name) {
+  return (
+    String(name || "attachment")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/^\.+/, "")
+      .slice(0, 120) || "attachment"
+  );
+}
+
+function getWorkspaceRelativePath(root, absolutePath) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(absolutePath);
+  const boundary = `${resolvedRoot}${path.sep}`;
+  if (resolvedPath === resolvedRoot || resolvedPath.startsWith(boundary)) {
+    return path.relative(resolvedRoot, resolvedPath);
+  }
+  return null;
+}
+
+function getAttachmentTarget(root, safeName) {
+  const attachmentDir = path.join(root, ".fiitx", "attachments");
+  fs.mkdirSync(attachmentDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  let targetPath = path.join(attachmentDir, `${timestamp}-${safeName}`);
+  let suffix = 1;
+  while (fs.existsSync(targetPath)) {
+    targetPath = path.join(attachmentDir, `${timestamp}-${suffix}-${safeName}`);
+    suffix += 1;
+  }
+  return targetPath;
 }
 
 const workspaceManager = createWorkspaceManager({
@@ -46,6 +85,10 @@ const agentHistory = createAgentHistoryService({
   telemetryStore,
   threadStore
 });
+const memoryStore = createMemoryStore({
+  app,
+  sessionLogStore
+});
 const wechatAiSkillGateway = createWechatAiSkillGateway();
 const mcpService = createMcpService({ app });
 const skillMarketplace = createSkillMarketplace({ app });
@@ -54,15 +97,53 @@ const agentRuntime = createAgentRuntime({
   modelRouter,
   policyEngine,
   sessionLogStore,
+  memoryStore,
   telemetryStore,
   toolRuntime,
   wechatAiSkillGateway,
   mcpService,
   skillMarketplace
 });
+const channelGateway = createChannelGateway({
+  runAgentTask: (payload, emitProgress) => agentRuntime.runAgentTask(payload, emitProgress),
+  sessionLogStore,
+  workspaceManager,
+  getWorkspacePath: () => {
+    const state = threadStore.load();
+    return state.workspacePath || workspaceManager.getFallbackRoot();
+  },
+  getAgentRegistry: () => {
+    const state = threadStore.load();
+    return Array.isArray(state.agentSpecs) ? state.agentSpecs : undefined;
+  },
+  getChannelRegistry: () => {
+    const state = threadStore.load();
+    return Array.isArray(state.channelAdapters) ? state.channelAdapters : undefined;
+  },
+  getPolicySettings: () => {
+    const state = threadStore.load();
+    return state.policySettings && typeof state.policySettings === "object" ? state.policySettings : undefined;
+  }
+});
+const agentPlatformService = createAgentPlatformService({
+  app,
+  sessionLogStore,
+  threadStore,
+  skillMarketplace,
+  runAgentTask: (payload, emitProgress) => agentRuntime.runAgentTask(payload, emitProgress),
+  emitProgress: (payload) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("agent:progress", payload);
+  }
+});
 const wechatChannelServer = createWechatChannelServer({
   wechatAiSkillGateway,
+  channelGateway,
   port: Number(process.env.DEEPSIX_WECHAT_CHANNEL_PORT || 18766),
+  host: process.env.FIITX_WECHAT_CHANNEL_HOST || "0.0.0.0",
+  bindingStorePath: path.join(app.getPath("userData"), "wechat-channel-binding.json"),
   onInboundMessage: (payload) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       return;
@@ -101,6 +182,24 @@ const vscodeChannelServer = createVscodeChannelServer({
   }
 });
 
+const weixinChatChannel = createChatSdkWeixinChannel({
+  wechatAiSkillGateway,
+  channelGateway,
+  credentialStorePath: path.join(app.getPath("userData"), "weixin-ilink-credential.json"),
+  onInboundMessage: (payload) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    mainWindow.webContents.send("wechat-channel:inbound", payload);
+  }
+});
+
+const channelRegistry = createChannelRegistry({
+  wechatChannelServer,
+  vscodeChannelServer,
+  weixinChatChannel
+});
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
@@ -119,6 +218,29 @@ function createWindow() {
     }
   });
   mainWindow = window;
+
+  window.on("close", (event) => {
+    if (isQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    dialog.showMessageBox(window, {
+      type: "question",
+      buttons: ["取消", "关闭 Fiitx"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "确认关闭 Fiitx？",
+      message: "确认关闭 Fiitx？",
+      detail: "正在运行的 Agent、Channel 和本地服务会停止。"
+    }).then((result) => {
+      if (result.response !== 1 || window.isDestroyed()) {
+        return;
+      }
+      isQuitting = true;
+      app.quit();
+    }).catch(() => {});
+  });
 
   window.on("closed", () => {
     if (mainWindow === window) {
@@ -179,6 +301,32 @@ const previewTextExtensions = new Set([
   ".yaml",
   ".yml"
 ]);
+
+const mediaDataExtensions = new Set([
+  ".avif",
+  ".gif",
+  ".heic",
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".svg",
+  ".webp"
+]);
+
+function getMediaMimeType(extension) {
+  const normalized = String(extension || "").toLowerCase();
+  const mimeTypes = {
+    ".avif": "image/avif",
+    ".gif": "image/gif",
+    ".heic": "image/heic",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp"
+  };
+  return mimeTypes[normalized] || "application/octet-stream";
+}
 
 const pathSearchIgnoredDirectories = new Set([
   ".git",
@@ -422,6 +570,10 @@ app.whenReady().then(() => {
   vscodeChannelServer.start().catch((error) => {
     console.error("[vscode-channel] failed to start", error);
   });
+  weixinChatChannel.start().catch((error) => {
+    console.error("[weixin-ilink-channel] failed to start", error);
+  });
+  agentPlatformService.startDaemon();
 
   ipcMain.handle("app:get-platform", () => ({
     platform: process.platform,
@@ -445,12 +597,53 @@ app.whenReady().then(() => {
     })
   );
 
+  ipcMain.handle("app:import-attachment", async (_event, payload = {}) => {
+    const sourcePath = String(payload.sourcePath || "").trim();
+    if (!sourcePath) {
+      throw new Error("附件路径为空");
+    }
+    const absoluteSource = path.resolve(sourcePath);
+    if (!fs.existsSync(absoluteSource)) {
+      throw new Error(`附件不存在：${sourcePath}`);
+    }
+    const stat = fs.statSync(absoluteSource);
+    if (!stat.isFile()) {
+      throw new Error(`附件不是文件：${sourcePath}`);
+    }
+    if (stat.size > 100 * 1024 * 1024) {
+      throw new Error("附件超过 100MB，暂不支持导入");
+    }
+
+    const root = workspaceManager.resolveWorkspaceRoot(payload.workspacePath);
+    const existingRelativePath = getWorkspaceRelativePath(root, absoluteSource);
+    if (existingRelativePath) {
+      return {
+        ok: true,
+        path: existingRelativePath,
+        absolutePath: absoluteSource,
+        sourcePath: absoluteSource,
+        bytes: stat.size,
+        imported: false,
+        name: path.basename(absoluteSource)
+      };
+    }
+
+    const safeName = sanitizeAttachmentName(path.basename(absoluteSource));
+    const targetPath = getAttachmentTarget(root, safeName);
+    fs.copyFileSync(absoluteSource, targetPath);
+    return {
+      ok: true,
+      path: path.relative(root, targetPath),
+      absolutePath: targetPath,
+      sourcePath: absoluteSource,
+      bytes: stat.size,
+      imported: true,
+      name: safeName
+    };
+  });
+
   ipcMain.handle("app:save-pasted-attachment", async (_event, payload = {}) => {
-    const rawName = String(payload.name || "pasted-attachment").trim();
-    const safeName = rawName
-      .replace(/[\\/:*?"<>|]+/g, "-")
-      .replace(/^\.+/, "")
-      .slice(0, 120) || "pasted-attachment";
+    const safeName = sanitizeAttachmentName(payload.name || "pasted-attachment");
     let buffer = Buffer.alloc(0);
     if (payload.buffer instanceof ArrayBuffer) {
       buffer = Buffer.from(new Uint8Array(payload.buffer));
@@ -466,15 +659,16 @@ app.whenReady().then(() => {
       throw new Error("剪贴板附件超过 50MB，暂不支持直接粘贴");
     }
 
-    const attachmentDir = path.join(app.getPath("userData"), "Pasted Attachments");
-    fs.mkdirSync(attachmentDir, { recursive: true });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const targetPath = path.join(attachmentDir, `${timestamp}-${safeName}`);
+    const root = workspaceManager.resolveWorkspaceRoot(payload.workspacePath);
+    const targetPath = getAttachmentTarget(root, safeName);
     fs.writeFileSync(targetPath, buffer);
     return {
       ok: true,
-      path: targetPath,
-      bytes: buffer.length
+      path: path.relative(root, targetPath),
+      absolutePath: targetPath,
+      bytes: buffer.length,
+      imported: true,
+      name: safeName
     };
   });
 
@@ -631,6 +825,36 @@ app.whenReady().then(() => {
     };
   });
 
+  ipcMain.handle("path:media-data-url", async (_event, payload) => {
+    const parsed = parsePathPayload(payload);
+    const inspected = inspectLocalPath(parsed.path, parsed.basePath);
+    if (!inspected.exists) {
+      throw new Error("路径不存在");
+    }
+
+    if (inspected.kind !== "file") {
+      throw new Error("只有文件可以预览");
+    }
+
+    const extension = String(inspected.extension || "").toLowerCase();
+    if (!mediaDataExtensions.has(extension)) {
+      throw new Error("当前文件类型暂不支持图片预览");
+    }
+
+    const maxBytes = 16 * 1024 * 1024;
+    if ((inspected.size || 0) > maxBytes) {
+      throw new Error("图片超过 16MB，暂不内联预览");
+    }
+
+    const buffer = fs.readFileSync(inspected.path);
+    const mimeType = getMediaMimeType(extension);
+    return {
+      ...inspected,
+      mimeType,
+      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`
+    };
+  });
+
   ipcMain.handle("model:list", () => modelRouter.listProfiles());
 
   ipcMain.handle("model:save", (_event, payload) => modelRouter.saveProfile(payload));
@@ -678,8 +902,72 @@ app.whenReady().then(() => {
   ipcMain.handle("skill-market:set-enabled", (_event, payload = {}) => skillMarketplace.setSkillEnabled(payload.id, payload.enabled));
 
   ipcMain.handle("wechat-channel:status", () => wechatChannelServer.getStatus());
+  ipcMain.handle("wechat-channel:bind-status", () => weixinChatChannel.getBindingStatus());
+  ipcMain.handle("wechat-channel:bind-start", (_event, payload = {}) => weixinChatChannel.startLoginSession(payload));
+  ipcMain.handle("wechat-channel:bind-cancel", () => weixinChatChannel.cancelLoginSession());
 
   ipcMain.handle("vscode-channel:status", () => vscodeChannelServer.getStatus());
+
+  ipcMain.handle("channels:list", (_event, payload = {}) => {
+    return channelRegistry.listRuntimeChannels(payload.adapters || payload.channelAdapters || []);
+  });
+
+  ipcMain.handle("channels:chat-sdk-status", () => channelRegistry.getChatSdkStatus());
+
+  ipcMain.handle("channels:weixin-ilink-status", () => weixinChatChannel.getStatus());
+
+  ipcMain.handle("channels:weixin-ilink-start", (_event, payload = {}) => weixinChatChannel.start(payload));
+
+  ipcMain.handle("channels:weixin-ilink-stop", () => weixinChatChannel.stop());
+
+  ipcMain.handle("platform:snapshot", () => agentPlatformService.getSnapshot());
+
+  ipcMain.handle("platform:daemon-start", () => agentPlatformService.startDaemon({ manual: true }));
+
+  ipcMain.handle("platform:daemon-stop", () => agentPlatformService.stopDaemon());
+
+  ipcMain.handle("platform:cron-upsert", (_event, payload = {}) => agentPlatformService.updateCronJob(payload));
+
+  ipcMain.handle("platform:cron-remove", (_event, payload = {}) => agentPlatformService.removeCronJob(payload.id));
+
+  ipcMain.handle("platform:cron-run-now", (_event, payload = {}) => agentPlatformService.runCronJobNow(payload.id));
+
+  ipcMain.handle("platform:session-search", (_event, payload = {}) => agentPlatformService.searchSessions(payload));
+
+  ipcMain.handle("platform:skill-learn", (_event, payload = {}) => agentPlatformService.learnSkillFromThread(payload));
+
+  ipcMain.handle("platform:skill-install-learned", (_event, payload = {}) => agentPlatformService.materializeLearnedSkill(payload.id));
+
+  ipcMain.handle("platform:skill-remove-learned", (_event, payload = {}) => agentPlatformService.removeLearnedSkill(payload.id));
+
+  ipcMain.handle("platform:profile-isolation-save", (_event, payload = {}) => {
+    return agentPlatformService.updateProfileIsolation(payload.profileIsolation || payload);
+  });
+
+  ipcMain.handle("memory:snapshot", () => memoryStore.getSnapshot());
+
+  ipcMain.handle("memory:list", (_event, payload = {}) => memoryStore.list(payload));
+
+  ipcMain.handle("memory:recall", (_event, payload = {}) => {
+    return memoryStore.recall(payload.query || "", payload);
+  });
+
+  ipcMain.handle("memory:remember", (_event, payload = {}) => memoryStore.remember(payload));
+
+  ipcMain.handle("memory:remove", (_event, payload = {}) => memoryStore.remove(payload.id));
+
+  ipcMain.handle("memory:providers", () => memoryStore.listProviders());
+
+  ipcMain.handle("memory:set-provider", (_event, payload = {}) => memoryStore.setProvider(payload.providerId || payload.id || ""));
+
+  ipcMain.handle("memory:extract-thread", (_event, payload = {}) => {
+    const state = threadStore.load();
+    return memoryStore.extractFromSession(payload.threadId || payload.taskId || payload.sessionId || state.activeThreadId || "default", {
+      workspacePath: payload.workspacePath || state.workspacePath || workspaceManager.getFallbackRoot(),
+      channelId: payload.channelId || "",
+      limit: payload.limit || 20
+    });
+  });
 
   ipcMain.handle("terminal:run-command", async (_event, payload = {}) => {
     const command = String(payload.command || "").trim();
@@ -718,10 +1006,11 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("agent:run-task", async (event, payload) => {
-    const emitProgress = createProgressEmitter(event, payload?.taskId, payload?.threadId);
+    const isolatedPayload = agentPlatformService.applyProfileIsolation(payload || {});
+    const emitProgress = createProgressEmitter(event, isolatedPayload?.taskId, isolatedPayload?.threadId);
 
     try {
-      return await agentRuntime.runAgentTask(payload, emitProgress);
+      return await agentRuntime.runAgentTask(isolatedPayload, emitProgress);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Agent runtime 执行失败";
       emitProgress({
@@ -733,7 +1022,7 @@ app.whenReady().then(() => {
       return {
         ok: false,
         summary: message,
-        model: payload?.model,
+        model: isolatedPayload?.model,
         provider: "local",
         artifact: null,
         toolEvents: [
@@ -749,8 +1038,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("agent:prompt", async (event, payload) => {
-    const emitProgress = createProgressEmitter(event, payload?.taskId, payload?.threadId);
-    return agentRuntime.prompt(payload, emitProgress);
+    const isolatedPayload = agentPlatformService.applyProfileIsolation(payload || {});
+    const emitProgress = createProgressEmitter(event, isolatedPayload?.taskId, isolatedPayload?.threadId);
+    return agentRuntime.prompt(isolatedPayload, emitProgress);
   });
 
   ipcMain.handle("agent:steer", (event, payload) => {
@@ -791,7 +1081,7 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("agent:inspect-route", (_event, payload = {}) => {
-    return agentRuntime.inspectRoute(payload);
+    return agentRuntime.inspectRoute(agentPlatformService.applyProfileIsolation(payload));
   });
 
   ipcMain.handle("agent:run-eval", (_event, payload = {}) => {
@@ -834,7 +1124,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   void wechatChannelServer.stop();
   void vscodeChannelServer.stop();
+  void weixinChatChannel.stop();
+  agentPlatformService.stopDaemon();
   void mcpService.closeAll();
 });

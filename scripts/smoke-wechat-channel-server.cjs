@@ -14,7 +14,7 @@ async function main() {
   const inboundEvents = [];
   const server = createWechatChannelServer({
     wechatAiSkillGateway: gateway,
-    port: 18767,
+    port: 0,
     onInboundMessage: (event) => inboundEvents.push(event)
   });
 

@@ -17,6 +17,68 @@ function parseJsonLine(line) {
   }
 }
 
+function normalizeText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function clip(value, limit = 240) {
+  const text = normalizeText(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, Math.max(0, limit - 1))}…`;
+}
+
+function tokenize(value) {
+  const text = String(value || "").toLowerCase();
+  const ascii = text.match(/[a-z0-9_./:@-]{2,}/g) || [];
+  const cjkChunks = text.match(/[\u3400-\u9fff]{2,}/g) || [];
+  const cjk = [];
+  for (const chunk of cjkChunks) {
+    if (chunk.length <= 2) {
+      cjk.push(chunk);
+      continue;
+    }
+    for (let index = 0; index < chunk.length - 1; index += 1) {
+      cjk.push(chunk.slice(index, index + 2));
+    }
+  }
+  return [...new Set([...ascii, ...cjk])].filter(Boolean);
+}
+
+function stringifyEntry(entry) {
+  if (!entry || typeof entry !== "object") return "";
+  const chunks = [];
+  for (const key of ["content", "summary", "prompt", "message", "detail", "target", "title"]) {
+    if (typeof entry[key] === "string") chunks.push(entry[key]);
+  }
+  if (entry.agentMessage && typeof entry.agentMessage.content === "string") {
+    chunks.push(entry.agentMessage.content);
+  }
+  if (entry.toolEvent) {
+    chunks.push([entry.toolEvent.actor, entry.toolEvent.event, entry.toolEvent.target].filter(Boolean).join(" "));
+  }
+  if (entry.artifact) {
+    chunks.push([entry.artifact.title, entry.artifact.path].filter(Boolean).join(" "));
+  }
+  if (entry.metadata) {
+    chunks.push([entry.metadata.workspacePath, entry.metadata.channelId].filter(Boolean).join(" "));
+  }
+  return normalizeText(chunks.join("\n"));
+}
+
+function scoreText(text, queryTokens) {
+  if (!queryTokens.length) return 1;
+  const haystack = new Set(tokenize(text));
+  let score = 0;
+  for (const token of queryTokens) {
+    if (haystack.has(token)) {
+      score += token.length > 2 ? 3 : 1;
+    }
+  }
+  return score;
+}
+
 function createSessionLogStore({ app }) {
   function getStoreDir() {
     const dir = path.join(app.getPath("userData"), "deepsix-sessions");
@@ -159,15 +221,50 @@ function createSessionLogStore({ app }) {
     }
   }
 
+  function search({ query = "", limit = 20, threadId = "", excludeThreadId = "", includeEntries = false } = {}) {
+    const queryTokens = tokenize(query);
+    const sessions = threadId ? listSessions().filter((session) => session.threadId === safeSessionId(threadId)) : listSessions();
+    const results = [];
+    for (const session of sessions) {
+      if (excludeThreadId && session.threadId === safeSessionId(excludeThreadId)) {
+        continue;
+      }
+      const entries = read(session.threadId);
+      const entryTexts = entries.map((entry) => ({ entry, text: stringifyEntry(entry) })).filter((item) => item.text);
+      const fullText = entryTexts.map((item) => item.text).join("\n");
+      const score = scoreText(`${session.threadId}\n${fullText}`, queryTokens);
+      if (score <= 0) {
+        continue;
+      }
+      const matched = queryTokens.length
+        ? entryTexts.find((item) => queryTokens.some((token) => item.text.toLowerCase().includes(token)))
+        : entryTexts[entryTexts.length - 1] || entryTexts[0];
+      results.push({
+        threadId: session.threadId,
+        path: session.path,
+        updatedAt: session.updatedAt,
+        entryCount: entries.length,
+        score,
+        snippet: clip(matched?.text || fullText || session.threadId, 260),
+        entries: includeEntries ? entries : undefined
+      });
+    }
+    return results
+      .sort((left, right) => right.score - left.score || String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))
+      .slice(0, Number(limit) || 20);
+  }
+
   return {
     append,
     appendBranch,
     appendCompact,
     appendMany,
+    getStoreDir,
     getTree,
     listSessions,
     replay,
-    read
+    read,
+    search
   };
 }
 

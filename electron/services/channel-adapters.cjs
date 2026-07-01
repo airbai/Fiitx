@@ -57,11 +57,13 @@ function normalizeAdapter(raw) {
   if (!raw || typeof raw !== "object") {
     return null;
   }
+  const supportedChannelTypes = new Set(["desktop-ui", "wechat-miniprogram-ai", "vscode-extension"]);
+  const channelType = supportedChannelTypes.has(raw.channelType) ? raw.channelType : "desktop-ui";
 
   return {
     id: String(raw.id || "").trim(),
     name: String(raw.name || "").trim() || "未命名通道",
-    channelType: raw.channelType === "wechat-miniprogram-ai" ? "wechat-miniprogram-ai" : "desktop-ui",
+    channelType,
     description: String(raw.description || "").trim(),
     transport: String(raw.transport || "").trim(),
     entrypoint: String(raw.entrypoint || "").trim(),

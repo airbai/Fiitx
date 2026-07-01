@@ -1,8 +1,13 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const QRCode = require("qrcode");
 
 const DEFAULT_PORT = 18766;
 const MAX_BODY_BYTES = 1024 * 1024;
+const BIND_TTL_MS = 5 * 60 * 1000;
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
@@ -41,6 +46,34 @@ function writeJson(response, statusCode, payload) {
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function writeHtml(response, statusCode, html) {
+  response.writeHead(statusCode, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  response.end(html);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function firstLanAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries || []) {
+      if (entry.family === "IPv4" && !entry.internal && entry.address) {
+        return entry.address;
+      }
+    }
+  }
+  return "127.0.0.1";
 }
 
 function getTextPayload(body) {
@@ -115,13 +148,163 @@ function buildActionPayload({ inbound, actionType, apiName, apiResponse }) {
   };
 }
 
-function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, host = "127.0.0.1", onInboundMessage } = {}) {
-  if (!wechatAiSkillGateway) {
-    throw new Error("wechatAiSkillGateway is required");
+function createWechatChannelServer({ wechatAiSkillGateway, channelGateway, port = DEFAULT_PORT, host = "127.0.0.1", bindingStorePath = "", onInboundMessage } = {}) {
+  if (!wechatAiSkillGateway && !channelGateway) {
+    throw new Error("wechatAiSkillGateway or channelGateway is required");
   }
 
   let server = null;
   let currentPort = port;
+  let activeBindSession = null;
+
+  function getLocalHost() {
+    return host === "0.0.0.0" ? "127.0.0.1" : host;
+  }
+
+  function getLocalBaseUrl() {
+    return `http://${getLocalHost()}:${currentPort}`;
+  }
+
+  function getLanBaseUrl() {
+    const lanHost = host === "127.0.0.1" ? "127.0.0.1" : firstLanAddress();
+    return `http://${lanHost}:${currentPort}`;
+  }
+
+  function readBinding() {
+    if (!bindingStorePath || !fs.existsSync(bindingStorePath)) {
+      return null;
+    }
+    try {
+      return JSON.parse(fs.readFileSync(bindingStorePath, "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  function writeBinding(binding) {
+    if (!bindingStorePath) {
+      return binding;
+    }
+    fs.mkdirSync(path.dirname(bindingStorePath), { recursive: true });
+    fs.writeFileSync(bindingStorePath, JSON.stringify(binding, null, 2));
+    return binding;
+  }
+
+  function clearExpiredBindSession() {
+    if (activeBindSession && Date.now() > Date.parse(activeBindSession.expiresAt)) {
+      activeBindSession = {
+        ...activeBindSession,
+        status: "expired"
+      };
+    }
+  }
+
+  function getBindingStatus() {
+    clearExpiredBindSession();
+    const binding = readBinding();
+    return {
+      ok: true,
+      channelId: "wechat-clawbot",
+      bound: Boolean(binding?.bound),
+      binding: binding?.bound ? binding : null,
+      session: activeBindSession,
+      status: binding?.bound ? "bound" : activeBindSession?.status || "idle",
+      localBaseUrl: getLocalBaseUrl(),
+      lanBaseUrl: getLanBaseUrl()
+    };
+  }
+
+  async function startBindSession(options = {}) {
+    await start();
+    const sessionId = `wxbind-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const token = crypto.randomBytes(24).toString("base64url");
+    const now = Date.now();
+    const bindUrl = `${getLanBaseUrl()}/channels/wechat/bind/confirm?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(token)}`;
+    const qrDataUrl = await QRCode.toDataURL(bindUrl, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 260,
+      color: {
+        dark: "#111827",
+        light: "#ffffff"
+      }
+    });
+    activeBindSession = {
+      id: sessionId,
+      token,
+      status: "pending",
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + BIND_TTL_MS).toISOString(),
+      bindUrl,
+      qrDataUrl,
+      instructions: [
+        "在微信中扫描二维码。",
+        "微信打开确认页后会自动绑定当前 Fiitx runtime。",
+        "绑定后微信消息进入 ChannelGateway，再进入 Agent Runtime、Policy、SessionDB 和 Delivery Queue。"
+      ],
+      metadata: {
+        requestedBy: options.requestedBy || "Fiitx Settings",
+        source: "channels-settings"
+      }
+    };
+    return getBindingStatus();
+  }
+
+  function cancelBindSession() {
+    if (activeBindSession && activeBindSession.status === "pending") {
+      activeBindSession = {
+        ...activeBindSession,
+        status: "cancelled"
+      };
+    }
+    return getBindingStatus();
+  }
+
+  function confirmBindSession(url, request) {
+    clearExpiredBindSession();
+    const sessionId = url.searchParams.get("sessionId") || "";
+    const token = url.searchParams.get("token") || "";
+    if (!activeBindSession || activeBindSession.status !== "pending") {
+      return {
+        ok: false,
+        status: "invalid",
+        message: "绑定会话不存在或已过期，请回到 Fiitx 重新开始扫码。"
+      };
+    }
+    if (sessionId !== activeBindSession.id || token !== activeBindSession.token) {
+      return {
+        ok: false,
+        status: "invalid",
+        message: "绑定 token 无效，请回到 Fiitx 重新开始扫码。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    const binding = writeBinding({
+      bound: true,
+      channelId: "wechat-clawbot",
+      accountId: `wechat-local-${sessionId.slice(-8)}`,
+      displayName: "微信 ClawBot",
+      openId: `scan-${sessionId.slice(-8)}`,
+      userAgent: String(request.headers["user-agent"] || ""),
+      boundAt: now,
+      lastSeenAt: now,
+      sessionId,
+      endpoint: getLanBaseUrl()
+    });
+    activeBindSession = {
+      ...activeBindSession,
+      status: "bound",
+      confirmedAt: now,
+      binding
+    };
+    return {
+      ok: true,
+      status: "bound",
+      message: "Fiitx 微信 ClawBot 已绑定。",
+      binding
+    };
+  }
 
   async function handleMessage(request, response) {
     const body = await readRequestBody(request);
@@ -134,6 +317,20 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
       return;
     }
 
+    const payload = channelGateway
+      ? await channelGateway.routeInbound({
+          channelId: "wechat-clawbot",
+          transport: "http",
+          source: "wechat-miniapp-chatbox",
+          inbound
+        })
+      : await routeWechatSkillPrompt(inbound);
+
+    onInboundMessage?.(payload);
+    writeJson(response, 200, payload);
+  }
+
+  async function routeWechatSkillPrompt(inbound) {
     const result = await wechatAiSkillGateway.routePrompt({
       prompt: inbound.text,
       sessionId: inbound.conversationId,
@@ -155,7 +352,7 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
       }
     });
 
-    const payload = {
+    return {
       ok: result.ok,
       channel: {
         id: "wechat-clawbot",
@@ -173,9 +370,6 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
       apiCalls: result.apiCalls || [],
       toolEvents: result.toolEvents || []
     };
-
-    onInboundMessage?.(payload);
-    writeJson(response, 200, payload);
   }
 
   async function handleAction(request, response) {
@@ -234,7 +428,65 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
           ok: true,
           service: "deepsix-wechat-channel",
           channelId: "wechat-clawbot",
-          port: currentPort
+          port: currentPort,
+          gateway: channelGateway ? "Fiitx ChannelGateway" : "WechatAiSkillGateway",
+          binding: getBindingStatus()
+        });
+        return;
+      }
+
+      if (request.method === "GET" && ["/channels/wechat/bind/status", "/wechat/bind/status"].includes(url.pathname)) {
+        writeJson(response, 200, getBindingStatus());
+        return;
+      }
+
+      if (request.method === "GET" && ["/channels/wechat/bind/confirm", "/wechat/bind/confirm"].includes(url.pathname)) {
+        const result = confirmBindSession(url, request);
+        writeHtml(response, result.ok ? 200 : 410, `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiitx 微信 ClawBot 绑定</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #111827; color: #f9fafb; }
+    main { width: min(420px, calc(100vw - 40px)); padding: 32px; border-radius: 20px; background: #1f2937; box-shadow: 0 20px 80px rgba(0,0,0,.35); }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    p { line-height: 1.7; color: #cbd5e1; }
+    .ok { color: #34d399; }
+    .bad { color: #fbbf24; }
+    code { color: #93c5fd; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 class="${result.ok ? "ok" : "bad"}">${escapeHtml(result.ok ? "绑定成功" : "绑定未完成")}</h1>
+    <p>${escapeHtml(result.message)}</p>
+    ${result.ok ? `<p>现在可以回到 Fiitx，微信 ClawBot 会显示为已绑定。</p><p><code>${escapeHtml(result.binding?.endpoint || "")}</code></p>` : "<p>请回到 Fiitx Channels 页面重新开始扫码。</p>"}
+  </main>
+</body>
+</html>`);
+        return;
+      }
+
+      if (request.method === "POST" && ["/channels/wechat/bind/start", "/wechat/bind/start"].includes(url.pathname)) {
+        const body = await readRequestBody(request);
+        writeJson(response, 200, await startBindSession(body));
+        return;
+      }
+
+      if (request.method === "POST" && ["/channels/wechat/bind/cancel", "/wechat/bind/cancel"].includes(url.pathname)) {
+        writeJson(response, 200, cancelBindSession());
+        return;
+      }
+
+      if (request.method === "GET" && ["/channels/wechat/deliveries", "/wechat/deliveries"].includes(url.pathname)) {
+        writeJson(response, 200, {
+          ok: true,
+          deliveries: channelGateway?.listDeliveries?.({
+            channelId: "wechat-clawbot",
+            conversationId: url.searchParams.get("conversationId") || ""
+          }) || []
         });
         return;
       }
@@ -254,8 +506,12 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
         error: "Not found",
         endpoints: [
           "GET /channels/wechat/health",
+          "POST /channels/wechat/bind/start",
+          "GET /channels/wechat/bind/status",
+          "GET /channels/wechat/bind/confirm",
           "POST /channels/wechat/messages",
-          "POST /channels/wechat/actions"
+          "POST /channels/wechat/actions",
+          "GET /channels/wechat/deliveries"
         ]
       });
     } catch (error) {
@@ -300,19 +556,30 @@ function createWechatChannelServer({ wechatAiSkillGateway, port = DEFAULT_PORT, 
   }
 
   function getStatus() {
+    const localBaseUrl = getLocalBaseUrl();
+    const lanBaseUrl = getLanBaseUrl();
     return {
       running: Boolean(server),
       host,
       port: currentPort,
-      baseUrl: `http://${host}:${currentPort}`,
-      messageEndpoint: `http://${host}:${currentPort}/channels/wechat/messages`,
-      actionEndpoint: `http://${host}:${currentPort}/channels/wechat/actions`,
-      healthEndpoint: `http://${host}:${currentPort}/channels/wechat/health`
+      baseUrl: localBaseUrl,
+      lanBaseUrl,
+      messageEndpoint: `${localBaseUrl}/channels/wechat/messages`,
+      actionEndpoint: `${localBaseUrl}/channels/wechat/actions`,
+      healthEndpoint: `${localBaseUrl}/channels/wechat/health`,
+      deliveryEndpoint: `${localBaseUrl}/channels/wechat/deliveries`,
+      bindStartEndpoint: `${localBaseUrl}/channels/wechat/bind/start`,
+      bindStatusEndpoint: `${localBaseUrl}/channels/wechat/bind/status`,
+      bindConfirmEndpoint: `${lanBaseUrl}/channels/wechat/bind/confirm`,
+      binding: getBindingStatus()
     };
   }
 
   return {
+    cancelBindSession,
+    getBindingStatus,
     start,
+    startBindSession,
     stop,
     getStatus
   };

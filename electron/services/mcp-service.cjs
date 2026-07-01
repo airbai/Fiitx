@@ -430,7 +430,7 @@ function createMcpService({ app, configPath } = {}) {
     return connectServer(server);
   }
 
-  async function callTool(serverId, toolName, args = {}) {
+  async function callToolOnce(serverId, toolName, args = {}) {
     const connection = await ensureConnected(serverId);
     const result = await withTimeout(connection.client.callTool({
       name: toolName,
@@ -442,6 +442,39 @@ function createMcpService({ app, configPath } = {}) {
       toolName,
       event: "调用 MCP 工具"
     });
+  }
+
+  function isRetryableMcpCallError(error) {
+    const message = error instanceof Error ? error.message : String(error || "");
+    return /closed|not connected|disconnected|transport|EPIPE|ECONNRESET|timed out|could not determine data type/i.test(message);
+  }
+
+  async function callTool(serverId, toolName, args = {}) {
+    try {
+      return await callToolOnce(serverId, toolName, args);
+    } catch (error) {
+      if (!isRetryableMcpCallError(error)) {
+        throw error;
+      }
+
+      const firstMessage = error instanceof Error ? error.message : String(error || "MCP call failed");
+      await closeServer(sanitizeIdentifier(serverId));
+      try {
+        const result = await callToolOnce(serverId, toolName, args);
+        return {
+          ...result,
+          toolEvent: {
+            ...(result.toolEvent || {}),
+            event: `${result.toolEvent?.event || "调用 MCP 工具"}（已自动重连）`
+          }
+        };
+      } catch (retryError) {
+        if (retryError instanceof Error) {
+          retryError.message = `${retryError.message} (after MCP reconnect; original: ${firstMessage})`;
+        }
+        throw retryError;
+      }
+    }
   }
 
   async function listResources(serverId) {

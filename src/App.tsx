@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import css from "highlight.js/lib/languages/css";
@@ -123,6 +123,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy": "Policy",
     "nav.models": "Model Marketplace",
     "nav.mcp": "MCP",
+    "nav.platform": "Scheduled Tasks",
+    "nav.memory": "Memory",
+    "nav.channels": "Channels",
     "nav.skills": "Skill",
     "nav.about": "General",
     "nav.agents.desc": "Business agents, channels, evals",
@@ -132,6 +135,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy.desc": "Tools, sandbox, default permissions",
     "nav.models.desc": "Providers, profiles, routing",
     "nav.mcp.desc": "External tools and data sources",
+    "nav.platform.desc": "Cron jobs, daemon state, and schedule traces",
+    "nav.memory.desc": "Long-term memory, recall and context injection",
+    "nav.channels.desc": "IM, WeChat and IDE control channels",
     "nav.skills.desc": "Task capability extensions",
     "nav.about.desc": "Language, version, local state",
     "about.eyebrow": "General",
@@ -188,6 +194,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy": "策略",
     "nav.models": "模型广场",
     "nav.mcp": "MCP",
+    "nav.platform": "定时任务",
+    "nav.memory": "Memory",
+    "nav.channels": "Channels",
     "nav.skills": "Skill",
     "nav.about": "General",
     "nav.agents.desc": "业务 Agent、通道、评测",
@@ -197,6 +206,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy.desc": "工具、沙箱、默认权限",
     "nav.models.desc": "Provider、Profile、路由",
     "nav.mcp.desc": "外部工具与数据源",
+    "nav.platform.desc": "Cron 任务、调度状态与执行记录",
+    "nav.memory.desc": "长期记忆、召回与上下文注入",
+    "nav.channels.desc": "IM、微信与 IDE 控制通道",
     "nav.skills.desc": "任务能力扩展",
     "nav.about.desc": "语言、版本与本机信息",
     "about.eyebrow": "General",
@@ -253,6 +265,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy": "策略",
     "nav.models": "模型廣場",
     "nav.mcp": "MCP",
+    "nav.platform": "定時任務",
+    "nav.memory": "Memory",
+    "nav.channels": "Channels",
     "nav.skills": "Skill",
     "nav.about": "General",
     "nav.agents.desc": "業務 Agent、通道、評測",
@@ -262,6 +277,9 @@ const i18n: Record<UiLocale, Record<string, string>> = {
     "nav.policy.desc": "工具、沙箱、預設權限",
     "nav.models.desc": "Provider、Profile、路由",
     "nav.mcp.desc": "外部工具與資料來源",
+    "nav.platform.desc": "Cron 任務、調度狀態與執行紀錄",
+    "nav.memory.desc": "長期記憶、召回與上下文注入",
+    "nav.channels.desc": "IM、微信與 IDE 控制通道",
     "nav.skills.desc": "任務能力擴充",
     "nav.about.desc": "語言、版本與本機資訊",
     "about.eyebrow": "General",
@@ -352,7 +370,7 @@ hljs.registerLanguage("html", xml);
 hljs.registerLanguage("wxml", xml);
 
 type View = "workbench" | "settings";
-type SettingsPage = "agents" | "approvals" | "history" | "audit" | "policy" | "models" | "about" | "mcp" | "skills";
+type SettingsPage = "about" | "platform" | "memory" | "agents" | "approvals" | "history" | "audit" | "policy" | "models" | "mcp" | "skills" | "channels";
 type ThreadStatus = "running" | "waiting" | "done";
 type ApprovalStatus = "pending" | "approved" | "denied";
 type ArtifactId = "report" | "ppt" | "diff" | "image";
@@ -450,7 +468,7 @@ type AgentStage = {
 type ChannelAdapterSpec = {
   id: string;
   name: string;
-  channelType: "desktop-ui" | "wechat-miniprogram-ai";
+  channelType: "desktop-ui" | "wechat-miniprogram-ai" | "vscode-extension";
   description: string;
   transport: string;
   entrypoint: string;
@@ -465,6 +483,18 @@ type ChannelAdapterSpec = {
   sampleEvent: string;
 };
 
+type RuntimeChannel = ChannelAdapterSpec & {
+  runtimeStatus?: string;
+  configured?: boolean;
+  endpoints?: string[];
+  requirements?: string[];
+  warnings?: string[];
+  docs?: string[];
+  packageStatus?: unknown;
+  configuredAdapter?: ChannelAdapterSpec | null;
+  binding?: FiitxWechatBindStatus;
+};
+
 type ModelForm = {
   provider: string;
   model: string;
@@ -475,6 +505,9 @@ type ModelForm = {
   supportsVision: boolean;
   supportsStreaming: boolean;
   supportsJsonMode: boolean;
+  inputModalities: string[];
+  outputModalities: string[];
+  capabilities: NonNullable<FiitxModelPayload["capabilities"]>;
   bestFor: string[];
   toolCallStyle: string;
 };
@@ -571,6 +604,8 @@ const settingsNavGroups: SettingsNavGroup[] = [
     title: "Settings",
     items: [
       { id: "about", label: "General", description: "语言、版本与本机信息", icon: Info },
+      { id: "platform", label: "定时任务", description: "Cron 任务、调度状态、执行记录", icon: Workflow },
+      { id: "memory", label: "Memory", description: "长期记忆、召回、上下文注入", icon: FileText },
       { id: "agents", label: "Agent", description: "业务 Agent、通道、评测", icon: Bot },
       { id: "approvals", label: "审批", description: "权限队列与放行", icon: ClipboardCheck },
       { id: "history", label: "历史", description: "Trace、版本、复盘", icon: GitBranch },
@@ -578,6 +613,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
       { id: "policy", label: "策略", description: "工具、沙箱、默认权限", icon: ShieldCheck },
       { id: "models", label: "模型广场", description: "Provider、Profile、路由", icon: Brain },
       { id: "mcp", label: "MCP", description: "外部工具与数据源", icon: Database },
+      { id: "channels", label: "Channels", description: "IM、微信、IDE 通道", icon: MessageSquare },
       { id: "skills", label: "Skill", description: "任务能力扩展", icon: Store }
     ]
   }
@@ -937,6 +973,52 @@ const defaultChannelAdapters: ChannelAdapterSpec[] = [
   "eventType": "message",
   "replyStyle": "wechat-mini-program"
 }`
+  },
+  {
+    id: "wechat-ilink",
+    name: "Weixin iLink Adapter",
+    channelType: "wechat-miniprogram-ai",
+    description: "基于 vercel/chat + chat-adapter-weixin 的微信 iLink 长轮询通道。配置凭据后可通过 IM 控制本机 Fiitx。",
+    transport: "vercel/chat + chat-adapter-weixin",
+    entrypoint: "Weixin iLink long polling -> Fiitx Agent Runtime",
+    sessionKeyStrategy: "threadId + chat adapter conversation",
+    status: "draft",
+    capabilities: ["chat-sdk-adapter", "im-control", "long-polling", "thread-state", "followUp"],
+    contextSources: ["Weixin iLink message", "conversation state", "sender identity"],
+    outputModes: ["chat response", "compact mobile reply", "agent action summary"],
+    followUpPolicy: "沿用 Chat SDK thread/conversation state，外部 IM 继续追问进入同一 Fiitx thread。",
+    agentBindings: ["guest-service", "complaint-recovery", "concierge-trip", "marketing-content", "hotel-orchestrator"],
+    systemPrompt: "这是 Weixin iLink 通道。回答必须适合 IM 短消息；需要操作本机文件、Shell、MCP 或敏感资源时必须走 Fiitx Policy Gate。",
+    sampleEvent: `{
+  "channelId": "wechat-ilink",
+  "conversationId": "ilink-conv-001",
+  "messageId": "ilink-msg-001",
+  "senderId": "weixin-user",
+  "eventType": "message",
+  "replyStyle": "im-compact"
+}`
+  },
+  {
+    id: "vscode-deepsix",
+    name: "VS Code Fiitx",
+    channelType: "vscode-extension",
+    description: "VS Code Extension 通道，用于代码上下文、inline diff、文件写入确认和 IDE 内协作。",
+    transport: "HTTP / localhost",
+    entrypoint: "VS Code extension -> Fiitx channel server",
+    sessionKeyStrategy: "workspaceRoot + clientId + threadId",
+    status: "active",
+    capabilities: ["inline-diff", "code-context", "file-write", "diff-accept", "diff-reject", "workspace-query"],
+    contextSources: ["activeFile", "selection", "openFiles", "diagnostics", "workspaceRoot"],
+    outputModes: ["inline-diff-preview", "vscode-notification", "status-bar"],
+    followUpPolicy: "绑定 workspaceRoot + threadId，通过 diffId 追踪文件变更确认。",
+    agentBindings: ["coding-agent", "research-agent", "chat-agent"],
+    systemPrompt: "这是 VS Code Extension 通道。直接操作 VS Code 工作区文件，使用内联 Diff 预览展示变更，用户确认后才写入。",
+    sampleEvent: `{
+  "channelId": "vscode-deepsix",
+  "workspaceRoot": "/path/to/workspace",
+  "activeFilePath": "src/App.tsx",
+  "eventType": "context"
+}`
   }
 ];
 
@@ -990,6 +1072,18 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["coding", "research", "cheap"]
   },
   MiniMax: {
@@ -997,6 +1091,18 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["writing", "research", "long-context"]
   },
   Kimi: {
@@ -1004,6 +1110,18 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["research", "writing", "long-context"]
   },
   "清华智谱 GLM": {
@@ -1011,6 +1129,18 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["research", "writing", "cheap"]
   },
   OpenRouter: {
@@ -1018,14 +1148,38 @@ const providerCapabilityDefaults: Record<string, Partial<ModelForm>> = {
     supportsVision: true,
     supportsStreaming: true,
     supportsJsonMode: true,
-    bestFor: ["coding", "research", "vision", "image", "video", "long-context"]
+    inputModalities: ["text", "image"],
+    outputModalities: ["text", "video"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: true,
+      imageGeneration: false,
+      videoGeneration: true,
+      audioGeneration: false
+    },
+    bestFor: ["coding", "research", "vision", "video", "long-context"]
   },
   "硅基流动": {
     supportsTools: true,
-    supportsVision: true,
+    supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
-    bestFor: ["coding", "research", "vision", "image", "cheap"]
+    inputModalities: ["text"],
+    outputModalities: ["text", "image", "video", "audio"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: true,
+      videoGeneration: true,
+      audioGeneration: true
+    },
+    bestFor: ["coding", "research", "cheap"]
   }
 };
 
@@ -1129,7 +1283,31 @@ function inferModelFromText(text: string) {
 }
 
 function inferBaseUrlFromText(text: string) {
-  return text.match(/https?:\/\/[^\s"'，。；;]+/i)?.[0] ?? "";
+  const explicitBaseUrl = text.match(/(?:base\s*url|baseurl|接口地址|api\s*地址)\s*(?:是|=|:|：)?\s*(https?:\/\/[^\s"'，。；;]+)/i)?.[1];
+  if (explicitBaseUrl) {
+    return explicitBaseUrl;
+  }
+
+  const candidate = text.match(/https?:\/\/[^\s"'，。；;]+/i)?.[0] ?? "";
+  return looksLikeModelApiBaseUrl(candidate) ? candidate : "";
+}
+
+function looksLikeModelApiBaseUrl(value: string) {
+  if (!value) {
+    return false;
+  }
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+    return (
+      host.startsWith("api.") ||
+      /(openrouter|deepseek|siliconflow|minimax|moonshot|bigmodel|dashscope|volces|openai|anthropic|gemini)/i.test(host) ||
+      /(^|\/)(v1|api|paas\/v4|chat\/completions|responses)(\/|$)/i.test(pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function buildModelPayloadFromChat(text: string, recentMessages: Message[]): ChatModelConfigIntent {
@@ -1171,7 +1349,8 @@ function buildModelPayloadFromChat(text: string, recentMessages: Message[]): Cha
 function hasExplicitModelConfigSignal(text: string) {
   return Boolean(
     text.match(apiKeyPattern)?.[0] ||
-      /(api\s*key|apikey|密钥|key|模型配置|配置模型|保存.*模型|保存.*key|profile|provider|base\s*url|baseurl|模型中心|这是.*key|这个.*key)/i.test(text)
+      /(api\s*key|apikey|密钥|模型配置|配置模型|保存.*模型|保存.*key|profile|base\s*url|baseurl|模型中心|这是.*key|这个.*key)/i.test(text) ||
+      /\bprovider\s*(?:是|=|:|：)/i.test(text)
   );
 }
 
@@ -1182,7 +1361,7 @@ function looksLikeBareModelConfigValue(text: string) {
   }
   return Boolean(
     trimmed.match(apiKeyPattern)?.[0] ||
-      /^https?:\/\/[^\s]+$/i.test(trimmed) ||
+      (/^https?:\/\/[^\s]+$/i.test(trimmed) && looksLikeModelApiBaseUrl(trimmed)) ||
       inferProviderFromText(trimmed) ||
       inferModelFromText(trimmed).model
   );
@@ -1204,6 +1383,18 @@ const defaultProfiles: FiitxModelProfile[] = [
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["coding", "research", "cheap"],
     toolCallStyle: "openai",
     updatedAt: "default"
@@ -1219,6 +1410,18 @@ const defaultProfiles: FiitxModelProfile[] = [
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["writing", "research", "long-context"],
     toolCallStyle: "openai",
     updatedAt: "default"
@@ -1232,7 +1435,13 @@ const artifactTabs: Array<{ id: ArtifactId; label: string; icon: LucideIcon }> =
   { id: "image", label: "预览", icon: Image }
 ];
 
-const bestForOptions = ["coding", "research", "writing", "ppt", "vision", "image", "video", "audio", "cheap", "long-context"];
+const bestForOptions = ["coding", "research", "writing", "ppt", "cheap", "long-context"];
+const outputModalityOptions = [
+  { id: "text", label: "Text output", capability: "chat" },
+  { id: "image", label: "Image generation", capability: "imageGeneration" },
+  { id: "video", label: "Video generation", capability: "videoGeneration" },
+  { id: "audio", label: "Audio generation", capability: "audioGeneration" }
+] as const;
 
 const permissionOptions: Array<{ id: PermissionMode; label: string; auditLabel: string }> = [
   { id: "ask", label: "请求批准", auditLabel: "请求用户批准" },
@@ -1310,6 +1519,12 @@ function timeNow() {
   }).format(new Date());
 }
 
+function isImeComposing(event: ReactKeyboardEvent<HTMLElement>) {
+  const reactEvent = event as ReactKeyboardEvent<HTMLElement> & { isComposing?: boolean };
+  const nativeEvent = event.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+  return Boolean(reactEvent.isComposing || nativeEvent.isComposing || nativeEvent.keyCode === 229);
+}
+
 function riskLabel(risk: Approval["risk"]) {
   return risk === "high" ? "高风险" : risk === "medium" ? "中风险" : "低风险";
 }
@@ -1348,7 +1563,10 @@ function profileSummary(profile: FiitxModelProfile) {
     profile.supportsTools ? "tools" : "",
     profile.supportsVision ? "vision" : "",
     profile.supportsStreaming ? "streaming" : "",
-    profile.supportsJsonMode ? "json" : ""
+    profile.supportsJsonMode ? "json" : "",
+    profile.outputModalities?.includes("image") ? "image-gen" : "",
+    profile.outputModalities?.includes("video") ? "video-gen" : "",
+    profile.outputModalities?.includes("audio") ? "audio-gen" : ""
   ].filter(Boolean);
   return flags.join(" / ");
 }
@@ -1431,6 +1649,33 @@ export default function App() {
   const [channelAdapters, setChannelAdapters] = useState<ChannelAdapterSpec[]>(defaultChannelAdapters);
   const [selectedChannelAdapterId, setSelectedChannelAdapterId] = useState(defaultChannelAdapters[0]?.id ?? "");
   const [activeChannelAdapterId, setActiveChannelAdapterId] = useState(defaultChannelAdapters[0]?.id ?? "");
+  const [runtimeChannels, setRuntimeChannels] = useState<RuntimeChannel[]>([]);
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [channelStatusMessage, setChannelStatusMessage] = useState("");
+  const [wechatBindStatus, setWechatBindStatus] = useState<FiitxWechatBindStatus | null>(null);
+  const [wechatBindLoading, setWechatBindLoading] = useState(false);
+  const [platformSnapshot, setPlatformSnapshot] = useState<FiitxPlatformSnapshot | null>(null);
+  const [platformLoading, setPlatformLoading] = useState(false);
+  const [platformStatusMessage, setPlatformStatusMessage] = useState("");
+  const [memorySnapshot, setMemorySnapshot] = useState<FiitxMemorySnapshot | null>(null);
+  const [memoryEntries, setMemoryEntries] = useState<FiitxMemoryEntry[]>([]);
+  const [memoryQuery, setMemoryQuery] = useState("");
+  const [memoryDraft, setMemoryDraft] = useState("");
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memoryStatusMessage, setMemoryStatusMessage] = useState("");
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
+  const [sessionSearchResults, setSessionSearchResults] = useState<FiitxSessionSearchResult[]>([]);
+  const [editingCronId, setEditingCronId] = useState("");
+  const [runningCronJobId, setRunningCronJobId] = useState("");
+  const [cronDraft, setCronDraft] = useState<FiitxCronJobPayload>({
+    name: "",
+    prompt: "",
+    everyMinutes: 60,
+    enabled: true,
+    channelId: "daemon-cron",
+    model: AUTO_MODEL
+  });
+  const [profileIsolationText, setProfileIsolationText] = useState("");
   const [lastAgentArtifact, setLastAgentArtifact] = useState<FileArtifact | null>(null);
   const [executionArtifacts, setExecutionArtifacts] = useState<FileArtifact[]>([]);
   const [executionExpanded, setExecutionExpanded] = useState(false);
@@ -1439,6 +1684,7 @@ export default function App() {
   const [statusNow, setStatusNow] = useState(Date.now());
   const [threadRecords, setThreadRecords] = useState<Record<string, ThreadRecord>>({});
   const [pathInfoMap, setPathInfoMap] = useState<Record<string, PathInfo>>({});
+  const [mediaDataUrlMap, setMediaDataUrlMap] = useState<Record<string, string>>({});
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectFoldersState, setProjectFoldersState] = useState(projectFolders);
   const [rootThreadIds, setRootThreadIds] = useState<string[]>([]);
@@ -1474,6 +1720,18 @@ export default function App() {
     supportsVision: false,
     supportsStreaming: true,
     supportsJsonMode: true,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    capabilities: {
+      chat: true,
+      tools: true,
+      streaming: true,
+      jsonMode: true,
+      imageInput: false,
+      imageGeneration: false,
+      videoGeneration: false,
+      audioGeneration: false
+    },
     bestFor: ["coding", "research", "cheap"],
     toolCallStyle: "openai"
   });
@@ -1837,6 +2095,56 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = window.fiitx?.onAgentProgress?.((event) => {
       const targetThreadId = event.threadId || activeThreadId;
+      const eventRecord = event as FiitxAgentProgress & Record<string, unknown>;
+      const cronJobId = typeof eventRecord.cronJobId === "string" ? eventRecord.cronJobId : "";
+      const eventIsTerminal = event.status === "finished" || event.status === "error";
+      if (cronJobId) {
+        setPlatformSnapshot((current) => {
+          if (!current?.cronJobs?.length) {
+            return current;
+          }
+          let changed = false;
+          const nowTime = event.time || new Date().toISOString();
+          const nextJobs = current.cronJobs.map((job) => {
+            if (!isRecord(job) || pickString(job, ["id"], "") !== cronJobId) {
+              return job;
+            }
+            changed = true;
+            return {
+              ...job,
+              lastRunAt: nowTime,
+              lastStatus: event.status === "error" ? "error" : eventIsTerminal ? "success" : "running",
+              lastSummary: event.detail || event.title || pickString(job, ["lastSummary"], ""),
+              updatedAt: nowTime
+            };
+          });
+          return changed ? { ...current, cronJobs: nextJobs } : current;
+        });
+        if (eventIsTerminal) {
+          window.setTimeout(() => void loadPlatformSnapshot(false, true), 350);
+        }
+      }
+      const eventThreadTitle = typeof eventRecord.threadTitle === "string" ? eventRecord.threadTitle : "";
+      if (targetThreadId && eventThreadTitle) {
+        setThreads((current) => {
+          if (current.some((thread) => thread.id === targetThreadId)) {
+            return current;
+          }
+          const nextThread: Thread = {
+            id: targetThreadId,
+            title: eventThreadTitle,
+            kind: typeof eventRecord.threadKind === "string" ? eventRecord.threadKind : "Cron",
+            model: typeof eventRecord.threadModel === "string" ? eventRecord.threadModel : "auto",
+            status: "running",
+            updatedAt: "刚刚",
+            createdAt: Date.now(),
+            workspacePath: typeof eventRecord.threadWorkspacePath === "string" ? eventRecord.threadWorkspacePath : workspacePath,
+            projectFolderId: null
+          };
+          return [nextThread, ...current];
+        });
+        setRootThreadIds((current) => [targetThreadId, ...current.filter((id) => id !== targetThreadId)]);
+      }
       if (targetThreadId === activeThreadId) {
         setAgentProgressEvents((current) => current.concat(event).slice(-64));
         setMessages((current) => applyAgentStreamEventToMessages(current, event));
@@ -1849,7 +2157,7 @@ export default function App() {
     });
 
     return () => unsubscribe?.();
-  }, [activeThreadId]);
+  }, [activeThreadId, workspacePath]);
 
   useEffect(() => {
     const unsubscribe = window.fiitx?.onWechatChannelInbound?.((event) => {
@@ -1857,6 +2165,8 @@ export default function App() {
       const threadId = `thread-wechat-${pathSlug(conversationId).slice(0, 80) || "local"}`;
       const existingThread = threads.find((thread) => thread.id === threadId);
       const receivedAt = timeNow();
+      const approvalRequests = Array.isArray(event.approvalRequests) ? event.approvalRequests : [];
+      const hasPendingApproval = approvalRequests.length > 0;
       const card = event.reply?.primaryCard as Record<string, unknown> | undefined;
       const cardTitle = String(card?.title || card?.apiName || "微信卡片");
       const artifact: FileArtifact | null = card
@@ -1876,7 +2186,7 @@ export default function App() {
         title: buildFallbackTaskTitle(event.inbound?.text || "微信客户消息"),
         kind: "微信 ClawBot",
         model: "fiitx-gateway",
-        status: "done",
+        status: hasPendingApproval ? "waiting" : "done",
         updatedAt: "刚刚",
         createdAt: Date.now(),
         workspacePath,
@@ -1889,7 +2199,7 @@ export default function App() {
           {
             ...nextThread,
             title: nextThread.title || buildFallbackTaskTitle(event.inbound?.text || "微信客户消息"),
-            status: "done",
+            status: hasPendingApproval ? "waiting" : "done",
             updatedAt: "刚刚"
           },
           ...withoutThread
@@ -1933,11 +2243,20 @@ export default function App() {
         selectFileArtifact(artifact, { openPanel: false });
       }
 
+      if (hasPendingApproval && event.approvalResumePayload) {
+        appendApprovalRequests(approvalRequests, {
+          ...event.approvalResumePayload,
+          threadId,
+          permissionMode: "auto",
+          channelId: event.approvalResumePayload.channelId || event.channel?.id || "wechat-clawbot"
+        });
+      }
+
       recordAgentProgress(
         `wechat-channel-${event.inbound?.messageId || Date.now()}`,
         "微信 Channel",
-        artifact ? `已返回 ${artifact.title}` : event.reply?.text || "已处理微信消息",
-        event.ok ? "success" : "warn",
+        hasPendingApproval ? "等待审批：微信 Channel 请求放行工具调用" : artifact ? `已返回 ${artifact.title}` : event.reply?.text || "已处理微信消息",
+        hasPendingApproval ? "warn" : event.ok ? "success" : "warn",
         threadId,
         true
       );
@@ -1988,6 +2307,44 @@ export default function App() {
       void loadSkillManagement();
     }
   }, [activeView, activeSettingsPage, mcpConfig, mcpLoading, installedSkills.length, skillCatalog.length, skillLoading]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "memory" || memoryLoading || memoryEntries.length > 0) {
+      return;
+    }
+    void loadMemoryManagement();
+  }, [activeView, activeSettingsPage, memoryLoading, memoryEntries.length]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "channels" || runtimeChannels.length > 0 || channelLoading) {
+      return;
+    }
+    void loadChannelManagement();
+  }, [activeView, activeSettingsPage, runtimeChannels.length, channelLoading]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "channels") {
+      return;
+    }
+    void refreshWechatBindStatus(false);
+  }, [activeView, activeSettingsPage]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "channels" || wechatBindStatus?.status !== "pending") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void refreshWechatBindStatus(false);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, [activeView, activeSettingsPage, wechatBindStatus?.status]);
+
+  useEffect(() => {
+    if (activeView !== "settings" || activeSettingsPage !== "platform" || platformSnapshot || platformLoading) {
+      return;
+    }
+    void loadPlatformSnapshot(false);
+  }, [activeView, activeSettingsPage, platformSnapshot, platformLoading]);
 
   useEffect(() => {
     if (activeView !== "settings" || activeSettingsPage !== "history" || historySnapshot || historyLoading) {
@@ -2487,11 +2844,22 @@ export default function App() {
     return getMediaKindFromExtension(extension);
   }
 
-  function getFileUrl(path: string) {
-    if (/^(data|https?|file):/i.test(path)) {
-      return path;
+  function getFileUrl(filePath: string, basePath = getActiveWorkspaceRoot()) {
+    const normalizedPath = String(filePath || "").trim();
+    if (/^(data|https?|file):/i.test(normalizedPath)) {
+      return normalizedPath;
     }
-    return encodeURI(`file://${path}`);
+    if (!normalizedPath) {
+      return "";
+    }
+    const normalizedBase = String(basePath || "").replace(/\\/g, "/").replace(/\/+$/g, "");
+    const normalizedTarget = normalizedPath.replace(/\\/g, "/");
+    const absolutePath = normalizedTarget.startsWith("/")
+      ? normalizedTarget
+      : normalizedBase
+        ? `${normalizedBase}/${normalizedTarget.replace(/^\.{1,2}\//, "").replace(/^\/+/, "")}`
+        : normalizedTarget;
+    return encodeURI(`file://${absolutePath}`);
   }
 
   function getArtifactIdForFile(file: FileArtifact): ArtifactId {
@@ -2581,6 +2949,40 @@ export default function App() {
     }
     return target.slice(root.length + 1);
   }
+
+  useEffect(() => {
+    const file = selectedFile;
+    const filePath = file?.path || "";
+    if (!file || !filePath || activeArtifact !== "image") {
+      return;
+    }
+
+    const extension = getArtifactExtension(file);
+    if (getMediaKindFromExtension(extension) !== "image" || /^(data|https?):/i.test(filePath)) {
+      return;
+    }
+    if (mediaDataUrlMap[filePath]) {
+      return;
+    }
+
+    let cancelled = false;
+    window.fiitx?.getMediaDataUrl?.(filePath, getActiveWorkspaceRoot())
+      .then((result) => {
+        if (!cancelled && result?.dataUrl) {
+          setMediaDataUrlMap((current) => ({
+            ...current,
+            [filePath]: result.dataUrl
+          }));
+        }
+      })
+      .catch(() => {
+        // Keep the file:// fallback if the image cannot be read as an inline preview.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArtifact, selectedFile?.path, selectedFile?.language, workspacePath, activeThread.workspacePath, mediaDataUrlMap]);
 
   async function inspectMessagePath(path: string) {
     const cached = pathInfoMap[path];
@@ -3730,16 +4132,38 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   async function addAttachments() {
     const result = await window.fiitx?.chooseFiles();
     const selectedFiles = result && !result.canceled ? result.filePaths : [];
-    appendAttachments(selectedFiles, "选择附件");
+    await appendAttachments(selectedFiles, "选择附件");
   }
 
-  function appendAttachments(paths: string[], source = "添加附件") {
-    const nextFiles = paths.map((path) => path.trim()).filter(Boolean);
+  async function importAttachmentPath(sourcePath: string) {
+    const cleanPath = sourcePath.trim();
+    if (!cleanPath) {
+      return "";
+    }
+    if (!window.fiitx?.importAttachment) {
+      return cleanPath;
+    }
+    const result = await window.fiitx.importAttachment({
+      sourcePath: cleanPath,
+      workspacePath
+    });
+    if (!result?.ok || !result.path) {
+      throw new Error(`附件导入失败：${cleanPath}`);
+    }
+    return result.path;
+  }
+
+  async function appendAttachments(paths: string[], source = "添加附件") {
+    const candidateFiles = paths.map((path) => path.trim()).filter(Boolean);
+    if (candidateFiles.length === 0) {
+      return;
+    }
+    const nextFiles = (await Promise.all(candidateFiles.map((path) => importAttachmentPath(path)))).filter(Boolean);
     if (nextFiles.length === 0) {
       return;
     }
     setAttachments((current) => Array.from(new Set(current.concat(nextFiles))));
-    addAudit("Composer", source, `${nextFiles.length} file(s)`, "info");
+    addAudit("Composer", source, `已导入 ${nextFiles.length} file(s) 到 workspace 附件区`, "info");
   }
 
   function getPastedAttachmentName(file: File, index: number) {
@@ -3753,13 +4177,14 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   async function saveClipboardFile(file: File, index: number) {
     const localPath = (file as File & { path?: string }).path;
     if (localPath) {
-      return localPath;
+      return importAttachmentPath(localPath);
     }
     const buffer = await file.arrayBuffer();
     const result = await window.fiitx?.savePastedAttachment?.({
       name: getPastedAttachmentName(file, index),
       mimeType: file.type,
-      buffer
+      buffer,
+      workspacePath
     });
     if (!result?.ok || !result.path) {
       throw new Error("剪贴板附件保存失败");
@@ -3776,7 +4201,11 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     event.preventDefault();
     try {
       const pastedPaths = await Promise.all(clipboardFiles.map((file, index) => saveClipboardFile(file, index)));
-      appendAttachments(pastedPaths, "粘贴附件");
+      const nextFiles = pastedPaths.map((path) => path.trim()).filter(Boolean);
+      if (nextFiles.length > 0) {
+        setAttachments((current) => Array.from(new Set(current.concat(nextFiles))));
+        addAudit("Composer", "粘贴附件", `已导入 ${nextFiles.length} file(s) 到 workspace 附件区`, "info");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "粘贴附件失败";
       addAudit("Composer", "粘贴附件失败", message, "warn");
@@ -4228,6 +4657,477 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     }
   }
 
+  async function loadChannelManagement() {
+    if (channelLoading) {
+      return;
+    }
+    setChannelLoading(true);
+    try {
+      const channels = await window.fiitx?.listChannels?.({ adapters: channelAdapters });
+      setRuntimeChannels((channels || []) as RuntimeChannel[]);
+      setChannelStatusMessage(`已加载 ${channels?.length || 0} 个 Channel`);
+    } catch (error) {
+      setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChannelLoading(false);
+    }
+  }
+
+  async function refreshWechatBindStatus(showMessage = true) {
+    try {
+      const status = await window.fiitx?.getWechatChannelBindStatus?.();
+      setWechatBindStatus(status || null);
+      if (status?.bound) {
+        const channels = await window.fiitx?.listChannels?.({ adapters: channelAdapters });
+        setRuntimeChannels((channels || []) as RuntimeChannel[]);
+        if (showMessage) {
+          setChannelStatusMessage("微信 ClawBot 已绑定。");
+        }
+      }
+      if (showMessage && status && !status.bound) {
+        setChannelStatusMessage(status.status === "pending" ? "等待微信扫码确认。" : "微信 ClawBot 尚未绑定。");
+      }
+    } catch (error) {
+      if (showMessage) {
+        setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
+  async function startWechatBindFlow() {
+    if (wechatBindLoading) {
+      return;
+    }
+    setWechatBindLoading(true);
+    try {
+      const status = await window.fiitx?.startWechatChannelBind?.({ requestedBy: "channels-settings" });
+      setWechatBindStatus(status || null);
+      const channels = await window.fiitx?.listChannels?.({ adapters: channelAdapters });
+      setRuntimeChannels((channels || []) as RuntimeChannel[]);
+      setSelectedChannelAdapterId("wechat-clawbot");
+      setChannelStatusMessage("已生成微信 ClawBot 绑定二维码，请用微信扫码。");
+    } catch (error) {
+      setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWechatBindLoading(false);
+    }
+  }
+
+  async function cancelWechatBindFlow() {
+    if (wechatBindLoading) {
+      return;
+    }
+    setWechatBindLoading(true);
+    try {
+      const status = await window.fiitx?.cancelWechatChannelBind?.();
+      setWechatBindStatus(status || null);
+      setChannelStatusMessage("已取消微信 ClawBot 绑定。");
+    } catch (error) {
+      setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWechatBindLoading(false);
+    }
+  }
+
+  async function startWeixinIlinkChannel() {
+    setChannelLoading(true);
+    try {
+      await window.fiitx?.startWeixinIlink?.();
+      const channels = await window.fiitx?.listChannels?.({ adapters: channelAdapters });
+      setRuntimeChannels((channels || []) as RuntimeChannel[]);
+      setChannelStatusMessage("Weixin iLink Channel 已请求启动。");
+    } catch (error) {
+      setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChannelLoading(false);
+    }
+  }
+
+  async function stopWeixinIlinkChannel() {
+    setChannelLoading(true);
+    try {
+      await window.fiitx?.stopWeixinIlink?.();
+      const channels = await window.fiitx?.listChannels?.({ adapters: channelAdapters });
+      setRuntimeChannels((channels || []) as RuntimeChannel[]);
+      setChannelStatusMessage("Weixin iLink Channel 已停止。");
+    } catch (error) {
+      setChannelStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setChannelLoading(false);
+    }
+  }
+
+  async function loadMemoryManagement(showMessage = true) {
+    setMemoryLoading(true);
+    try {
+      const [snapshot, entries] = await Promise.all([
+        window.fiitx?.getMemorySnapshot?.(),
+        window.fiitx?.listMemory?.({ limit: 120 })
+      ]);
+      setMemorySnapshot(snapshot || null);
+      setMemoryEntries(entries || []);
+      if (showMessage) {
+        setMemoryStatusMessage(`已加载 ${entries?.length || 0} 条长期记忆`);
+      }
+    } catch (error) {
+      setMemoryStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  async function searchMemory() {
+    setMemoryLoading(true);
+    try {
+      const results = memoryQuery.trim()
+        ? await window.fiitx?.recallMemory?.({
+            query: memoryQuery,
+            workspacePath,
+            channelId: activeChannelAdapterId,
+            threadId: activeThreadId,
+            limit: 50
+          })
+        : await window.fiitx?.listMemory?.({ limit: 120 });
+      setMemoryEntries(results || []);
+      setMemoryStatusMessage(`Memory 搜索返回 ${results?.length || 0} 条结果`);
+    } catch (error) {
+      setMemoryStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  async function rememberMemoryDraft() {
+    if (!memoryDraft.trim()) {
+      setMemoryStatusMessage("记忆内容不能为空");
+      return;
+    }
+    setMemoryLoading(true);
+    try {
+      await window.fiitx?.rememberMemory?.({
+        text: memoryDraft.trim(),
+        workspacePath,
+        channelId: activeChannelAdapterId,
+        threadId: activeThreadId,
+        source: "settings-manual",
+        confidence: 0.9
+      });
+      setMemoryDraft("");
+      await loadMemoryManagement(false);
+      setMemoryStatusMessage("长期记忆已保存");
+    } catch (error) {
+      setMemoryStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  async function extractMemoryFromCurrentThread() {
+    setMemoryLoading(true);
+    try {
+      const entries = await window.fiitx?.extractThreadMemory?.({
+        threadId: activeThreadId,
+        workspacePath,
+        channelId: activeChannelAdapterId,
+        limit: 20
+      });
+      await loadMemoryManagement(false);
+      setMemoryStatusMessage(`已从当前线程提取 ${entries?.length || 0} 条记忆`);
+    } catch (error) {
+      setMemoryStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  async function removeMemoryEntry(id: string) {
+    setMemoryLoading(true);
+    try {
+      await window.fiitx?.removeMemory?.({ id });
+      setMemoryEntries((current) => current.filter((entry) => entry.id !== id));
+      const snapshot = await window.fiitx?.getMemorySnapshot?.();
+      setMemorySnapshot(snapshot || null);
+      setMemoryStatusMessage("长期记忆已删除");
+    } catch (error) {
+      setMemoryStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryLoading(false);
+    }
+  }
+
+  function resetCronDraft() {
+    setEditingCronId("");
+    setCronDraft({
+      name: "",
+      prompt: "",
+      everyMinutes: 60,
+      enabled: true,
+      channelId: "daemon-cron",
+      model: AUTO_MODEL,
+      workspacePath: "",
+      permissionMode: "auto"
+    });
+  }
+
+  function editCronJob(job: unknown) {
+    if (!isRecord(job)) {
+      return;
+    }
+    const id = pickString(job, ["id"], "");
+    if (!id) {
+      return;
+    }
+    const permission = pickString(job, ["permissionMode"], "auto");
+    setEditingCronId(id);
+    setCronDraft({
+      id,
+      name: pickString(job, ["name"], ""),
+      prompt: pickString(job, ["prompt"], ""),
+      everyMinutes: Math.max(1, Number(job.everyMinutes || 60)),
+      enabled: job.enabled !== false,
+      channelId: pickString(job, ["channelId"], "daemon-cron") || "daemon-cron",
+      model: pickString(job, ["model"], AUTO_MODEL) || AUTO_MODEL,
+      workspacePath: pickString(job, ["workspacePath"], ""),
+      permissionMode: (["ask", "auto", "full"].includes(permission) ? permission : "auto") as PermissionMode,
+      nextRunAt: pickString(job, ["nextRunAt"], "") || undefined
+    });
+    setPlatformStatusMessage(`正在编辑：${pickString(job, ["name"], id)}`);
+  }
+
+  async function loadPlatformSnapshot(showMessage = true, force = false) {
+    if (platformLoading && !force) {
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      const snapshot = await window.fiitx?.getAgentPlatformSnapshot?.();
+      setPlatformSnapshot(snapshot || null);
+      setProfileIsolationText(JSON.stringify(snapshot?.profileIsolation || {}, null, 2));
+      if (showMessage) {
+        setPlatformStatusMessage("Platform 状态已刷新");
+      }
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function startAgentDaemon() {
+    setPlatformLoading(true);
+    try {
+      const snapshot = await window.fiitx?.startAgentDaemon?.();
+      setPlatformSnapshot(snapshot || null);
+      setProfileIsolationText(JSON.stringify(snapshot?.profileIsolation || {}, null, 2));
+      setPlatformStatusMessage("Daemon 已启动");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function stopAgentDaemon() {
+    setPlatformLoading(true);
+    try {
+      const snapshot = await window.fiitx?.stopAgentDaemon?.();
+      setPlatformSnapshot(snapshot || null);
+      setProfileIsolationText(JSON.stringify(snapshot?.profileIsolation || {}, null, 2));
+      setPlatformStatusMessage("Daemon 已停止");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function saveCronDraft() {
+    if (!cronDraft.prompt?.trim()) {
+      setPlatformStatusMessage("Cron prompt 不能为空");
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      const existingJob = editingCronId
+        ? platformSnapshot?.cronJobs?.find((job) => isRecord(job) && pickString(job, ["id"], "") === editingCronId)
+        : null;
+      await window.fiitx?.upsertCronJob?.({
+        ...(isRecord(existingJob) ? existingJob : {}),
+        ...cronDraft,
+        id: editingCronId || cronDraft.id,
+        name: cronDraft.name?.trim() || "Deepsix Cron Task",
+        prompt: cronDraft.prompt.trim(),
+        everyMinutes: Math.max(1, Number(cronDraft.everyMinutes || 60)),
+        enabled: cronDraft.enabled !== false,
+        channelId: cronDraft.channelId || "daemon-cron",
+        model: cronDraft.model || AUTO_MODEL,
+        workspacePath: cronDraft.workspacePath?.trim() || "",
+        permissionMode: cronDraft.permissionMode || "auto"
+      });
+      resetCronDraft();
+      setPlatformStatusMessage(editingCronId ? "Cron 任务已更新" : "Cron 任务已保存");
+      await loadPlatformSnapshot(false, true);
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function toggleCronJob(job: unknown) {
+    if (!isRecord(job)) {
+      return;
+    }
+    const id = pickString(job, ["id"], "");
+    if (!id) {
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      await window.fiitx?.upsertCronJob?.({
+        ...job,
+        id,
+        enabled: job.enabled !== true
+      } as FiitxCronJobPayload);
+      await loadPlatformSnapshot(false, true);
+      setPlatformStatusMessage("Cron 状态已更新");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function removeCronJob(id: string) {
+    if (!id) {
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      await window.fiitx?.removeCronJob?.({ id });
+      if (editingCronId === id) {
+        resetCronDraft();
+      }
+      await loadPlatformSnapshot(false, true);
+      setPlatformStatusMessage("Cron 任务已删除");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function runCronNow(id: string) {
+    if (!id) {
+      return;
+    }
+    setRunningCronJobId(id);
+    setPlatformStatusMessage("Cron 任务已提交，正在后台执行...");
+    setPlatformLoading(true);
+    try {
+      const result = await window.fiitx?.runCronJobNow?.({ id });
+      const status = isRecord(result) ? pickString(result, ["lastStatus"], "running") : "running";
+      const summary = isRecord(result) ? pickString(result, ["lastSummary"], "") : "";
+      await loadPlatformSnapshot(false, true);
+      if (status === "error") {
+        setPlatformStatusMessage(`Cron 执行失败：${summary || "请查看执行记录"}`);
+      } else if (status === "warn") {
+        setPlatformStatusMessage(`Cron 执行完成但有警告：${summary || "请查看执行记录"}`);
+      } else if (status === "running") {
+        setPlatformStatusMessage(`Cron 任务已开始后台执行${summary ? `：${summary}` : ""}`);
+      } else {
+        setPlatformStatusMessage(`Cron 任务已手动执行${summary ? `：${summary}` : ""}`);
+      }
+      window.setTimeout(() => {
+        void loadPlatformSnapshot(false, true);
+      }, 1500);
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRunningCronJobId("");
+      setPlatformLoading(false);
+    }
+  }
+
+  async function searchPlatformSessions() {
+    setPlatformLoading(true);
+    try {
+      const results = await window.fiitx?.searchSessions?.({ query: sessionSearchQuery, limit: 20 });
+      setSessionSearchResults(results || []);
+      setPlatformStatusMessage(`Session 搜索返回 ${results?.length || 0} 条结果`);
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function learnSkillFromCurrentThread() {
+    if (!isPersistableThread(activeThreadId)) {
+      setPlatformStatusMessage("请先选择一个已保存线程，再学习 Skill");
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      await window.fiitx?.learnSkillFromThread?.({
+        threadId: activeThreadId,
+        name: `${activeThread.title || "Fiitx"} learned skill`
+      });
+      await loadPlatformSnapshot(false);
+      setPlatformStatusMessage("已生成 Learned Skill 草稿");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function installLearnedSkill(id: string) {
+    if (!id) {
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      await window.fiitx?.installLearnedSkill?.({ id });
+      await Promise.all([loadPlatformSnapshot(false), loadSkillManagement()]);
+      setPlatformStatusMessage("Learned Skill 已安装");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function removeLearnedSkill(id: string) {
+    if (!id) {
+      return;
+    }
+    setPlatformLoading(true);
+    try {
+      await window.fiitx?.removeLearnedSkill?.({ id });
+      await loadPlatformSnapshot(false);
+      setPlatformStatusMessage("Learned Skill 已删除");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
+  async function saveProfileIsolation() {
+    setPlatformLoading(true);
+    try {
+      const profileIsolation = JSON.parse(profileIsolationText || "{}");
+      await window.fiitx?.saveProfileIsolation?.({ profileIsolation });
+      await loadPlatformSnapshot(false);
+      setPlatformStatusMessage("Profile Isolation 已保存");
+    } catch (error) {
+      setPlatformStatusMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlatformLoading(false);
+    }
+  }
+
   function inferAgentMode(prompt: string, files: string[] = []): "chat" | "coding" {
     const text = prompt.toLowerCase();
     const hasUrl = /https?:\/\/|(?:^|[\s，。；;])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/|\b)/i.test(prompt);
@@ -4663,8 +5563,10 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
   function normalizeProgressEvent(event: unknown, index: number): FiitxAgentProgress {
     const record = isRecord(event) ? event : {};
     const rawStatus = String(record.status || "info");
-    const status: FiitxAgentProgress["status"] =
-      rawStatus === "running" || rawStatus === "success" || rawStatus === "warn" || rawStatus === "info" ? rawStatus : "info";
+    const allowedStatuses: FiitxAgentProgress["status"][] = ["running", "success", "warn", "info", "finished", "error"];
+    const status = allowedStatuses.includes(rawStatus as FiitxAgentProgress["status"])
+      ? (rawStatus as FiitxAgentProgress["status"])
+      : "info";
     const detail = formatExecutionDetail(record.detail).trim();
     const time = typeof record.time === "string" && record.time ? record.time : new Date().toISOString();
     const rawTitle = typeof record.title === "string" ? record.title.trim() : "";
@@ -4675,6 +5577,12 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       id,
       taskId,
       threadId: typeof record.threadId === "string" ? record.threadId : undefined,
+      threadTitle: typeof record.threadTitle === "string" ? record.threadTitle : undefined,
+      threadKind: typeof record.threadKind === "string" ? record.threadKind : undefined,
+      threadModel: typeof record.threadModel === "string" ? record.threadModel : undefined,
+      threadWorkspacePath: typeof record.threadWorkspacePath === "string" ? record.threadWorkspacePath : undefined,
+      cronJobId: typeof record.cronJobId === "string" ? record.cronJobId : undefined,
+      cronSource: typeof record.cronSource === "string" ? record.cronSource : undefined,
       title,
       detail,
       status,
@@ -4993,6 +5901,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       supportsVision: payload.supportsVision,
       supportsStreaming: payload.supportsStreaming,
       supportsJsonMode: payload.supportsJsonMode,
+      inputModalities: payload.inputModalities,
+      outputModalities: payload.outputModalities,
+      capabilities: payload.capabilities,
       bestFor: payload.bestFor,
       toolCallStyle: payload.toolCallStyle,
       updatedAt: new Date().toISOString()
@@ -5118,6 +6029,18 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       supportsVision: capabilityDefaults.supportsVision ?? false,
       supportsStreaming: capabilityDefaults.supportsStreaming ?? true,
       supportsJsonMode: capabilityDefaults.supportsJsonMode ?? true,
+      inputModalities: capabilityDefaults.inputModalities ?? ["text"],
+      outputModalities: capabilityDefaults.outputModalities ?? ["text"],
+      capabilities: capabilityDefaults.capabilities ?? {
+        chat: true,
+        tools: capabilityDefaults.supportsTools ?? true,
+        streaming: capabilityDefaults.supportsStreaming ?? true,
+        jsonMode: capabilityDefaults.supportsJsonMode ?? true,
+        imageInput: capabilityDefaults.supportsVision ?? false,
+        imageGeneration: false,
+        videoGeneration: false,
+        audioGeneration: false
+      },
       bestFor: capabilityDefaults.bestFor ?? ["coding", "research"],
       toolCallStyle: capabilityDefaults.toolCallStyle ?? "openai"
     };
@@ -5162,6 +6085,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       supportsVision: payload.supportsVision,
       supportsStreaming: payload.supportsStreaming,
       supportsJsonMode: payload.supportsJsonMode,
+      inputModalities: payload.inputModalities ?? current.inputModalities,
+      outputModalities: payload.outputModalities ?? current.outputModalities,
+      capabilities: payload.capabilities ?? current.capabilities,
       bestFor: payload.bestFor,
       toolCallStyle: payload.toolCallStyle
     }));
@@ -5506,7 +6432,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
       return;
     }
 
-    const attachmentSummary = attachments.map((path) => path.split("/").pop()).join(", ");
+    const attachmentSummary = attachments.map((path) => `${path.split("/").pop()} (${path})`).join(", ");
     const visibleBody = [body || "请处理这些附件。", attachmentSummary ? `附件：${attachmentSummary}` : ""]
       .filter(Boolean)
       .join("\n");
@@ -5749,7 +6675,23 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     recordAgentProgress(taskId, "恢复执行", approval.command, "running", payload.threadId, payload.threadId === activeThreadId);
 
     try {
-      const result = await runAgentTask(payload);
+      let result = await window.fiitx?.continueAgent?.({
+        threadId: payload.threadId,
+        taskId,
+        approvalId: approval.id,
+        approved: true,
+        permissionMode: "auto",
+        text: approval.command
+      });
+      if (!result) {
+        throw new Error("continueAgent 没有返回结果。");
+      }
+      const resumeMessage = `${result.errorMessage ?? result.summary ?? ""}`;
+      if (!result.ok && /没有待恢复|没有可继续|当前 thread 没有/.test(resumeMessage)) {
+        result = await runAgentTask(payload);
+      }
+      const resultSummary =
+        result.summary ?? result.message ?? (result.ok ? "审批后执行完成。" : result.errorMessage ?? "审批后执行失败。");
       if (result.title) {
         renameThread(payload.threadId, result.title);
       }
@@ -5757,7 +6699,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         threadId: payload.threadId,
         agentMessageId,
         author: result.agentName ?? (result.ok ? agentLabel(result.mode) : "Agent Runtime"),
-        body: result.summary,
+        body: resultSummary,
         display: payload.threadId === activeThreadId
       });
       if (result.artifact) {
@@ -5782,7 +6724,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
             : thread
         )
       );
-      recordAgentProgress(taskId, result.ok ? "执行完成" : "执行异常", result.summary, result.ok ? "success" : "warn", payload.threadId, payload.threadId === activeThreadId);
+      recordAgentProgress(taskId, result.ok ? "执行完成" : "执行异常", resultSummary, result.ok ? "success" : "warn", payload.threadId, payload.threadId === activeThreadId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "审批后恢复执行失败";
       await streamAgentFinalMessage({
@@ -5866,6 +6808,52 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
     }));
   }
 
+  function toggleModelSupport(key: "supportsTools" | "supportsVision" | "supportsStreaming" | "supportsJsonMode") {
+    setModelForm((current) => {
+      const nextValue = !current[key];
+      const capabilityKey =
+        key === "supportsTools"
+          ? "tools"
+          : key === "supportsVision"
+            ? "imageInput"
+            : key === "supportsStreaming"
+              ? "streaming"
+              : "jsonMode";
+      const inputModalities =
+        key === "supportsVision"
+          ? nextValue
+            ? Array.from(new Set(current.inputModalities.concat("image")))
+            : current.inputModalities.filter((item) => item !== "image")
+          : current.inputModalities;
+      return {
+        ...current,
+        [key]: nextValue,
+        inputModalities,
+        capabilities: {
+          ...current.capabilities,
+          [capabilityKey]: nextValue
+        }
+      };
+    });
+  }
+
+  function toggleOutputModality(modality: "text" | "image" | "video" | "audio", capability: keyof NonNullable<FiitxModelPayload["capabilities"]>) {
+    setModelForm((current) => {
+      const enabled = current.outputModalities.includes(modality);
+      const outputModalities = enabled
+        ? current.outputModalities.filter((item) => item !== modality)
+        : Array.from(new Set(current.outputModalities.concat(modality)));
+      return {
+        ...current,
+        outputModalities,
+        capabilities: {
+          ...current.capabilities,
+          [capability]: !enabled
+        }
+      };
+    });
+  }
+
   function setPolicyActionMode(action: string, mode: ToolPolicyMode) {
     setPolicySettings((current) => ({
       ...current,
@@ -5926,6 +6914,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           supportsVision: payload.supportsVision,
           supportsStreaming: payload.supportsStreaming,
           supportsJsonMode: payload.supportsJsonMode,
+          inputModalities: payload.inputModalities,
+          outputModalities: payload.outputModalities,
+          capabilities: payload.capabilities,
           bestFor: payload.bestFor,
           toolCallStyle: payload.toolCallStyle,
           updatedAt: new Date().toISOString()
@@ -6249,6 +7240,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
                 onChange={(event) => setComposer(event.target.value)}
                 onPaste={handleComposerPaste}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event)) {
+                    return;
+                  }
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     void sendMessage();
@@ -6401,8 +7395,9 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
         const extension = getArtifactExtension(selectedFile);
         const mediaKind = getMediaKindFromExtension(extension);
         const source = selectedFile.path || selectedFile.preview;
+        const previewSource = mediaKind === "image" ? (mediaDataUrlMap[selectedFile.path] || source) : source;
         const htmlContent = mediaKind === "html" ? selectedFile.preview : "";
-        const mediaPreview = renderMediaPreview(source, selectedFile.title, `selected-media-${selectedFile.path}`, htmlContent);
+        const mediaPreview = renderMediaPreview(previewSource, selectedFile.title, `selected-media-${selectedFile.path}`, htmlContent);
 
         if (mediaPreview) {
           return (
@@ -6414,7 +7409,7 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
 
         return (
           <div className="artifact-preview cover-art selected-image-preview">
-            <img src={getFileUrl(selectedFile.path)} alt={selectedFile.title} />
+            <img src={mediaDataUrlMap[selectedFile.path] || getFileUrl(selectedFile.path)} alt={selectedFile.title} />
             <div>
               <strong>{selectedFile.title}</strong>
               <span>{selectedFile.path}</span>
@@ -6539,22 +7534,29 @@ ${PRODUCT_NAME} 可以把附件作为 artifact 输入源处理：
           <div className="capability-row">
             {[
               ["supportsTools", "Tools"],
-              ["supportsVision", "Vision"],
+              ["supportsVision", "Image input"],
               ["supportsStreaming", "Streaming"],
               ["supportsJsonMode", "JSON Mode"]
             ].map(([key, label]) => (
               <button
                 key={key}
                 className={modelForm[key as keyof ModelForm] ? "toggle active" : "toggle"}
-                onClick={() =>
-                  setModelForm((current) => ({
-                    ...current,
-                    [key]: !current[key as keyof ModelForm]
-                  }))
-                }
+                onClick={() => toggleModelSupport(key as "supportsTools" | "supportsVision" | "supportsStreaming" | "supportsJsonMode")}
               >
                 <Check size={14} />
                 <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="chips capability-matrix">
+            {outputModalityOptions.map((item) => (
+              <button
+                key={item.id}
+                className={modelForm.outputModalities.includes(item.id) ? "chip active" : "chip"}
+                onClick={() => toggleOutputModality(item.id, item.capability)}
+              >
+                {item.label}
               </button>
             ))}
           </div>
@@ -7466,6 +8468,425 @@ ${adapter.sampleEvent}
     })).filter((row) => row.changed).slice(0, 80);
   }
 
+  function renderMemorySettings() {
+    const byKind = memorySnapshot?.byKind || {};
+    const memoryLayers = memorySnapshot?.layers || {};
+    const curatedLayer = memoryLayers.curatedMemory || {};
+    const sessionLayer = memoryLayers.sessionSearch || {};
+    const providerLayer = memoryLayers.provider || {};
+    const topKinds = Object.entries(byKind).slice(0, 6);
+
+    return (
+      <div className="platform-management-page memory-management-page">
+        <section className="settings-hero panel platform-hero">
+          <div>
+            <span className="eyebrow">MemoryStore</span>
+            <h2>Hermes-style Memory Layers</h2>
+            <p>把长期精选记忆、SessionDB 检索和外部 Memory Provider 拆开：重要事实常驻，完整历史按需检索，外部画像以后通过 Provider 注入。</p>
+          </div>
+          <div className="settings-toolbar">
+            <button className="icon-text-button" onClick={() => void loadMemoryManagement()} disabled={memoryLoading}>
+              <RefreshCw size={16} />
+              <span>{memoryLoading ? "刷新中" : "刷新"}</span>
+            </button>
+            <button className="primary-action" onClick={extractMemoryFromCurrentThread} disabled={memoryLoading || !activeThreadId}>
+              <Brain size={15} />
+              从当前线程提取
+            </button>
+          </div>
+        </section>
+
+        <section className="platform-metric-grid">
+          <div className="platform-metric-card">
+            <span>Curated</span>
+            <strong>{memorySnapshot?.count || memoryEntries.length}</strong>
+            <small>
+              MEMORY {curatedLayer.memoryChars || 0}/{curatedLayer.memoryLimit || 2200} · USER {curatedLayer.userProfileChars || 0}/{curatedLayer.userProfileLimit || 1375}
+            </small>
+          </div>
+          <div className="platform-metric-card">
+            <span>SessionDB</span>
+            <strong>{sessionLayer.sessionCount || 0}</strong>
+            <small>{sessionLayer.enabled ? `${sessionLayer.engine || "token index"} search` : "disabled"}</small>
+          </div>
+          <div className="platform-metric-card">
+            <span>Provider</span>
+            <strong>{providerLayer.activeProvider || "Local"}</strong>
+            <small>{providerLayer.providers?.length || 0} available providers</small>
+          </div>
+          <div className="platform-metric-card">
+            <span>Runtime</span>
+            <strong>On</strong>
+            <small>{topKinds.map(([kind, count]) => `${kind}:${count}`).join(" · ") || "pre-run recall / post-run extract"}</small>
+          </div>
+        </section>
+
+        {memoryStatusMessage ? <div className="integration-status">{memoryStatusMessage}</div> : null}
+
+        <section className="platform-grid">
+          <div className="panel platform-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>Curated Memory</h3>
+                <p>对应 Hermes 的 MEMORY.md / USER.md。只存高价值事实，运行前作为背景上下文注入。</p>
+              </div>
+            </div>
+            <div className="session-search-box">
+              <input
+                placeholder="搜索记忆、偏好、产物、profile 线索"
+                value={memoryQuery}
+                onChange={(event) => setMemoryQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void searchMemory();
+                  }
+                }}
+              />
+              <button className="icon-text-button" onClick={searchMemory} disabled={memoryLoading}>
+                <Search size={16} />
+                搜索
+              </button>
+            </div>
+            <div className="platform-list memory-list">
+              {memoryEntries.length === 0 ? <div className="empty-state compact">暂无长期记忆。可以先从当前线程提取或手动添加。</div> : null}
+              {memoryEntries.map((entry) => (
+                <div className="platform-list-row memory-row" key={entry.id}>
+                  <div>
+                    <strong>{entry.kind} · {entry.scope}</strong>
+                    <span>{entry.text}</span>
+                    <small>
+                      confidence {Number(entry.confidence || 0).toFixed(2)}
+                      {entry.workspacePath ? ` · ${entry.workspacePath}` : ""}
+                      {entry.channelId ? ` · ${entry.channelId}` : ""}
+                    </small>
+                  </div>
+                  <div className="row-actions">
+                    <button onClick={() => void removeMemoryEntry(entry.id)} disabled={memoryLoading} title="删除" type="button"><X size={15} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="panel platform-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>Manual Memory</h3>
+                <p>保存明确偏好、项目事实、Profile 线索或长期规则。当前用户输入优先级始终高于记忆。</p>
+              </div>
+            </div>
+            <textarea
+              className="profile-isolation-editor memory-editor"
+              value={memoryDraft}
+              onChange={(event) => setMemoryDraft(event.target.value)}
+              placeholder="例如：记住，Fiitx 默认优先用硅基流动生成图片；某项目的发布目录是 outputs/site。"
+              rows={8}
+            />
+            <button className="primary-action" onClick={rememberMemoryDraft} disabled={memoryLoading || !memoryDraft.trim()}>
+              <Save size={15} />
+              保存长期记忆
+            </button>
+            <div className="memory-rules">
+              <h4>Runtime 使用规则</h4>
+              <p>第一层：MEMORY.md / USER.md 只保留重要事实和用户画像，受字符上限约束。</p>
+              <p>第二层：SessionDB 搜索完整历史，只在 query 相关时注入片段，不把全部历史塞进 prompt。</p>
+              <p>第三层：Memory Provider 预留给 Honcho、mem0、MCP memory server 等外部画像系统。</p>
+              <p>当前用户输入优先级最高；记忆和当前输入冲突时必须以当前输入为准。</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderPlatformSettings() {
+    const daemon = platformSnapshot?.daemon || {};
+    const cronJobs = platformSnapshot?.cronJobs || [];
+    const learnedSkills = platformSnapshot?.learnedSkills || [];
+    const sessionCount = platformSnapshot?.sessionIndex?.sessionCount || 0;
+    const daemonRunning = daemon.running === true;
+    const activeCronCount = cronJobs.filter((job) => isRecord(job) && job.enabled === true).length;
+    const nextRunAt = cronJobs
+      .filter((job) => isRecord(job) && job.enabled === true)
+      .map((job) => pickString(job, ["nextRunAt"], ""))
+      .filter(Boolean)
+      .sort()[0];
+
+    return (
+      <div className="platform-management-page">
+        <section className="panel scheduler-control-panel">
+          <div className="scheduler-control-copy">
+            <span className={daemonRunning ? "scheduler-state running" : "scheduler-state stopped"}>
+              {daemonRunning ? "调度器运行中" : "调度器已停止"}
+            </span>
+            <h3>Fiitx Cron 调度中心</h3>
+            <p>Fiitx 运行时每 30 秒检查一次到期任务；任务通过 daemon-cron channel 执行，并保留独立的工作区、权限和审计记录。</p>
+          </div>
+          <div className="settings-toolbar">
+            <button className="icon-text-button" onClick={() => void loadPlatformSnapshot()} disabled={platformLoading}>
+              <RefreshCw size={16} />
+              <span>{platformLoading ? "刷新中" : "刷新状态"}</span>
+            </button>
+            <button className="primary-action" onClick={daemonRunning ? stopAgentDaemon : startAgentDaemon} disabled={platformLoading}>
+              {daemonRunning ? "停止调度器" : "启动调度器"}
+            </button>
+          </div>
+        </section>
+
+        <section className="platform-metric-grid">
+          <div className="platform-metric-card">
+            <span>调度状态</span>
+            <strong>{daemonRunning ? "运行中" : "已停止"}</strong>
+            <small>{daemon.startedAt ? `启动于 ${formatHistoryTime(String(daemon.startedAt))}` : "尚未启动"}</small>
+          </div>
+          <div className="platform-metric-card">
+            <span>任务总数</span>
+            <strong>{cronJobs.length}</strong>
+            <small>{activeCronCount} 个已启用</small>
+          </div>
+          <div className="platform-metric-card">
+            <span>下一次运行</span>
+            <strong>{nextRunAt ? formatHistoryTime(nextRunAt) : "-"}</strong>
+            <small>按任务 nextRunAt 排序</small>
+          </div>
+          <div className="platform-metric-card">
+            <span>SessionDB</span>
+            <strong>{sessionCount}</strong>
+            <small>可检索执行记录</small>
+          </div>
+        </section>
+
+        {platformStatusMessage ? <div className="integration-status">{platformStatusMessage}</div> : null}
+
+        <section className="platform-grid scheduler-main-grid">
+          <div className="panel platform-card scheduler-cron-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>定时任务</h3>
+                <p>创建和管理后台任务。适合每日抓取、发布、巡检、同步、复盘这类可重复流程。</p>
+              </div>
+            </div>
+            <div className="cron-editor-header">
+              <div>
+                <strong>{editingCronId ? "编辑定时任务" : "新建定时任务"}</strong>
+                <span>{editingCronId ? "保存后会覆盖当前任务配置。" : "任务会通过 daemon-cron channel 自动进入 AgentSession。"}</span>
+              </div>
+              {editingCronId ? (
+                <button className="icon-text-button subtle" onClick={resetCronDraft} disabled={platformLoading} type="button">
+                  取消编辑
+                </button>
+              ) : null}
+            </div>
+            <div className="cron-editor">
+              <label>
+                任务名称
+                <input
+                  placeholder="例如：youxiaojia.cn X SEO Blog daily publisher"
+                  value={cronDraft.name || ""}
+                  onChange={(event) => setCronDraft((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+              <label>
+                间隔分钟
+                <input
+                  min={1}
+                  type="number"
+                  value={cronDraft.everyMinutes || 60}
+                  onChange={(event) => setCronDraft((current) => ({ ...current, everyMinutes: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="wide">
+                工作区路径
+                <input
+                  placeholder="/Users/botbotbot/Downloads/quanse/ai/fiit.ai/zero2codex"
+                  value={cronDraft.workspacePath || ""}
+                  onChange={(event) => setCronDraft((current) => ({ ...current, workspacePath: event.target.value }))}
+                />
+              </label>
+              <label>
+                权限
+                <select
+                  value={cronDraft.permissionMode || "auto"}
+                  onChange={(event) => setCronDraft((current) => ({ ...current, permissionMode: event.target.value as PermissionMode }))}
+                >
+                  <option value="ask">请求批准</option>
+                  <option value="auto">替我审批</option>
+                  <option value="full">完全访问权限</option>
+                </select>
+              </label>
+              <label className="cron-enabled-toggle">
+                <input
+                  checked={cronDraft.enabled !== false}
+                  type="checkbox"
+                  onChange={(event) => setCronDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                />
+                启用任务
+              </label>
+              <label className="wide">
+                任务 Prompt
+                <textarea
+                  placeholder="定时执行的任务 prompt"
+                  value={cronDraft.prompt || ""}
+                  onChange={(event) => setCronDraft((current) => ({ ...current, prompt: event.target.value }))}
+                  rows={5}
+                />
+              </label>
+              <div className="cron-editor-actions">
+                <button className="primary-action" onClick={saveCronDraft} disabled={platformLoading || !String(cronDraft.prompt || "").trim()} type="button">
+                  {editingCronId ? <Save size={15} /> : <Plus size={15} />}
+                  {editingCronId ? "更新任务" : "保存任务"}
+                </button>
+                {editingCronId ? (
+                  <button className="icon-text-button" onClick={resetCronDraft} disabled={platformLoading} type="button">
+                    取消
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="platform-list scheduler-job-list">
+              {cronJobs.length === 0 ? <div className="empty-state compact">暂无 Cron 任务</div> : null}
+              {cronJobs.map((job, index) => {
+                const id = pickString(job, ["id"], `cron-${index}`);
+                const enabled = isRecord(job) ? job.enabled === true : false;
+                const workspace = pickString(job, ["workspacePath"], "");
+                const permission = pickString(job, ["permissionMode"], "ask");
+                const lastStatus = pickString(job, ["lastStatus"], "idle");
+                const lastSummary = pickString(job, ["lastSummary"], "");
+                const rowRunning = runningCronJobId === id || lastStatus === "running";
+                return (
+                  <div className={`platform-list-row scheduler-job-row ${rowRunning ? "is-running" : ""}`} key={id}>
+                    <div className="scheduler-job-copy">
+                      <strong>{pickString(job, ["name", "id"], "Cron Task")}</strong>
+                      <span className="scheduler-job-prompt">{pickString(job, ["prompt"], "无 prompt")}</span>
+                      <div className="scheduler-job-meta">
+                        <small>每 {isRecord(job) ? String(job.everyMinutes || 60) : "60"} 分钟</small>
+                        <small>{permission}</small>
+                        <small className={`scheduler-status-badge ${rowRunning ? "running" : lastStatus}`}>{rowRunning ? "running" : lastStatus}</small>
+                        <small>{enabled ? "已启用" : "已禁用"}</small>
+                      </div>
+                      {lastSummary ? <small className="scheduler-job-summary" title={lastSummary}>{lastSummary}</small> : null}
+                      {workspace ? <small className="scheduler-job-path" title={workspace}>{workspace}</small> : null}
+                    </div>
+                    <div className="row-actions">
+                      <button className="cron-run-button" onClick={() => void runCronNow(id)} disabled={platformLoading || rowRunning} type="button">
+                        {rowRunning ? <RefreshCw className="spin-icon" size={15} /> : <Play size={15} />}
+                        <span>{rowRunning ? "执行中" : "立即执行"}</span>
+                      </button>
+                      <button onClick={() => editCronJob(job)} disabled={platformLoading} type="button">
+                        <SquarePen size={15} />
+                        <span>编辑</span>
+                      </button>
+                      <button onClick={() => void toggleCronJob(job)} disabled={platformLoading || rowRunning} type="button">{enabled ? "禁用" : "启用"}</button>
+                      <button onClick={() => void removeCronJob(id)} disabled={platformLoading || rowRunning} title="删除" type="button"><X size={15} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="panel platform-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>执行记录搜索</h3>
+                <p>检索本地 session log，用于查看历史任务、工具调用、失败原因和发布记录。</p>
+              </div>
+            </div>
+            <div className="session-search-box">
+              <input
+                placeholder="搜索历史线程、工具调用、输出摘要"
+                value={sessionSearchQuery}
+                onChange={(event) => setSessionSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void searchPlatformSessions();
+                  }
+                }}
+              />
+              <button className="icon-text-button" onClick={searchPlatformSessions} disabled={platformLoading}>
+                <Search size={16} />
+                搜索
+              </button>
+            </div>
+            <div className="platform-list">
+              {sessionSearchResults.map((result) => (
+                <button
+                  className="platform-list-row as-button"
+                  key={result.threadId}
+                  onClick={() => {
+                    setActiveThreadId(result.threadId);
+                    setActiveView("workbench");
+                  }}
+                  type="button"
+                >
+                  <div>
+                    <strong>{result.title}</strong>
+                    <span>{result.snippet || result.threadId}</span>
+                    <small>{result.entryCount || 0} entries · score {result.score || 0}</small>
+                  </div>
+                </button>
+              ))}
+              {sessionSearchResults.length === 0 ? <div className="empty-state compact">输入关键词后搜索本地执行记录</div> : null}
+            </div>
+          </div>
+
+          <div className="panel platform-card scheduler-secondary-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>Skill Self-learning</h3>
+                <p>从当前线程抽取流程、上下文和关键词，生成可安装的本地 Skill 草稿。</p>
+              </div>
+              <button className="icon-text-button" onClick={learnSkillFromCurrentThread} disabled={platformLoading}>
+                <Brain size={16} />
+                从当前线程学习
+              </button>
+            </div>
+            <div className="platform-list">
+              {learnedSkills.length === 0 ? <div className="empty-state compact">暂无自学习 Skill</div> : null}
+              {learnedSkills.map((skill, index) => {
+                const id = pickString(skill, ["id"], `learned-${index}`);
+                const status = pickString(skill, ["status"], "draft");
+                return (
+                  <div className="platform-list-row" key={id}>
+                    <div>
+                      <strong>{pickString(skill, ["name", "id"], "Learned Skill")}</strong>
+                      <span>{pickString(skill, ["description"], "从线程学习生成的 Skill")}</span>
+                      <small>{status} · {pickString(skill, ["sourceThreadId"], "unknown thread")}</small>
+                    </div>
+                    <div className="row-actions">
+                      <button onClick={() => void installLearnedSkill(id)} disabled={platformLoading || status === "installed"} type="button">安装</button>
+                      <button onClick={() => void removeLearnedSkill(id)} disabled={platformLoading} title="删除" type="button"><X size={15} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="panel platform-card scheduler-secondary-card">
+            <div className="platform-section-heading">
+              <div>
+                <h3>Profile Isolation</h3>
+                <p>按 channel、intent、workspace 匹配独立 profile，避免 IM、Cron、Coding 共用同一上下文假设。</p>
+              </div>
+              <button className="primary-action" onClick={saveProfileIsolation} disabled={platformLoading}>
+                <Save size={15} />
+                保存
+              </button>
+            </div>
+            <textarea
+              className="profile-isolation-editor"
+              value={profileIsolationText}
+              onChange={(event) => setProfileIsolationText(event.target.value)}
+              rows={16}
+              spellCheck={false}
+            />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   function renderHistory() {
     const historyThreads = historySnapshot?.threads ?? [];
     const telemetrySummary = (isRecord(historySnapshot?.telemetrySummary) ? historySnapshot?.telemetrySummary : {}) as Record<string, unknown>;
@@ -7904,119 +9325,407 @@ ${adapter.sampleEvent}
           {mcpStatusMessage ? <div className="integration-status">{mcpStatusMessage}</div> : null}
         </section>
 
-        {mcpFormOpen ? (
-          <section className="panel integration-panel">
+        <div className={mcpFormOpen ? "mcp-management-grid" : "mcp-management-grid overview-only"}>
+          {mcpFormOpen ? (
+            <section className="panel integration-panel mcp-editor-panel">
+              <div className="panel-header">
+                <div>
+                  <span>{mcpForm.id ? "编辑 MCP Server" : "Add server"}</span>
+                  <small>支持 stdio、SSE 和 Streamable HTTP。</small>
+                </div>
+                <button className="icon-button ghost" onClick={resetMcpForm} type="button" title="关闭">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="integration-form mcp-editor-form">
+                <label>
+                  <span>Server ID</span>
+                  <input value={mcpForm.id} onChange={(event) => setMcpForm((current) => ({ ...current, id: event.target.value }))} placeholder="filesystem" />
+                </label>
+                <label>
+                  <span>名称</span>
+                  <input value={mcpForm.name || ""} onChange={(event) => setMcpForm((current) => ({ ...current, name: event.target.value }))} placeholder="Filesystem MCP" />
+                </label>
+                <label>
+                  <span>Transport</span>
+                  <select value={mcpForm.type || "stdio"} onChange={(event) => setMcpForm((current) => ({ ...current, type: event.target.value as FiitxMcpServerConfig["type"] }))}>
+                    <option value="stdio">stdio</option>
+                    <option value="streamable-http">streamable-http</option>
+                    <option value="sse">sse</option>
+                  </select>
+                </label>
+                {mcpForm.type === "stdio" ? (
+                  <>
+                    <label className="wide">
+                      <span>Command</span>
+                      <input value={mcpForm.command || ""} onChange={(event) => setMcpForm((current) => ({ ...current, command: event.target.value }))} placeholder="npx" />
+                    </label>
+                    <label className="wide">
+                      <span>Args JSON 或空格分隔</span>
+                      <input value={mcpArgsText} onChange={(event) => setMcpArgsText(event.target.value)} placeholder='["@modelcontextprotocol/server-filesystem", "/path"]' />
+                    </label>
+                    <label className="wide">
+                      <span>CWD</span>
+                      <input value={mcpForm.cwd || ""} onChange={(event) => setMcpForm((current) => ({ ...current, cwd: event.target.value }))} placeholder="可选" />
+                    </label>
+                  </>
+                ) : (
+                  <label className="wide">
+                    <span>URL</span>
+                    <input value={mcpForm.url || ""} onChange={(event) => setMcpForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://example.com/mcp" />
+                  </label>
+                )}
+                <label>
+                  <span>风险</span>
+                  <select value={mcpForm.risk || "medium"} onChange={(event) => setMcpForm((current) => ({ ...current, risk: event.target.value as FiitxMcpServerConfig["risk"] }))}>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </select>
+                </label>
+                <label>
+                  <span>超时 ms</span>
+                  <input type="number" value={mcpForm.timeoutMs || 12000} onChange={(event) => setMcpForm((current) => ({ ...current, timeoutMs: Number(event.target.value) }))} />
+                </label>
+                <label className="checkbox-field">
+                  <input type="checkbox" checked={mcpForm.enabled !== false} onChange={(event) => setMcpForm((current) => ({ ...current, enabled: event.target.checked }))} />
+                  <span>启用</span>
+                </label>
+                <label className="wide">
+                  <span>Env JSON</span>
+                  <textarea value={mcpEnvText} onChange={(event) => setMcpEnvText(event.target.value)} rows={4} />
+                </label>
+                <label className="wide">
+                  <span>Headers JSON</span>
+                  <textarea value={mcpHeadersText} onChange={(event) => setMcpHeadersText(event.target.value)} rows={4} />
+                </label>
+                <div className="integration-actions">
+                  <button className="primary-button" onClick={saveMcpServerFromForm} disabled={mcpLoading}>
+                    <Save size={16} />
+                    <span>保存 Server</span>
+                  </button>
+                  {mcpForm.id ? (
+                    <button className="icon-text-button" onClick={() => deleteMcpServer(mcpForm.id)} disabled={mcpLoading} type="button">
+                      <X size={16} />
+                      <span>删除</span>
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="panel integration-panel mcp-discovery-panel">
             <div className="panel-header">
               <div>
-                <span>{mcpForm.id ? "编辑 MCP Server" : "Add server"}</span>
-                <small>支持 stdio、SSE 和 Streamable HTTP。</small>
+                <span>发现能力</span>
+                <small>来自已启用 MCP server 的 tools、resources 和 prompts。</small>
               </div>
-              <button className="icon-button ghost" onClick={resetMcpForm} type="button" title="关闭">
-                <X size={16} />
-              </button>
             </div>
-
-            <div className="integration-form">
-              <label>
-                <span>Server ID</span>
-                <input value={mcpForm.id} onChange={(event) => setMcpForm((current) => ({ ...current, id: event.target.value }))} placeholder="filesystem" />
-              </label>
-              <label>
-                <span>名称</span>
-                <input value={mcpForm.name || ""} onChange={(event) => setMcpForm((current) => ({ ...current, name: event.target.value }))} placeholder="Filesystem MCP" />
-              </label>
-              <label>
-                <span>Transport</span>
-                <select value={mcpForm.type || "stdio"} onChange={(event) => setMcpForm((current) => ({ ...current, type: event.target.value as FiitxMcpServerConfig["type"] }))}>
-                  <option value="stdio">stdio</option>
-                  <option value="streamable-http">streamable-http</option>
-                  <option value="sse">sse</option>
-                </select>
-              </label>
-              {mcpForm.type === "stdio" ? (
-                <>
-                  <label className="wide">
-                    <span>Command</span>
-                    <input value={mcpForm.command || ""} onChange={(event) => setMcpForm((current) => ({ ...current, command: event.target.value }))} placeholder="npx" />
-                  </label>
-                  <label className="wide">
-                    <span>Args JSON 或空格分隔</span>
-                    <input value={mcpArgsText} onChange={(event) => setMcpArgsText(event.target.value)} placeholder='["@modelcontextprotocol/server-filesystem", "/path"]' />
-                  </label>
-                  <label className="wide">
-                    <span>CWD</span>
-                    <input value={mcpForm.cwd || ""} onChange={(event) => setMcpForm((current) => ({ ...current, cwd: event.target.value }))} placeholder="可选" />
-                  </label>
-                </>
-              ) : (
-                <label className="wide">
-                  <span>URL</span>
-                  <input value={mcpForm.url || ""} onChange={(event) => setMcpForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://example.com/mcp" />
-                </label>
-              )}
-              <label>
-                <span>风险</span>
-                <select value={mcpForm.risk || "medium"} onChange={(event) => setMcpForm((current) => ({ ...current, risk: event.target.value as FiitxMcpServerConfig["risk"] }))}>
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
-                </select>
-              </label>
-              <label>
-                <span>超时 ms</span>
-                <input type="number" value={mcpForm.timeoutMs || 12000} onChange={(event) => setMcpForm((current) => ({ ...current, timeoutMs: Number(event.target.value) }))} />
-              </label>
-              <label className="checkbox-field">
-                <input type="checkbox" checked={mcpForm.enabled !== false} onChange={(event) => setMcpForm((current) => ({ ...current, enabled: event.target.checked }))} />
-                <span>启用</span>
-              </label>
-              <label className="wide">
-                <span>Env JSON</span>
-                <textarea value={mcpEnvText} onChange={(event) => setMcpEnvText(event.target.value)} rows={3} />
-              </label>
-              <label className="wide">
-                <span>Headers JSON</span>
-                <textarea value={mcpHeadersText} onChange={(event) => setMcpHeadersText(event.target.value)} rows={3} />
-              </label>
-              <div className="integration-actions">
-                <button className="primary-button" onClick={saveMcpServerFromForm} disabled={mcpLoading}>
-                  <Save size={16} />
-                  <span>保存 Server</span>
-                </button>
-                {mcpForm.id ? (
-                  <button className="icon-text-button" onClick={() => deleteMcpServer(mcpForm.id)} disabled={mcpLoading} type="button">
-                    <X size={16} />
-                    <span>删除</span>
-                  </button>
-                ) : null}
+            <div className="integration-capability-grid mcp-capability-grid">
+              <div>
+                <strong>Tools</strong>
+                <span>{mcpTools.length}</span>
+                <div className="route-chip-list">
+                  {mcpTools.slice(0, 8).map((tool, index) => <span className="route-chip" key={`mcp-tool-${index}`}>{pickString(tool, ["fiitxToolName", "name"], "tool")}</span>)}
+                </div>
+              </div>
+              <div>
+                <strong>Resources</strong>
+                <span>{mcpResources.length}</span>
+                <div className="route-chip-list">
+                  {mcpResources.slice(0, 5).map((resource, index) => <span className="route-chip" key={`mcp-resource-${index}`}>{pickString(resource, ["name", "uri"], "resource")}</span>)}
+                </div>
+              </div>
+              <div>
+                <strong>Prompts</strong>
+                <span>{mcpPrompts.length}</span>
+                <div className="route-chip-list">
+                  {mcpPrompts.slice(0, 5).map((prompt, index) => <span className="route-chip" key={`mcp-prompt-${index}`}>{pickString(prompt, ["name"], "prompt")}</span>)}
+                </div>
               </div>
             </div>
           </section>
-        ) : null}
+        </div>
+      </div>
+    );
+  }
 
-        <section className="integration-capability-grid mcp-capability-grid">
+  function runtimeChannelStatusClass(status?: string) {
+    if (status === "running" || status === "available" || status === "bound") {
+      return "done";
+    }
+    if (status === "blocked") {
+      return "waiting";
+    }
+    return "running";
+  }
+
+  function channelRuntimeById(id: string) {
+    return runtimeChannels.find((channel) => channel.id === id);
+  }
+
+  function renderChannelsSettings() {
+    const channels: RuntimeChannel[] = runtimeChannels.length
+      ? runtimeChannels
+      : channelAdapters.map((adapter) => ({
+          ...adapter,
+          runtimeStatus: adapter.status === "active" ? "available" : "stopped",
+          configured: true
+        }));
+    const selectedRuntimeChannel =
+      channels.find((channel) => channel.id === selectedChannelAdapterId) ||
+      channels.find((channel) => channel.id === activeChannelAdapterId) ||
+      channels[0];
+    const selectedConfiguredAdapter =
+      channelAdapters.find((adapter) => adapter.id === selectedRuntimeChannel?.id) ||
+      selectedRuntimeChannel?.configuredAdapter ||
+      selectedChannelAdapter;
+    const selectedManifest = selectedConfiguredAdapter
+      ? buildChannelManifest(selectedConfiguredAdapter)
+      : selectedRuntimeChannel
+        ? buildChannelManifest(selectedRuntimeChannel)
+        : "";
+    const selectedWechatBinding = selectedRuntimeChannel?.id === "wechat-clawbot"
+      ? wechatBindStatus || selectedRuntimeChannel.binding || null
+      : null;
+    const selectedWechatSession = selectedWechatBinding?.session || null;
+
+    return (
+      <div className="settings-single-page integration-management-page channel-management-page">
+        <section className="integration-hero">
           <div>
-            <strong>Tools</strong>
-            <span>{mcpTools.length}</span>
-            <div className="route-chip-list">
-              {mcpTools.slice(0, 8).map((tool, index) => <span className="route-chip" key={`mcp-tool-${index}`}>{pickString(tool, ["fiitxToolName", "name"], "tool")}</span>)}
-            </div>
+            <h3>Channels</h3>
+            <p>Expose Fiitx to IM, WeChat, IDE and local automation. Channels inject conversation context, route bias and reply contracts into Agent Runtime.</p>
+            <small>Integrated: vercel/chat · chat-adapter-weixin · Fiitx local HTTP channel · VS Code channel</small>
           </div>
-          <div>
-            <strong>Resources</strong>
-            <span>{mcpResources.length}</span>
-            <div className="route-chip-list">
-              {mcpResources.slice(0, 5).map((resource, index) => <span className="route-chip" key={`mcp-resource-${index}`}>{pickString(resource, ["name", "uri"], "resource")}</span>)}
-            </div>
-          </div>
-          <div>
-            <strong>Prompts</strong>
-            <span>{mcpPrompts.length}</span>
-            <div className="route-chip-list">
-              {mcpPrompts.slice(0, 5).map((prompt, index) => <span className="route-chip" key={`mcp-prompt-${index}`}>{pickString(prompt, ["name"], "prompt")}</span>)}
-            </div>
+          <div className="integration-hero-actions">
+            <button className="icon-text-button" onClick={loadChannelManagement} disabled={channelLoading}>
+              <RefreshCw size={16} />
+              <span>{channelLoading ? "刷新中" : "刷新"}</span>
+            </button>
+            <button className="icon-text-button" onClick={resetChannelAdapters} type="button">
+              <RefreshCw size={16} />
+              <span>重置模板</span>
+            </button>
           </div>
         </section>
+
+        <section className="integration-section">
+          <div className="integration-section-header">
+            <h4>Runtime Channels</h4>
+            <small>{channels.length} 个通道 · 当前 {activeChannelAdapter?.name || "未选择"}</small>
+          </div>
+          <div className="channel-card-grid">
+            {channels.map((channel) => {
+              const isSelected = selectedRuntimeChannel?.id === channel.id;
+              const isActive = activeChannelAdapterId === channel.id;
+              const RuntimeIcon = channel.channelType === "vscode-extension" ? Code2 : channel.channelType === "wechat-miniprogram-ai" ? MessageSquare : Workflow;
+              return (
+                <button
+                  className={isSelected ? "channel-card selected" : "channel-card"}
+                  key={channel.id}
+                  onClick={() => setSelectedChannelAdapterId(channel.id)}
+                  type="button"
+                >
+                  <span className={`status-dot ${runtimeChannelStatusClass(channel.runtimeStatus)}`} />
+                  <div className="channel-card-icon">
+                    <RuntimeIcon size={18} />
+                  </div>
+                  <div className="channel-card-main">
+                    <strong>{channel.name}</strong>
+                    <span>{channel.description}</span>
+                    <small>{channel.transport} · {channel.runtimeStatus || channel.status}</small>
+                  </div>
+                  {isActive ? <b>当前</b> : null}
+                </button>
+              );
+            })}
+          </div>
+          {channelStatusMessage ? <div className="integration-status">{channelStatusMessage}</div> : null}
+        </section>
+
+        {selectedRuntimeChannel ? (
+          <section className="panel integration-panel channel-detail-panel">
+            <div className="panel-header">
+              <div>
+                <span>{selectedRuntimeChannel.name}</span>
+                <small>{selectedRuntimeChannel.channelType} · {selectedRuntimeChannel.runtimeStatus || selectedRuntimeChannel.status}</small>
+              </div>
+              <div className="integration-hero-actions">
+                {selectedRuntimeChannel.id === "wechat-ilink" ? (
+                  <>
+                    <button className="icon-text-button" onClick={startWeixinIlinkChannel} disabled={channelLoading} type="button">
+                      <Play size={16} />
+                      <span>启动</span>
+                    </button>
+                    <button className="icon-text-button" onClick={stopWeixinIlinkChannel} disabled={channelLoading} type="button">
+                      <Square size={16} />
+                      <span>停止</span>
+                    </button>
+                  </>
+                ) : null}
+                {selectedRuntimeChannel.id === "wechat-clawbot" ? (
+                  <>
+                    <button className="icon-text-button" onClick={startWechatBindFlow} disabled={wechatBindLoading} type="button">
+                      <MessageSquare size={16} />
+                      <span>{selectedWechatBinding?.bound ? "重新绑定" : "开始扫码"}</span>
+                    </button>
+                    {selectedWechatBinding?.status === "pending" ? (
+                      <button className="icon-text-button" onClick={cancelWechatBindFlow} disabled={wechatBindLoading} type="button">
+                        <X size={16} />
+                        <span>取消扫码</span>
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                <button className="icon-text-button" onClick={() => activateChannelAdapter(selectedRuntimeChannel.id)} type="button">
+                  <MessageSquare size={16} />
+                  <span>设为当前通道</span>
+                </button>
+                <button className="icon-text-button" onClick={() => copyText(selectedManifest)} type="button">
+                  <Copy size={16} />
+                  <span>复制 Manifest</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="channel-detail-grid">
+              <div>
+                <strong>Entrypoint</strong>
+                <span>{selectedRuntimeChannel.entrypoint || "未配置"}</span>
+              </div>
+              <div>
+                <strong>Session key</strong>
+                <span>{selectedRuntimeChannel.sessionKeyStrategy || "未配置"}</span>
+              </div>
+              <div>
+                <strong>Status</strong>
+                <span>{selectedRuntimeChannel.runtimeStatus || selectedRuntimeChannel.status}</span>
+              </div>
+              <div>
+                <strong>Configured</strong>
+                <span>{selectedRuntimeChannel.id === "wechat-clawbot" ? (selectedWechatBinding?.bound ? "bound" : "scan required") : selectedRuntimeChannel.configured === false ? "runtime only" : "yes"}</span>
+              </div>
+            </div>
+
+            {selectedRuntimeChannel.id === "wechat-clawbot" ? (
+              <div className="wechat-bind-panel">
+                <div className="wechat-bind-copy">
+                  <div className="integration-section-header compact">
+                    <div>
+                      <h4>微信 ClawBot 绑定</h4>
+                      <small>使用微信官方 iLink 二维码登录；扫码成功后 Fiitx 会启动后台长轮询，把微信消息送入 runtime。</small>
+                    </div>
+                    <button className="icon-text-button" onClick={() => refreshWechatBindStatus(true)} disabled={wechatBindLoading} type="button">
+                      <RefreshCw size={16} />
+                      <span>刷新状态</span>
+                    </button>
+                  </div>
+                  <ol>
+                    <li>保持 Fiitx 运行，点击“开始扫码”生成微信 iLink 登录二维码。</li>
+                    <li>用微信扫描右侧二维码，并按微信页面提示确认连接。</li>
+                    <li>确认后 Fiitx 自动保存 token 并启动长轮询；消息进入 ChannelGateway，再进入 Agent Runtime、Policy、SessionDB 和 Delivery Queue。</li>
+                  </ol>
+                  <div className="channel-detail-grid compact">
+                    <div>
+                      <strong>绑定状态</strong>
+                      <span>{selectedWechatBinding?.status === "polling" ? "收消息中" : selectedWechatBinding?.bound ? "已绑定" : selectedWechatBinding?.status === "pending" ? "等待扫码" : "未绑定"}</span>
+                    </div>
+                    <div>
+                      <strong>绑定账号</strong>
+                      <span>{selectedWechatBinding?.binding?.displayName || selectedWechatBinding?.binding?.accountId || "未绑定"}</span>
+                    </div>
+                    <div>
+                      <strong>LAN Endpoint</strong>
+                      <span>{selectedWechatBinding?.binding?.endpoint || selectedWechatBinding?.lanBaseUrl || selectedRuntimeChannel.binding?.lanBaseUrl || "未启动"}</span>
+                    </div>
+                    <div>
+                      <strong>过期时间</strong>
+                      <span>{selectedWechatSession?.expiresAt ? new Date(selectedWechatSession.expiresAt).toLocaleTimeString() : "无扫码会话"}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="wechat-qr-card">
+                  {selectedWechatSession?.qrDataUrl && selectedWechatSession.status === "pending" ? (
+                    <>
+                      <img src={selectedWechatSession.qrDataUrl} alt="微信 ClawBot 绑定二维码" />
+                      <strong>微信扫码绑定 Fiitx</strong>
+                      <span>二维码 5 分钟有效。</span>
+                      <button className="icon-text-button" onClick={() => copyText(selectedWechatSession.bindUrl)} type="button">
+                        <Copy size={15} />
+                        <span>复制绑定链接</span>
+                      </button>
+                    </>
+                  ) : selectedWechatBinding?.bound ? (
+                    <>
+                      <div className="wechat-bind-success"><Check size={28} /></div>
+                      <strong>已绑定</strong>
+                      <span>{selectedWechatBinding.binding?.boundAt ? `绑定于 ${new Date(selectedWechatBinding.binding.boundAt).toLocaleString()}` : "微信 ClawBot 已可用"}</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="wechat-bind-empty"><MessageSquare size={28} /></div>
+                      <strong>等待开始扫码</strong>
+                      <span>点击“开始扫码”生成二维码。</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedRuntimeChannel.endpoints?.length ? (
+              <div className="channel-endpoint-list">
+                <strong>Endpoints</strong>
+                {selectedRuntimeChannel.endpoints.map((endpoint) => <code key={endpoint}>{endpoint}</code>)}
+              </div>
+            ) : null}
+
+            {selectedRuntimeChannel.requirements?.length ? (
+              <div className="channel-endpoint-list">
+                <strong>Requirements</strong>
+                <div className="route-chip-list">
+                  {selectedRuntimeChannel.requirements.map((item) => <span className="route-chip" key={item}>{item}</span>)}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedRuntimeChannel.warnings?.length ? (
+              <div className="integration-status warn">
+                {selectedRuntimeChannel.warnings.join("；")}
+              </div>
+            ) : null}
+
+            <div className="integration-capability-grid">
+              <div>
+                <strong>Capabilities</strong>
+                <span>{selectedRuntimeChannel.capabilities?.length || 0}</span>
+                <div className="route-chip-list">
+                  {(selectedRuntimeChannel.capabilities || []).slice(0, 10).map((item) => <span className="route-chip" key={item}>{item}</span>)}
+                </div>
+              </div>
+              <div>
+                <strong>Context</strong>
+                <span>{selectedRuntimeChannel.contextSources?.length || 0}</span>
+                <div className="route-chip-list">
+                  {(selectedRuntimeChannel.contextSources || []).slice(0, 8).map((item) => <span className="route-chip" key={item}>{item}</span>)}
+                </div>
+              </div>
+              <div>
+                <strong>Output</strong>
+                <span>{selectedRuntimeChannel.outputModes?.length || 0}</span>
+                <div className="route-chip-list">
+                  {(selectedRuntimeChannel.outputModes || []).slice(0, 8).map((item) => <span className="route-chip" key={item}>{item}</span>)}
+                </div>
+              </div>
+            </div>
+
+            <div className="agent-manifest channel-manifest">
+              <pre>{selectedManifest}</pre>
+            </div>
+          </section>
+        ) : null}
       </div>
     );
   }
@@ -8204,6 +9913,12 @@ ${adapter.sampleEvent}
     if (activeSettingsPage === "agents") {
       return renderAgents();
     }
+    if (activeSettingsPage === "platform") {
+      return renderPlatformSettings();
+    }
+    if (activeSettingsPage === "memory") {
+      return renderMemorySettings();
+    }
     if (activeSettingsPage === "approvals") {
       return renderApprovals();
     }
@@ -8215,6 +9930,9 @@ ${adapter.sampleEvent}
     }
     if (activeSettingsPage === "mcp") {
       return renderMcpSettings();
+    }
+    if (activeSettingsPage === "channels") {
+      return renderChannelsSettings();
     }
     if (activeSettingsPage === "skills") {
       return renderSkillSettings();

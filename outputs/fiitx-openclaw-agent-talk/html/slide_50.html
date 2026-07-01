@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1.0">
+  <title>从 Demo 到业务闭环的迁移路径</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <style>
+    :root {
+      --blue: #06a9df;
+      --deep: #0b2b6b;
+      --ink: #111827;
+      --muted: #667085;
+      --line: #d8edf7;
+      --paper: #fbfdff;
+      --pale: #eaf8ff;
+      --orange: #f59e0b;
+      --green: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #e9f4fb; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Inter", sans-serif; }
+    .slide { position: relative; width: 1280px; height: 720px; overflow: hidden; background: #fff; color: var(--ink); }
+    .slide.cover, .slide.ending { background: #0b37d9 url("../assets/giac-2026/cover-visual.png") center/cover no-repeat; color: #fff; }
+    .grid { display: none; }
+    .cover .shade, .ending .shade { position:absolute; left:0; top:0; width:54%; height:100%; background:rgba(7,50,199,.28); }
+    .template-arrow { position:absolute; left:36px; top:40px; width:26px; height:auto; }
+    .template-giac { position:absolute; right:30px; top:44px; width:74px; height:auto; }
+    .template-footer { position:absolute; left:0; right:0; bottom:0; height:38px; background:linear-gradient(90deg,#2288ff 0%,#8eeaf2 100%); border-radius:14px 14px 0 0; }
+    .cover .template-footer, .ending .template-footer { display:none; }
+    .template-msup { position:absolute; left:30px; bottom:12px; width:140px; height:auto; }
+    .content { position: relative; z-index: 2; height: 100%; padding: 38px 78px 54px; display: flex; flex-direction: column; }
+    .cover .content, .ending .content { justify-content: flex-start; padding: 192px 74px 70px; max-width: 760px; color: #fff; }
+    .eyebrow { color: var(--blue); text-transform: uppercase; letter-spacing: .16em; font-size: 18px; font-weight: 800; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 40px; line-height: 1.08; letter-spacing: -.04em; max-width: 1000px; }
+    h2 { margin: 16px 0 0; color: var(--muted); font-size: 23px; line-height: 1.35; font-weight: 600; max-width: 1030px; }
+    .cover h1, .ending h1 { color: #fff; }
+    .cover h2, .ending h2 { color: #e6f3ff; }
+    .cover li span, .ending li span { color: #fff; }
+    .main { flex: 1; display: grid; grid-template-columns: 1.02fr .98fr; gap: 38px; align-items: center; margin-top: 28px; }
+    ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 15px; }
+    li { display: grid; grid-template-columns: 34px 1fr; align-items: start; gap: 12px; font-size: 25px; line-height: 1.34; font-weight: 650; }
+    li:before { content: ""; width: 14px; height: 14px; border-radius: 50%; margin-top: 10px; background: var(--blue); box-shadow: 0 0 0 7px #e4f6ff; }
+    .takeaway { margin-top: 26px; border-left: 8px solid #2288ff; background: #effbff; padding: 18px 22px; border-radius: 8px; border-top: 1px solid #8edff0; border-right: 1px solid #8edff0; border-bottom: 1px solid #8edff0; font-size: 22px; line-height: 1.3; font-weight: 800; max-width: 1090px; }
+    .cover .takeaway, .ending .takeaway { max-width: 640px; color: #fff; background: transparent; border: 0; border-top: 2px solid rgba(142,223,240,.85); border-radius: 0; padding-left: 0; }
+    .diagram { min-height: 330px; background: rgba(247,253,255,.92); border: 1px solid #9ddff1; border-radius: 12px; padding: 24px; box-shadow: none; }
+    .flow { display: grid; gap: 14px; }
+    .flow-row { display: flex; align-items: center; gap: 12px; }
+    .node { flex: 1; border: 2px solid #cfe8f5; background: #f6fbff; border-radius: 15px; padding: 14px; font-size: 21px; font-weight: 800; text-align: center; }
+    .arrow { color: var(--blue); font-size: 24px; font-weight: 900; }
+    .layers { display: grid; gap: 12px; }
+    .layer { border-radius: 16px; padding: 16px 20px; color: #0b2b6b; background: linear-gradient(90deg, #dff5ff, #ffffff); border: 2px solid #b8e3f4; font-size: 22px; font-weight: 850; }
+    .footer { position: absolute; left: 78px; right: 78px; bottom: 24px; display: flex; justify-content: space-between; color: #8a94a6; font-size: 16px; font-weight: 650; }
+    .wave { display:none; }
+    .cover-card { position: absolute; right: 146px; bottom: 152px; width: 248px; height: 58px; border-radius: 12px; background: rgba(255,255,255,.9); border: 1px solid #b8e3f4; display:flex; align-items:center; justify-content:center; box-shadow: none; }
+    .cover-card img { width: 84px; height: auto; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <section class="slide  ">
+    <div class="shade"></div>
+    <div class="grid"></div>
+    <div class="template-footer"></div>
+    <img class="template-arrow" src="../assets/giac-2026/arrow-glow.png" alt=""><img class="template-giac" src="../assets/giac-2026/giac-logo-cyan.png" alt="GIAC"><img class="template-msup" src="../assets/giac-2026/msup-archnotes.png" alt="">
+    
+    <div class="content">
+      <div class="eyebrow"><i class="fas fa-diagram-project"></i> Page 50</div>
+      <h1>从 Demo 到业务闭环的迁移路径</h1>
+      <h2>不要一次性建完 Agent OS</h2>
+      <div class="main">
+        <div>
+          <ul><li><span>Step 1：把任务完成标准产品化</span></li>
+<li><span>Step 2：把工具调用治理化</span></li>
+<li><span>Step 3：把历史和失败结构化</span></li>
+<li><span>Step 4：把能力 Skill 化</span></li>
+<li><span>Step 5：把 Channel 和 Daemon 接入生产流程</span></li></ul>
+          <div class="takeaway">Agent 平台应当从一个闭环场景开始，而不是从功能大而全开始。</div>
+        </div>
+        <div class="diagram flow">
+      <div class="flow-row"><div class="node">Demo</div><span class="arrow">→</span><div class="node">Closed Task</div></div>
+      <div class="flow-row"><div class="node">Policy</div><span class="arrow">→</span><div class="node">Skill</div></div>
+      <div class="flow-row"><div class="node">Channel</div><span class="arrow">→</span><div class="node">Worker Mesh</div></div>
+    </div>
+      </div>
+    </div>
+    <div class="footer"><span>OpenClaw 的 Agent 架构设计与落地实践</span><span>50 / 60</span></div>
+  </section>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      gsap.fromTo('.content > *', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: .45, stagger: .08, ease: 'power2.out' });
+    });
+  </script>
+</body>
+</html>

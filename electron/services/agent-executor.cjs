@@ -119,6 +119,8 @@ class NativeLoopBridge {
       summary: response.content || '模型已完成。',
       errorMessage: '',
       fullResponse: response,
+      transcript: response.message ? [...messages, response.message] : messages,
+      toolCalls: normalizeResponseToolCalls(response.toolCalls),
     };
   }
 }
@@ -174,6 +176,57 @@ function artifactFromToolResult(toolName, args, result) {
     deletions: 0,
     preview: content
   };
+}
+
+function normalizeResponseToolCalls(toolCalls = []) {
+  if (!Array.isArray(toolCalls)) {
+    return [];
+  }
+
+  return toolCalls
+    .map((call, index) => {
+      const name = call?.function?.name || call?.name || "";
+      if (!name) {
+        return null;
+      }
+
+      const rawArguments = call?.function?.arguments ?? call?.arguments ?? {};
+      let parsedArguments = rawArguments;
+      if (typeof rawArguments === "string") {
+        try {
+          parsedArguments = JSON.parse(rawArguments || "{}");
+        } catch {
+          parsedArguments = rawArguments;
+        }
+      }
+
+      return {
+        id: call?.id || `tool-call-${index}`,
+        name,
+        arguments: parsedArguments,
+        rawArguments,
+        result: call?.result ?? null,
+        ok: call?.ok
+      };
+    })
+    .filter(Boolean);
+}
+
+function toolExecutionsToToolCalls(toolExecutions = []) {
+  if (!Array.isArray(toolExecutions)) {
+    return [];
+  }
+
+  return toolExecutions.map((execution, index) => ({
+    id: execution.id || `tool-execution-${index}`,
+    name: execution.toolName || execution.name || "",
+    arguments: execution.args || execution.arguments || {},
+    command: execution.command || "",
+    result: execution.result ?? null,
+    ok: execution.ok !== false && execution.result?.ok !== false,
+    startedAt: execution.startedAt || null,
+    endedAt: execution.endedAt || null
+  }));
 }
 
 function summarizeCompletedToolRun({ finalText, artifacts, toolExecutions, reachedStepLimit }) {
@@ -240,6 +293,7 @@ class AgentExecutor {
     this.currentRunId = '';
     this.artifacts = [];
     this.toolExecutions = [];
+    this.pendingToolExecutions = [];
 
     // 结构化记忆实例（替代全量消息回放）
     this.memory = new StructuredMemory({
@@ -281,6 +335,7 @@ class AgentExecutor {
     this.state.steps = [];
     this.finalText = '';
     this.messages = [...messages];
+    this.pendingToolExecutions = [];
 
     this.currentRunId = this.telemetryStore?.startRun?.({
       threadId: this.payload.threadId || this.payload.taskId,
@@ -310,7 +365,7 @@ class AgentExecutor {
         this.emitProgress({
           status: 'running',
           title: step === 0 ? '正在思考' : `继续推理 (第 ${step + 1} 步)`,
-          detail: `${this.profile.provider} / this.profile.model}`,
+          detail: `${this.profile.provider} / ${this.profile.model}`,
         });
 
         // ======== 记忆管理：检查是否需要自动压缩 ========
@@ -474,6 +529,17 @@ class AgentExecutor {
               : `等待审批：需要允许 Agent 执行 ${toolName} 后才能继续。`;
             this.state.pendingToolCalls = [toolCall];
             this.state.errorMessage = message;
+            this.pendingToolExecutions = gate.approvalRequest
+              ? [{
+                  toolCall,
+                  toolName,
+                  rawArgs,
+                  parsedArgs,
+                  preparedArgs,
+                  policy,
+                  step,
+                }]
+              : [];
 
             this.onStep?.({
               type: 'policy_blocked',
@@ -488,6 +554,8 @@ class AgentExecutor {
               errorMessage: message,
               approvalRequest: gate.approvalRequest || null,
               pendingToolCall: toolCall,
+              transcript: this.messages,
+              toolCalls: toolExecutionsToToolCalls(this.toolExecutions),
             };
           }
 
@@ -506,6 +574,7 @@ class AgentExecutor {
           });
 
           let toolResult;
+          const startedAt = new Date().toISOString();
           try {
             toolResult = await this.registry.execute(toolName, preparedArgs, {
               payload: this.payload,
@@ -520,9 +589,14 @@ class AgentExecutor {
 
           const toolContent = JSON.stringify(toolResult, null, 2);
           this.toolExecutions.push({
+            id: toolCall.id || `${toolName}-${step}`,
             toolName,
             args: preparedArgs,
-            result: toolResult
+            command: policy.command,
+            result: toolResult,
+            ok: toolResult?.ok !== false,
+            startedAt,
+            endedAt: new Date().toISOString()
           });
           const toolArtifact = artifactFromToolResult(toolName, preparedArgs, toolResult);
           if (toolArtifact) {
@@ -599,6 +673,8 @@ class AgentExecutor {
         errorMessage: '',
         artifacts: this.artifacts,
         toolExecutions: this.toolExecutions,
+        toolCalls: toolExecutionsToToolCalls(this.toolExecutions),
+        transcript: this.messages,
         reachedStepLimit
       };
     } catch (error) {
@@ -623,8 +699,130 @@ class AgentExecutor {
         summary: message,
         errorMessage: message,
         artifacts: this.artifacts,
-        toolExecutions: this.toolExecutions
+        toolExecutions: this.toolExecutions,
+        toolCalls: toolExecutionsToToolCalls(this.toolExecutions),
+        transcript: this.messages
       };
+    } finally {
+      this.state.isRunning = false;
+    }
+  }
+
+  hasPendingApproval() {
+    return Array.isArray(this.pendingToolExecutions) && this.pendingToolExecutions.length > 0;
+  }
+
+  async continueAfterApproval() {
+    if (!this.hasPendingApproval()) {
+      return {
+        ok: false,
+        summary: '没有待恢复的工具调用。',
+        errorMessage: '没有待恢复的工具调用。',
+        artifacts: this.artifacts,
+        toolExecutions: this.toolExecutions,
+        toolCalls: toolExecutionsToToolCalls(this.toolExecutions),
+        transcript: this.messages,
+      };
+    }
+
+    const pendingCalls = this.pendingToolExecutions.splice(0);
+    this.state.isRunning = true;
+    this.state.errorMessage = '';
+
+    try {
+      for (const pending of pendingCalls) {
+        this._throwIfAborted();
+
+        const {
+          toolCall,
+          toolName,
+          preparedArgs,
+          policy,
+          step = 0,
+        } = pending;
+
+        this.onStep?.({
+          type: 'tool_resume',
+          toolName,
+          args: preparedArgs,
+          command: policy.command,
+          detail: '审批通过，恢复执行原始工具调用',
+        });
+
+        this.emitProgress({
+          status: 'running',
+          title: `执行 ${toolName}`,
+          detail: policy.command || '审批已通过，恢复工具调用。',
+        });
+
+        let toolResult;
+        const startedAt = new Date().toISOString();
+        try {
+          toolResult = await this.registry.execute(toolName, preparedArgs, {
+            payload: this.payload,
+            signal: this.signal,
+          });
+        } catch (error) {
+          toolResult = {
+            ok: false,
+            error: error instanceof Error ? error.message : '工具执行失败',
+          };
+        }
+
+        const toolContent = JSON.stringify(toolResult, null, 2);
+        this.toolExecutions.push({
+          id: toolCall.id || `${toolName}-${step}`,
+          toolName,
+          args: preparedArgs,
+          command: policy.command,
+          result: toolResult,
+          ok: toolResult?.ok !== false,
+          startedAt,
+          endedAt: new Date().toISOString(),
+        });
+
+        const toolArtifact = artifactFromToolResult(toolName, preparedArgs, toolResult);
+        if (toolArtifact) {
+          this.artifacts = [
+            toolArtifact,
+            ...this.artifacts.filter((artifact) => artifact.path !== toolArtifact.path),
+          ];
+        }
+
+        this.messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          name: toolName,
+          content: toolContent,
+        });
+
+        this.memory.extractFromToolResult(toolName, preparedArgs, toolResult, step);
+
+        this.onStep?.({
+          type: 'tool_result',
+          toolName,
+          ok: toolResult?.ok !== false,
+          resultPreview: toolContent.slice(0, 300),
+        });
+
+        this.telemetryStore?.append?.({
+          runId: this.currentRunId,
+          type: 'tool_end',
+          threadId: this.payload.threadId,
+          toolName,
+          ok: toolResult?.ok !== false,
+          bytes: toolContent.length,
+        });
+
+        this.emitProgress({
+          status: toolResult?.ok === false ? 'warn' : 'success',
+          title: `已执行 ${toolName}`,
+          detail: toolContent.slice(0, 160),
+        });
+      }
+
+      this.state.pendingToolCalls = [];
+      return this.run(this.messages);
     } finally {
       this.state.isRunning = false;
     }
@@ -639,6 +837,7 @@ class AgentExecutor {
         name: tc.function?.name || tc.name,
         id: tc.id,
       })),
+      pendingToolExecutionCount: this.pendingToolExecutions.length,
       steps: this.state.steps.slice(-20),
       messageCount: this.messages.length,
       finalText: this.finalText?.slice(0, 200) || '',
@@ -722,11 +921,39 @@ function createAgentExecutorSession({
       }
     },
 
-    continueTurn() {
+    async continueTurn(options = {}) {
+      if (executor instanceof AgentExecutor && executor.hasPendingApproval?.()) {
+        if (!(options.approved || options.approvalId)) {
+          return {
+            ok: false,
+            summary: '等待审批：请先在聊天消息中同意或拒绝当前工具调用。',
+            errorMessage: '等待审批：请先在聊天消息中同意或拒绝当前工具调用。',
+            approvalRequest: lastResult?.approvalRequest || null,
+            artifacts: executor.artifacts,
+            toolExecutions: executor.toolExecutions,
+            toolCalls: toolExecutionsToToolCalls(executor.toolExecutions),
+            transcript: executor.messages,
+          };
+        }
+
+        if (options.permissionMode) {
+          executor.payload.permissionMode = options.permissionMode;
+        }
+
+        running = true;
+        try {
+          const result = await executor.continueAfterApproval();
+          lastResult = result;
+          return result;
+        } finally {
+          running = false;
+        }
+      }
+
       if (!lastResult && running) {
         return { ok: false, summary: '没有可继续的回合。', errorMessage: '没有可继续的回合。' };
       }
-      return this.prompt('继续执行上一个未完成任务。请从停止点继续。');
+      return this.prompt(options.text || '继续执行上一个未完成任务。请从停止点继续。');
     },
 
     steer(text) {

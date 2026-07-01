@@ -12,6 +12,8 @@
     "test:agent-history": "node scripts/smoke-agent-history.cjs",
     "test:html-imports": "node scripts/smoke-html-module-imports.cjs",
     "test:intent-router": "node scripts/smoke-intent-router.cjs",
+    "test:intent-router:eval": "node scripts/eval-intent-router.cjs",
+    "test:memory-store": "node scripts/smoke-memory-store.cjs",
     "test:mcp-service": "node scripts/smoke-mcp-service.cjs",
     "test:tool-agent": "node scripts/smoke-tool-agent-loop.cjs",
     "test:wechat-ai-gateway": "node scripts/smoke-wechat-ai-gateway.cjs",
@@ -20,14 +22,18 @@
     "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg"
   },
   "dependencies": {
+    "@chat-adapter/state-memory": "^4.31.0",
     "@earendil-works/pi-agent-core": "^0.78.1",
     "@earendil-works/pi-ai": "^0.78.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@monaco-editor/react": "^4.7.0",
+    "chat": "^4.31.0",
+    "chat-adapter-weixin": "^0.1.3",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.468.0",
     "monaco-editor": "^0.55.1",
     "path-browserify": "^1.0.1",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

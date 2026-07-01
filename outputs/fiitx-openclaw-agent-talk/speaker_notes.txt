@@ -1,0 +1,247 @@
+从 LLM 到 Digital Worker: OpenClaw 的 Agent 架构设计与落地实践
+
+Speaker: 白朋飞 / FIIT.AI
+
+Talk: 48.1 minutes planned, plus 10 minutes Q&A
+
+
+
+01. [0.9 min] 从 LLM 到 Digital Worker
+    开场先建立主题边界：这不是产品功能介绍，而是一次架构方法论分享。Fiitx 是贯穿全场的工程样本。
+    Takeaway: Agent Framework 的价值，不是接一个模型，而是让模型可运行、可治理、可复盘。
+
+02. [0.8 min] 今天只讲一个问题
+    把听众注意力从模型能力拉回系统设计：能不能真正接住业务、工具和责任，是分水岭。
+    Takeaway: Digital Worker 不是更聪明的 Chat，而是带职责、工具、记忆、权限和交付闭环的软件员工。
+
+03. [0.8 min] 50 分钟路线图
+    明确演讲收益和节奏，降低听众焦虑。60 页不是密集讲功能，而是每页一个关键转折。
+    Takeaway: 听完之后，拿走的不是一个工具清单，而是一套 Agent 系统设计检查表。
+
+04. [0.8 min] 先给结论
+    这一页给全场主线。后续所有案例都回到四个动词：理解、执行、负责、改进。
+    Takeaway: 从能力到责任，是 Agent Framework 与 Chat Wrapper 的本质差别。
+
+05. [0.85 min] 阶段一：LLM 应用的第一层幻觉
+    用 Fiitx 早期经历举例：用户看到“已完成”，但文件没有真正存在，这就是回答和完成之间的差异。
+    Takeaway: 把 LLM 当接口，会得到 Chat；把 LLM 当执行者，必须设计运行时。
+
+06. [0.85 min] 阶段二：Tool Calling 的第二层幻觉
+    强调 DeepSeek Thinking Mode 的 reasoning_content 坑：丢字段会造成多轮工具调用失败，这是协议兼容而不是 UI 问题。
+    Takeaway: 工具不是插件按钮，而是 Agent 运行时的一部分。
+
+07. [0.85 min] 阶段三：Agent Demo 的第三层幻觉
+    引出 Hermes 强项：daemon、cron、channels、session search、profile isolation；再说明 Fiitx 为什么吸收这些能力。
+    Takeaway: 上线级 Agent 的问题大多不在模型，而在系统边界和生命周期。
+
+08. [0.8 min] Digital Worker 的最小定义
+    不要把 Digital Worker 神秘化。它是工程对象，必须有接口、配置、状态和审计。
+    Takeaway: Digital Worker = Agent Runtime + Tool Boundary + Memory + Policy + Delivery.
+
+09. [0.75 min] Fiitx 为什么适合作为案例
+    这里不是推销 Fiitx，而是解释为什么这个案例有研究价值：它经历了从 Chat 到 Workbench 的真实转变。
+    Takeaway: Fiitx 的价值在于，它把“Agent 做事”变成了可观察的工程过程。
+
+10. [0.85 min] 从 OpenClaw 看 Agent Framework
+    把 OpenClaw 放到更抽象的位置：不是某个具体仓库，而是一种 Agent 操作系统的架构视角。
+    Takeaway: Agent Framework 是一层“生产关系”：让模型、工具、数据和人协同。
+
+11. [0.95 min] 总架构：四层闭环
+    用这一页作为后面所有架构图的索引。每层都不是孤立模块，而是通过 session 和 trace 串起来。
+    Takeaway: 一切能力都必须落到闭环：输入、决策、执行、验证、复盘。
+
+12. [0.85 min] 第一层：交互不是 Chatbox
+    解释为什么 Fiitx 从单个 App.tsx 和文本框逐步走向 IDE、Artifacts、资源列表和执行流。
+    Takeaway: Agent UI 的核心是减少状态不确定性。
+
+13. [0.8 min] 第二层：Intent Router
+    呼应用户曾问“为什么要有切换 agent 提示”。答案是：产品上应该在入口处路由，而不是在执行中暴露内部模式。
+    Takeaway: 路由判断越早，用户越少被系统内部结构打断。
+
+14. [0.85 min] 第三层：Agent Orchestrator
+    强调多 Agent 不是炫技。真正价值是不同工具权限、上下文、输出格式和评价标准分离。
+    Takeaway: 专业化不是为了复杂，而是为了把责任边界拆清楚。
+
+15. [0.85 min] 第四层：Tool Runtime
+    用本地资源误列不存在文件的例子说明：没有 post-check，就会把模型输出当成事实。
+    Takeaway: 工具调用的重点不是 call，而是 result grounding。
+
+16. [0.8 min] 第五层：Policy Gate
+    强调安全不是用户体验的反面。清晰的权限模型反而降低用户不确定性。
+    Takeaway: 企业 Agent 的可用性，来自安全边界清晰，而不是边界消失。
+
+17. [0.9 min] 第六层：Model Router
+    结合 Fiitx 最近实现的跨 MaaS 自动路由、fallback、成本和延迟感知。
+    Takeaway: BYOM 不只是填 API Key，而是让模型成为可替换资源。
+
+18. [0.85 min] 第七层：MCP / Skill
+    点到 dokie-ppt 这次任务本身：它就是一个 Skill，把 PPT 工程方法固化成可调用流程。
+    Takeaway: Skill 是经验的交付格式，MCP 是外部世界的协议边界。
+
+19. [0.85 min] 第八层：Channel Adapter
+    解释为什么 Channels 要进入 Settings 页面：它决定了任务从哪里来、带什么上下文、走哪个 profile。
+    Takeaway: Channel 不是 UI 适配，而是上下文和身份边界。
+
+20. [0.85 min] Fiitx 开发过程：第一条问题线
+    这是第一个真实产品教训。可观察性不是审计之后再做，而是一开始就决定信任感。
+    Takeaway: Agent 产品第一优先级：让用户看见系统正在做什么。
+
+21. [0.75 min] 执行过程应该默认折叠
+    对应用户反馈：执行过程太长导致页面卡顿和信息干扰。架构上要支持 trace，UI 上要做折叠。
+    Takeaway: 透明度要分层：摘要给所有人，trace 给需要排查的人。
+
+22. [0.85 min] 第二条问题线：本地资源必须可信
+    这个案例很适合架构听众：它说明 Grounding 不只是模型 grounding，也包括 UI grounding。
+    Takeaway: Agent UI 中的“文件”必须来自文件系统状态。
+
+23. [0.85 min] 第三条问题线：IDE 不是装饰
+    提到曾出现 IDE diff 不生效的问题：Diff 的关键是保存原始版本和当前版本，而不是显示两列同一内容。
+    Takeaway: Coding Agent 没有 Diff，就像数据库迁移没有变更脚本。
+
+24. [0.85 min] 第四条问题线：路径和模块解析
+    用孔乙己小游戏案例说明：页面看起来生成了，但模块解析失败，说明执行链没闭环。
+    Takeaway: Agent 写完代码不是结束，运行验证才是交付。
+
+25. [0.9 min] 第五条问题线：多轮 Thinking Mode
+    这页面向做框架的人特别重要：框架不能只抽象成 role/content，否则会丢关键上下文字段。
+    Takeaway: Harness 的稳定性，取决于你是否保存了模型协议的完整状态。
+
+26. [0.85 min] 第六条问题线：MaaS 不是一个 Key
+    回应硅基流动 Key 但没有图片 model 的问题。根因通常是 profile 没声明或 router 没纳入图像能力。
+    Takeaway: 模型中心要管理能力矩阵，而不是 API Key 表。
+
+27. [0.75 min] 第七条问题线：Settings 不是杂物间
+    解释为什么后来把 Agent、审批、历史、审计、策略、模型广场等都收敛到 Settings。
+    Takeaway: 产品导航本身就是架构教育。
+
+28. [0.85 min] 第八条问题线：长期运行
+    这是 Fiitx 吸收 Hermes 强项的核心原因。桌面 Agent 如果只依赖前端页面，就不是真正 Worker。
+    Takeaway: 从 Chatbot 到 Worker 的一个标志：它能在你不看着的时候工作。
+
+29. [0.9 min] 运行时闭环：从一句话到文件落盘
+    这一页作为技术深挖入口。建议讲的时候画出从 prompt 到 manifest 到 file stat 的路径。
+    Takeaway: 把“模型回答”变成“系统状态变化”，需要至少四次转换。
+
+30. [0.85 min] 状态模型：Thread / Session / Artifact
+    把 SessionDB/FTS 引入：搜索历史任务不是为了聊天回忆，而是为了定位决策、工具和交付物。
+    Takeaway: Agent 的记忆不是聊天记录，而是可查询的执行账本。
+
+31. [0.75 min] Progress Stream：即时信任感
+    强调和普通 LLM streaming 不同：只流 token 不够，工具和执行状态也要流。
+    Takeaway: Agent UI 的 streaming 应该包含文字、工具、状态三条流。
+
+32. [0.8 min] Approval：让人参与关键决策
+    说明审批不是阻碍自动化，而是企业场景下让自动化可用的前提。
+    Takeaway: 审批系统的难点不是问用户，而是恢复执行。
+
+33. [0.85 min] MCP：外部世界的工具协议
+    可以讲 Fiitx 中 MCP 管理页：server 列表、启用/禁用、调用结果、权限策略。
+    Takeaway: MCP 的价值不是多一个插件格式，而是把外部能力变成治理对象。
+
+34. [0.85 min] Skill：把经验固化为能力
+    以 dokie-ai-ppt 为例：这次 PPT 需求本身就是用 Skill 把“如何做演讲 deck”标准化。
+    Takeaway: Skill 是 Agent 团队的知识资产格式。
+
+35. [0.8 min] Profile Isolation：避免上下文污染
+    解释为什么 Hermes 的 Profile isolation 很关键，Fiitx 也实现了按 channel/intent/workspace 匹配。
+    Takeaway: Profile 不是用户画像，而是运行边界。
+
+36. [0.8 min] SessionDB / FTS：让复盘成为产品能力
+    结合 Settings > Platform 的 session search，说它是以后 Skill self-learning 和评测数据的入口。
+    Takeaway: 没有可检索历史，就无法从失败中学习。
+
+37. [0.8 min] Model Router：不要让用户理解 MaaS 差异
+    强调如果用户配置了多个 MaaS，Fiitx 应该把它们组织成能力池，而不是让用户手动挑。
+    Takeaway: 模型路由是 Agent 平台的基础设施，不是高级设置。
+
+38. [0.8 min] Channel：外部 IM 控制本机 Agent
+    说明 Channels 页面不是展示列表，而是未来不同入口的身份、认证、审计和上下文管理面。
+    Takeaway: Channel 决定任务从哪里来，也决定默认权限和交互密度。
+
+39. [0.75 min] 工程原则一：先定义完成标准
+    把 Fiitx 的本地资源、Artifact、执行过程这些功能都解释为完成标准的 UI 表达。
+    Takeaway: 没有完成标准，就只能得到漂亮总结。
+
+40. [0.75 min] 工程原则二：一切输出都要落到事实
+    再次引用“不存在文件不要列出来”的修复，把它抽象成 grounding 原则。
+    Takeaway: 事实校验是 Agent 产品和文本生成器的分界线。
+
+41. [0.75 min] 工程原则三：协议字段不能被 UI 简化掉
+    这一页给做 Harness 的工程师：未来模型协议变化会更多，schema 要可扩展。
+    Takeaway: Agent Framework 最容易被低估的部分，是消息 schema。
+
+42. [0.8 min] 工程原则四：把失败做成一等公民
+    用截图中的“已处理但未完成感”作为反例：状态标签必须反映真实风险。
+    Takeaway: 成熟 Agent 系统不是不失败，而是失败可恢复、可解释、可学习。
+
+43. [0.75 min] 工程原则五：前端性能也是 Agent 架构问题
+    回应“任务 chat 轮次太多页面卡顿”的问题。不是简单优化 CSS，而是重新划分信息层级。
+    Takeaway: Agent 任务越真实，UI 状态越多；性能必须早设计。
+
+44. [0.7 min] 工程原则六：Settings 是控制面
+    把 Fiitx Settings 的几次调整总结为控制面设计原则。
+    Takeaway: Agent 平台需要 control plane，而不是只靠 prompt 约束。
+
+45. [0.75 min] 工程原则七：本地优先，云端可选
+    这一页解释为什么 Fiitx 是桌面 app，而不是纯 SaaS 网页。
+    Takeaway: Local-first 不是反云，而是把执行权交回用户机器。
+
+46. [0.8 min] 工程原则八：自举能力
+    这是全场案例的核心：Fiitx 不是被动演示，而是成为自己的生产环境。
+    Takeaway: 能自我迭代的 Agent 产品，更容易发现真实工作流问题。
+
+47. [0.85 min] OpenClaw、Hermes、Fiitx 的角色分工
+    避免做谁好谁坏的比较。重点是 Fiitx 在吸收 Hermes 强项后如何补齐生命周期。
+    Takeaway: 架构演进不是替代，而是吸收不同系统的强项。
+
+48. [0.8 min] 为什么要吸收 Hermes 的强项
+    把这几项和刚刚实现的 Platform 页面对应起来。
+    Takeaway: Digital Worker 的生命周期，比 Chat 会话长得多。
+
+49. [0.85 min] 架构检查表：十个必须回答的问题
+    这页可以作为听众拍照页。它是整场演讲的可迁移输出。
+    Takeaway: 如果这些问题答不上来，系统还停留在 Demo 阶段。
+
+50. [0.85 min] 从 Demo 到业务闭环的迁移路径
+    给企业落地建议：先选一个高频、可验证、风险可控的场景，不要先做万能助手。
+    Takeaway: Agent 平台应当从一个闭环场景开始，而不是从功能大而全开始。
+
+51. [0.8 min] 评价 Digital Worker 的五个指标
+    这页可引出后续 Fiitx 的评价系统和 telemetry。
+    Takeaway: Agent 评测应该覆盖系统行为，而不只是模型输出。
+
+52. [0.85 min] 下一阶段：从 Workbench 到 Worker Mesh
+    把 Fiitx 的路线放到更大的架构趋势里：worker mesh、skill market、workflow OS。
+    Takeaway: 未来的 Agent 平台更像组织系统，而不是聊天工具。
+
+53. [0.85 min] 还没有完全解决的问题
+    技术分享要有诚实边界，避免听众误以为已经全部解决。
+    Takeaway: Agent OS 的难点不是第一次跑通，而是长期稳定。
+
+54. [0.75 min] 给架构师的三条建议
+    这页让听众带走行动项。建议配合前面的检查表一起讲。
+    Takeaway: 先把一个场景做成闭环，再谈平台化。
+
+55. [0.7 min] 核心洞察一
+    进入收尾，开始压缩全场观点。
+    Takeaway: 从 LLM 到 Digital Worker，就是从生成能力到责任能力。
+
+56. [0.7 min] 核心洞察二
+    强调失败案例的价值，呼应中段的多个坑。
+    Takeaway: 如果失败不能进入系统记忆，Agent 永远停留在一次性 Demo。
+
+57. [0.7 min] 核心洞察三
+    把 Settings 页面作为控制面的具象化。
+    Takeaway: 没有控制面，Agent 就只能靠 prompt 运气运行。
+
+58. [0.75 min] 把峰值记忆留给听众
+    这一页是结尾前的峰值时刻，语速放慢。
+    Takeaway: 好的 Agent 系统，是能把不确定性变成可管理工程对象的系统。
+
+59. [0.5 min] Q&A：建议讨论的问题
+    这页作为问答引导，提前把问题聚焦到技术架构和落地方法。
+    Takeaway: 欢迎从架构、工程、产品和组织落地四个角度提问。
+
+60. [0.4 min] 谢谢
+    结束页，保留联系方式或二维码位置。现场可口头补充联系渠道。
+    Takeaway: 把模型能力变成可托付的工作系统。

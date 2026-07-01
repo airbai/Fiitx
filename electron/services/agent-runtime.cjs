@@ -117,6 +117,383 @@ ${claims.map((claim) => `- ${claim.rawPath}`).join("\n")}
 需要真实文件时，应由 Coding Agent 调用 workspace_write、文件 manifest 或 bash 执行后，再以工具结果/Artifact 为准。`;
 }
 
+function getRecentConversationText(payload, limit = 8) {
+  const parts = [
+    ...(payload?.contextMessages || []).slice(-limit).map((message) => message.content || ""),
+    payload?.prompt || ""
+  ];
+  return parts.filter(Boolean).join("\n");
+}
+
+function extractRedemptionCode(text) {
+  const matches = [...String(text || "").matchAll(/\b[A-Z0-9]{2,8}-[A-Z0-9]{4,8}-[A-Z0-9]{4,8}\b/gi)];
+  return matches.length ? matches[matches.length - 1][0].toUpperCase() : "";
+}
+
+function extractRequestedQuantity(text) {
+  const match = String(text || "").match(/(?:生成|发放|发|申请|开通|要|给)?\s*(\d{1,2})\s*(?:个|张|枚|条)?(?:\s*(?:兑换码|码))?/);
+  if (!match) {
+    return 1;
+  }
+  return Math.min(50, Math.max(1, Number(match[1]) || 1));
+}
+
+function extractExpiryDays(text) {
+  const value = String(text || "");
+  if (/一\s*年|1\s*年|year/i.test(value)) return 365;
+  if (/半年|半\s*年/.test(value)) return 183;
+  if (/一\s*个?\s*月|1\s*个?\s*月/.test(value)) return 30;
+  const dayMatch = value.match(/(\d{1,4})\s*(?:天|日|days?)/i);
+  if (dayMatch) return Math.min(3650, Math.max(1, Number(dayMatch[1]) || 30));
+  const monthMatch = value.match(/(\d{1,3})\s*(?:个?\s*月|months?)/i);
+  if (monthMatch) return Math.min(3650, Math.max(1, (Number(monthMatch[1]) || 1) * 30));
+  const yearMatch = value.match(/(\d{1,2})\s*(?:年|years?)/i);
+  if (yearMatch) return Math.min(3650, Math.max(1, (Number(yearMatch[1]) || 1) * 365));
+  return 30;
+}
+
+function extractChannelRecipient(payload) {
+  const context = payload?.channelContext || {};
+  return (
+    context.senderName ||
+    context.userName ||
+    context.openId ||
+    context.openid ||
+    context.senderId ||
+    context.conversationId ||
+    payload?.channelId ||
+    "Fiitx channel user"
+  );
+}
+
+function isClearlyNonRedemptionTask(text) {
+  const value = String(text || "");
+  return /seo\s*blog|blogPosts|sourceUrl|x\.com|twitter\.com|vercel|多语言\s*SEO|每日\s*SEO|博客|发布\s*Agent|npm\s+run\s+build|www\.youxiaojia\.cn/i.test(value);
+}
+
+function hasDirectRedemptionIntent(text, actionPattern, distance = 48) {
+  const value = String(text || "");
+  const target = "(?:zero\\s*2\\s*codex|zero2codex|兑换码|兑\\s*换\\s*码|课程码|发码|redemption)";
+  const action = `(?:${actionPattern})`;
+  const nearby = `[^\\n。；;]{0,${distance}}`;
+  return new RegExp(`${action}${nearby}${target}|${target}${nearby}${action}`, "i").test(value);
+}
+
+function detectZero2CodexRedemptionIntent(payload) {
+  const prompt = String(payload?.prompt || "");
+  const text = getRecentConversationText(payload);
+  const normalized = text.toLowerCase();
+  const promptText = prompt.toLowerCase();
+  if (isClearlyNonRedemptionTask(text)) {
+    return null;
+  }
+  const mentionsCourse = /zero\s*2\s*codex|zero2codex|兑换码|兑\s*换\s*码|课程码|发码/.test(normalized);
+  if (!mentionsCourse) {
+    return null;
+  }
+
+  const code = extractRedemptionCode(text);
+  if (/有效期|过期|到期|延期|延长|expire|expiry|expires/i.test(prompt) && code) {
+    return {
+      operation: "updateExpiry",
+      toolName: "update_redemption_expiry",
+      args: {
+        code,
+        expiresInDays: extractExpiryDays(prompt),
+        reason: `Fiitx ${payload?.channelAdapter?.name || payload?.channelId || "channel"} request: ${prompt.slice(0, 120)}`
+      },
+      requiresApproval: false
+    };
+  }
+
+  if (/撤销|作废|禁用|取消|失效|revoke/i.test(text) && code) {
+    return {
+      operation: "revoke",
+      toolName: "revoke_redemption_code",
+      args: {
+        code,
+        reason: `Fiitx ${payload?.channelAdapter?.name || payload?.channelId || "channel"} request`
+      },
+      requiresApproval: false
+    };
+  }
+
+  if (/查询|查一下|状态|是否可用|用了吗|兑换了吗|lookup/i.test(text) && code) {
+    return {
+      operation: "lookup",
+      toolName: "lookup_redemption_code",
+      args: { code },
+      requiresApproval: false
+    };
+  }
+
+  if (hasDirectRedemptionIntent(text, "列出|列表|展示|明细|最近|list")) {
+    const status = /全部|所有|all/i.test(text)
+      ? "all"
+      : /已兑换|用过|redeemed/i.test(text)
+        ? "redeemed"
+        : /作废|禁用|inactive/i.test(text)
+          ? "inactive"
+          : /过期|expired/i.test(text)
+            ? "expired"
+            : "available";
+    return {
+      operation: "list",
+      toolName: "list_redemption_codes",
+      args: {
+        courseId: "zero2codex",
+        status,
+        limit: Math.max(10, extractRequestedQuantity(prompt))
+      },
+      requiresApproval: false
+    };
+  }
+
+  if (hasDirectRedemptionIntent(text, "库存|统计|剩余|可用|总数|多少|stats")) {
+    return {
+      operation: "stats",
+      toolName: "redemption_stats",
+      args: { courseId: "zero2codex" },
+      requiresApproval: false
+    };
+  }
+
+  const asksIssue =
+    hasDirectRedemptionIntent(text, "申请|发放|生成|创建|发一个|给.{0,20}发|开通|领取|发码|issue") ||
+    (/兑换码|兑\s*换\s*码|课程码|发码/i.test(promptText) && /zero\s*2\s*codex|zero2codex/i.test(normalized) && /申请|发放|生成|创建|发一个|开通|领取|发码|issue/i.test(promptText));
+  if (asksIssue) {
+    return {
+      operation: "issue",
+      toolName: "issue_redemption_codes",
+      args: {
+        quantity: extractRequestedQuantity(prompt),
+        courseId: "zero2codex",
+        expiresInDays: 30,
+        prefix: "Z2C",
+        recipient: extractChannelRecipient(payload),
+        description: [
+          `channel=${payload?.channelId || payload?.channelAdapter?.id || "unknown"}`,
+          `conversation=${payload?.channelContext?.conversationId || payload?.threadId || payload?.sessionId || payload?.taskId || "unknown"}`,
+          `prompt=${String(payload?.prompt || "").slice(0, 120)}`
+        ].join("; ")
+      },
+      requiresApproval: false
+    };
+  }
+
+  return null;
+}
+
+function parseMcpStructuredResult(result) {
+  if (result?.structuredContent && typeof result.structuredContent === "object") {
+    return result.structuredContent;
+  }
+  const text = String(result?.contentText || "");
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function formatRedemptionResult(intent, result) {
+  const data = parseMcpStructuredResult(result);
+  if (!result?.ok) {
+    return result?.contentText || "Zero2Codex 兑换码工具调用失败。";
+  }
+  if (intent.operation === "issue") {
+    const codes = Array.isArray(data?.codes) ? data.codes : [];
+    return [
+      `已生成 ${codes.length || data?.quantity || intent.args.quantity || 1} 个 Zero2Codex 兑换码。`,
+      codes.length ? "" : null,
+      ...codes.map((code) => `- ${code}`),
+      data?.expiresAt ? "" : null,
+      data?.expiresAt ? `有效期至：${data.expiresAt}` : null
+    ].filter(Boolean).join("\n");
+  }
+  if (intent.operation === "revoke") {
+    return data?.ok
+      ? `已撤销兑换码：${intent.args.code}`
+      : (result?.contentText || `兑换码撤销未完成：${intent.args.code}`);
+  }
+  if (intent.operation === "lookup") {
+    return result?.contentText || JSON.stringify(data || {}, null, 2);
+  }
+  if (intent.operation === "updateExpiry") {
+    return data?.ok
+      ? [
+        `已更新 Zero2Codex 兑换码有效期：${intent.args.code}`,
+        data?.expiresAt ? `有效期至：${data.expiresAt}` : null
+      ].filter(Boolean).join("\n")
+      : (result?.contentText || `兑换码有效期更新未完成：${intent.args.code}`);
+  }
+  if (intent.operation === "stats") {
+    const stats = data?.stats && typeof data.stats === "object" ? data.stats : data || {};
+    return [
+      "Zero2Codex 兑换码库存：",
+      `- 总数：${stats?.total ?? "-"}`,
+      `- 可用：${stats?.available ?? "-"}`,
+      `- 已兑换：${stats?.redeemed ?? "-"}`,
+      `- 已禁用：${stats?.inactive ?? "-"}`,
+      `- 已过期：${stats?.expired ?? "-"}`
+    ].join("\n");
+  }
+  if (intent.operation === "list") {
+    const records = Array.isArray(data?.records) ? data.records : [];
+    return [
+      `Zero2Codex 兑换码列表（${data?.status || intent.args.status || "available"}）：`,
+      records.length ? "" : "暂无记录。",
+      ...records.slice(0, intent.args.limit || 30).map((record) => {
+        const suffix = [
+          record?.active === false ? "inactive" : null,
+          record?.redeemedAt ? `redeemed ${record.redeemedAt}` : null,
+          record?.expiresAt ? `expires ${record.expiresAt}` : null
+        ].filter(Boolean).join(" · ");
+        return `- ${record?.code || "(unknown)"}${suffix ? ` (${suffix})` : ""}`;
+      })
+    ].filter(Boolean).join("\n");
+  }
+  return result?.contentText || "Zero2Codex 兑换码工具调用完成。";
+}
+
+async function tryRunZero2CodexRedemptionFlow({ payload, mcpService, emitProgress, channelEvents, businessAgentEvents, taskTitle, signal }) {
+  const intent = detectZero2CodexRedemptionIntent(payload);
+  if (!intent || !mcpService?.callTool) {
+    return null;
+  }
+
+  const command = `mcp__zero2codex-redemption__${intent.toolName} ${JSON.stringify(intent.args || {})}`;
+  const toolEvents = [
+    ...channelEvents,
+    ...businessAgentEvents,
+    {
+      actor: "Capability Router",
+      event: "识别 Zero2Codex 兑换码任务",
+      target: intent.toolName,
+      level: "info"
+    }
+  ];
+
+  const policyMode = resolvePolicyMode(payload, "mcp.tool.call");
+  if (policyMode === "block") {
+    emitProgress({
+      status: "warn",
+      title: "策略阻止",
+      detail: command
+    });
+    return {
+      ok: false,
+      summary: "策略已禁止调用 Zero2Codex 兑换码 MCP。请在设置 > 策略中放开 MCP 工具调用。",
+      mode: "coding",
+      model: "fiitx-gateway",
+      provider: "mcp",
+      title: taskTitle,
+      artifact: null,
+      approvalRequests: [],
+      toolEvents: [
+        ...toolEvents,
+        {
+          actor: "Policy Engine",
+          event: "策略阻止 Zero2Codex MCP",
+          target: command,
+          level: "warn"
+        }
+      ]
+    };
+  }
+
+  if (intent.requiresApproval) {
+    const gate = authorizeToolAction({
+      payload,
+      action: "mcp.tool.call",
+      title: intent.operation === "revoke" ? "允许撤销 Zero2Codex 兑换码" : "允许发放 Zero2Codex 兑换码",
+      detail: intent.operation === "revoke"
+        ? "Fiitx 请求调用 zero2codex-redemption MCP 工具撤销兑换码。"
+        : "Fiitx 请求调用 zero2codex-redemption MCP 工具生成并写入一个新的课程兑换码。",
+      command,
+      risk: "high",
+      emitProgress
+    });
+    toolEvents.push(gate.toolEvent);
+    if (!gate.allowed) {
+      return {
+        ok: false,
+        summary: intent.operation === "revoke"
+          ? "等待审批：需要允许撤销 Zero2Codex 兑换码后才能继续。"
+          : "等待审批：需要允许发放 Zero2Codex 兑换码后才能继续。",
+        mode: "coding",
+        model: "fiitx-gateway",
+        provider: "mcp",
+        title: taskTitle,
+        artifact: null,
+        approvalRequests: [gate.approvalRequest],
+        toolEvents
+      };
+    }
+  } else {
+    toolEvents.push({
+      actor: "Policy Engine",
+      event: "受信 MCP 免审批",
+      target: `${policyMode}: ${command}`,
+      level: "success"
+    });
+  }
+
+  emitProgress({
+    status: "running",
+    title: "调用 Zero2Codex MCP",
+    detail: intent.toolName
+  });
+
+  let result;
+  try {
+    result = await mcpService.callTool("zero2codex-redemption", intent.toolName, intent.args || {});
+    throwIfAborted(signal);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Zero2Codex MCP 调用失败";
+    return {
+      ok: false,
+      summary: `Zero2Codex 兑换码工具调用失败：${message}`,
+      mode: "coding",
+      model: "fiitx-gateway",
+      provider: "mcp",
+      title: taskTitle,
+      artifact: null,
+      toolEvents: [
+        ...toolEvents,
+        {
+          actor: "MCP Server",
+          event: "调用失败",
+          target: `zero2codex-redemption/${intent.toolName}: ${message}`,
+          level: "warn"
+        }
+      ]
+    };
+  }
+  const summary = formatRedemptionResult(intent, result);
+  return {
+    ok: Boolean(result?.ok),
+    summary,
+    mode: "coding",
+    model: "fiitx-gateway",
+    provider: "mcp",
+    title: taskTitle,
+    artifact: null,
+    toolEvents: [
+      ...toolEvents,
+      result.toolEvent || {
+        actor: "MCP Server",
+        event: result?.ok ? "调用完成" : "调用失败",
+        target: `zero2codex-redemption/${intent.toolName}`,
+        level: result?.ok ? "success" : "warn"
+      }
+    ]
+  };
+}
+
 function buildExternalContextPrompt(externalContext) {
   const documents = externalContext?.documents || [];
   if (documents.length === 0) {
@@ -359,6 +736,7 @@ function buildRuntimeContext(payload) {
   const threadContextPrompt = buildThreadContextPrompt(payload.threadContext);
   const businessAgentPrompt = buildBusinessAgentContext(payload.businessAgent);
   const channelAdapterPrompt = buildChannelContextPrompt(payload.channelAdapter);
+  const memoryContextPrompt = payload.memoryContextPrompt || "";
   payload.threadContextPrompt = threadContextPrompt;
   payload.businessAgentPrompt = businessAgentPrompt;
   payload.channelAdapterPrompt = channelAdapterPrompt;
@@ -371,10 +749,11 @@ function buildRuntimeContext(payload) {
 - channel：${payload.channelAdapter ? `${payload.channelAdapter.name}（${payload.channelAdapter.id}）` : "未匹配"}
 - intent：${payload.intent ? `${payload.intent.mode}/${payload.intent.modality || "text"} ${payload.intent.preferredProvider ? `provider=${payload.intent.preferredProvider}` : ""}` : "未识别"}
 - 业务 Agent：${payload.businessAgent ? `${payload.businessAgent.name}（${payload.businessAgent.routeReason || "自动匹配"}）` : "未匹配"}
-- 附件：${attachments || "无"}
+- 附件（已导入当前 workspace，路径可直接用于 workspace_read）：${attachments || "无"}
 - 外部文档：${payload.externalContext?.documents?.length ? `${payload.externalContext.documents.length} 个 URL 已读取` : "无"}
 - 线程语义上下文：${threadContextPrompt ? "已注入" : "无"}
 - 通道上下文：${channelAdapterPrompt ? "已注入" : "无"}
+- 长期记忆：${memoryContextPrompt ? "已注入" : "无"}
 - 外部系统连接器：${payload.connectorContextPrompt ? "已注入" : "无"}
 - MCP Registry：${payload.mcpContextPrompt ? "已注入" : "无"}
 
@@ -383,12 +762,15 @@ function buildRuntimeContext(payload) {
 2. 如果用户当前输入是补充、纠正、追问或只提供参数，要回到上一个未解决的问题继续完成。
 3. 不要把当前输入当成孤立问题，除非用户明确开启新任务。
 4. 完整线程语义上下文由 pi transformContext 注入，模型必须把它作为当前回合的外部上下文使用。
+5. 如果附件列表包含路径，必须优先用 workspace_read 读取对应路径；不要只按文件名猜测位置，也不要要求用户重复提供路径。
 
 ${channelAdapterPrompt}
 
 ${businessAgentPrompt}
 
 ${payload.connectorContextPrompt || ""}
+
+${memoryContextPrompt}
 
 ${payload.mcpContextPrompt || ""}`;
 }
@@ -492,6 +874,456 @@ function containsFileManifest(text) {
 function fileUrlFromPath(filePath) {
   const normalized = String(filePath || "").split("\\").join("/");
   return `file://${encodeURI(normalized)}`;
+}
+
+function isPathInside(root, candidate) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  const boundary = `${resolvedRoot}${path.sep}`;
+  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(boundary);
+}
+
+function normalizePromptFileReference(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^(?:src|href)\s*=\s*/i, "")
+    .replace(/^(?:放到|写入|替换到|输出到|保存到|目标|文件|路径|为|到)+/i, "")
+    .replace(/^["'`【[（(<]+/, "")
+    .replace(/["'`】\]）)>，。；;:：]+$/g, "")
+    .trim();
+}
+
+function extractPromptFileReferences(prompt) {
+  const matches = String(prompt || "").match(/[^\s"'`，。；;:：]+?\.(?:png|jpe?g|webp|gif|svg|pdf|html|md|txt|json|csv|docx?|pptx?|xlsx?|js|ts|tsx|css)\b/gi) || [];
+  return [...new Set(matches.map(normalizePromptFileReference).filter(Boolean))];
+}
+
+function isHtmlReference(reference) {
+  return /\.html?\b/i.test(String(reference || ""));
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function shouldEmbedBase64InHtml(payload, intent, promptReferences) {
+  if (intent?.capabilityIntent?.outputAction === "html.embed_data_uri") {
+    return true;
+  }
+  const prompt = String(payload?.prompt || "");
+  return promptReferences.some(isHtmlReference) &&
+    /(放到|写入|替换|替换为|src|img|html|内嵌|嵌入|data uri|data-uri)/i.test(prompt);
+}
+
+function getHtmlAttributeValue(tag, attribute) {
+  const pattern = new RegExp(`\\b${escapeRegExp(attribute)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i");
+  return pattern.exec(String(tag || ""))?.[2] || "";
+}
+
+function normalizeHtmlAttributeValue(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function extractPromptImageHints(prompt) {
+  const text = String(prompt || "");
+  const classValue = getHtmlAttributeValue(text, "class");
+  const altValue = getHtmlAttributeValue(text, "alt");
+  return {
+    classes: classValue.split(/\s+/).map((item) => item.trim()).filter(Boolean),
+    alt: normalizeHtmlAttributeValue(altValue)
+  };
+}
+
+function imageTagMatchesHints(tag, hints) {
+  if (!hints || (!hints.classes?.length && !hints.alt)) {
+    return false;
+  }
+  const tagClasses = new Set(getHtmlAttributeValue(tag, "class").split(/\s+/).filter(Boolean));
+  if (hints.classes?.some((className) => tagClasses.has(className))) {
+    return true;
+  }
+  const tagAlt = normalizeHtmlAttributeValue(getHtmlAttributeValue(tag, "alt"));
+  return Boolean(hints.alt && tagAlt === hints.alt);
+}
+
+function replaceSrcInImageTag(tag, dataUri) {
+  if (/\bsrc\s*=/i.test(tag)) {
+    return tag.replace(/(\bsrc\s*=\s*)(["'])([\s\S]*?)\2/i, `$1$2${dataUri}$2`);
+  }
+  return tag.replace(/^<img\b/i, `<img src="${dataUri}"`);
+}
+
+function replaceHtmlSrcWithDataUri(html, sourceBaseName, dataUri, hints = {}) {
+  const sourcePattern = escapeRegExp(sourceBaseName).replace(/\\ /g, "\\s+");
+  let replacements = 0;
+  let alreadyEmbedded = 0;
+  let matchedBy = "src";
+  const quotedSrcPattern = new RegExp(`(<[^>]+\\bsrc\\s*=\\s*)(["'])([^"']*${sourcePattern}[^"']*)\\2`, "gi");
+  let content = String(html || "").replace(quotedSrcPattern, (match, prefix, quote) => {
+    replacements += 1;
+    return `${prefix}${quote}${dataUri}${quote}`;
+  });
+
+  if (replacements === 0) {
+    const unquotedSrcPattern = new RegExp(`(<[^>]+\\bsrc\\s*=\\s*)([^\\s>]*${sourcePattern}[^\\s>]*)`, "gi");
+    content = content.replace(unquotedSrcPattern, (match, prefix) => {
+      replacements += 1;
+      return `${prefix}${dataUri}`;
+    });
+  }
+
+  if (replacements === 0 && (hints.classes?.length || hints.alt)) {
+    matchedBy = hints.classes?.length ? "class" : "alt";
+    content = content.replace(/<img\b[^>]*>/gi, (tag) => {
+      if (!imageTagMatchesHints(tag, hints)) {
+        return tag;
+      }
+      if (String(tag).includes(dataUri)) {
+        alreadyEmbedded += 1;
+        return tag;
+      }
+      replacements += 1;
+      return replaceSrcInImageTag(tag, dataUri);
+    });
+  }
+
+  return { content, replacements, alreadyEmbedded, matchedBy };
+}
+
+function getMimeType(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  const mimeTypes = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".pdf": "application/pdf",
+    ".html": "text/html",
+    ".md": "text/markdown",
+    ".txt": "text/plain",
+    ".json": "application/json",
+    ".csv": "text/csv",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".js": "text/javascript",
+    ".ts": "text/typescript",
+    ".tsx": "text/typescript",
+    ".css": "text/css"
+  };
+  return mimeTypes[extension] || "application/octet-stream";
+}
+
+function collectFileReferenceCandidates(payload) {
+  const threadContext = payload.threadContext || {};
+  const pathLikeValues = [
+    ...(payload.attachments || []),
+    threadContext.currentTarget?.path,
+    threadContext.selectedFile?.path,
+    threadContext.lastArtifact?.path,
+    ...(threadContext.artifacts || []).map((artifact) => artifact?.path),
+    ...(threadContext.executionArtifacts || []).map((artifact) => artifact?.path),
+    ...extractPromptFileReferences(payload.prompt)
+  ];
+  return [...new Set(pathLikeValues.map((item) => String(item || "").trim()).filter(Boolean))];
+}
+
+function findWorkspaceFileByReference(workspaceRoot, reference, allReferences = []) {
+  const requested = String(reference || "").trim();
+  const requestedBase = path.basename(requested);
+  if (!requestedBase) {
+    return null;
+  }
+
+  const directCandidates = [requested, ...allReferences]
+    .map((candidate) => String(candidate || "").trim())
+    .filter(Boolean)
+    .map((candidate) => {
+      const expanded = candidate.startsWith("~/")
+        ? path.join(process.env.HOME || "", candidate.slice(2))
+        : candidate;
+      return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(workspaceRoot, expanded);
+    })
+    .filter((candidate) => isPathInside(workspaceRoot, candidate));
+
+  for (const candidate of directCandidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile() && path.basename(candidate) === requestedBase) {
+        return candidate;
+      }
+    } catch {
+      // Continue scanning candidates.
+    }
+  }
+
+  const ignoredDirectories = new Set([".git", "node_modules", "dist", "release", "coverage", ".next", ".turbo", "build", "out", ".cache"]);
+  const matches = [];
+  function walk(directory, depth) {
+    if (depth > 7 || matches.length > 30) {
+      return;
+    }
+    let entries = [];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredDirectories.has(entry.name)) {
+          walk(absolutePath, depth + 1);
+        }
+        continue;
+      }
+      if (entry.isFile() && entry.name === requestedBase) {
+        try {
+          const stat = fs.statSync(absolutePath);
+          matches.push({ absolutePath, mtimeMs: stat.mtimeMs });
+        } catch {
+          // Ignore files that disappear during scan.
+        }
+      }
+    }
+  }
+  walk(workspaceRoot, 0);
+  matches.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  return matches[0]?.absolutePath || null;
+}
+
+async function tryRunLocalFileTransform({ payload, intent, emitProgress, channelEvents, businessAgentEvents, taskTitle }) {
+  if (intent.intentNamespace !== "file.transform.base64") {
+    return null;
+  }
+  const workspaceRoot = path.resolve(payload.workspacePath || process.cwd());
+  if (!fs.existsSync(workspaceRoot) || !fs.statSync(workspaceRoot).isDirectory()) {
+    return {
+      ok: false,
+      summary: `无法执行 base64 转换：workspace 不存在或不是目录。\nworkspace：${workspaceRoot}`,
+      mode: "coding",
+      model: "local",
+      provider: "local-tool",
+      title: taskTitle,
+      artifact: null,
+      toolEvents: [
+        ...channelEvents,
+        ...businessAgentEvents,
+        { actor: "File Transform", event: "workspace 不可用", target: workspaceRoot, level: "warn" }
+      ]
+    };
+  }
+
+  const references = collectFileReferenceCandidates(payload);
+  const promptReferences = extractPromptFileReferences(payload.prompt);
+  const sourceReferences = [
+    ...promptReferences.filter((reference) => !isHtmlReference(reference)),
+    ...references.filter((reference) => !isHtmlReference(reference))
+  ];
+  const requestedReference = sourceReferences[0] || promptReferences[0] || references[0] || "";
+  const sourcePath = findWorkspaceFileByReference(workspaceRoot, requestedReference, references);
+  if (!sourcePath) {
+    return {
+      ok: false,
+      summary: [
+        "没有找到要转换为 base64 的文件。",
+        requestedReference ? `目标文件：${requestedReference}` : "当前输入没有明确文件名。",
+        `请通过附件按钮选择文件，或确认文件已在 workspace 中：${workspaceRoot}`
+      ].join("\n"),
+      mode: "coding",
+      model: "local",
+      provider: "local-tool",
+      title: taskTitle,
+      artifact: null,
+      toolEvents: [
+        ...channelEvents,
+        ...businessAgentEvents,
+        { actor: "File Transform", event: "未找到源文件", target: requestedReference || payload.prompt, level: "warn" }
+      ]
+    };
+  }
+
+  const stat = fs.statSync(sourcePath);
+  if (stat.size > 25 * 1024 * 1024) {
+    return {
+      ok: false,
+      summary: `文件超过 25MB，暂不直接转换为 base64：${path.relative(workspaceRoot, sourcePath)}`,
+      mode: "coding",
+      model: "local",
+      provider: "local-tool",
+      title: taskTitle,
+      artifact: null,
+      toolEvents: [
+        ...channelEvents,
+        ...businessAgentEvents,
+        { actor: "File Transform", event: "文件过大", target: path.relative(workspaceRoot, sourcePath), level: "warn" }
+      ]
+    };
+  }
+
+  emitProgress({
+    status: "running",
+    title: "本地文件转换",
+    detail: `读取 ${path.relative(workspaceRoot, sourcePath)} 并生成 base64`
+  });
+
+  const buffer = fs.readFileSync(sourcePath);
+  const base64 = buffer.toString("base64");
+  const mimeType = getMimeType(sourcePath);
+  const dataUri = `data:${mimeType};base64,${base64}`;
+  const outputDirectory = path.join(workspaceRoot, "artifacts", "base64");
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  const safeBase = path.basename(sourcePath).replace(/[\\/:*?"<>|]+/g, "-");
+  const outputPath = path.join(outputDirectory, `${safeBase}.base64.txt`);
+  const relativeSource = path.relative(workspaceRoot, sourcePath);
+  const relativeOutput = path.relative(workspaceRoot, outputPath);
+  const outputContent = [
+    `source: ${relativeSource}`,
+    `mime: ${mimeType}`,
+    `bytes: ${buffer.length}`,
+    "",
+    "base64:",
+    base64,
+    "",
+    "data_uri:",
+    dataUri
+  ].join("\n");
+  fs.writeFileSync(outputPath, outputContent, "utf8");
+
+  emitProgress({
+    status: "success",
+    title: "base64 已生成",
+    detail: relativeOutput
+  });
+
+  let htmlEmbed = null;
+  if (shouldEmbedBase64InHtml(payload, intent, promptReferences)) {
+    const htmlReference = promptReferences.find(isHtmlReference) || "index.html";
+    const targetHtmlPath = findWorkspaceFileByReference(workspaceRoot, htmlReference, references);
+    if (!targetHtmlPath) {
+      htmlEmbed = {
+        attempted: true,
+        ok: false,
+        reason: `未找到目标 HTML：${htmlReference}`
+      };
+      emitProgress({
+        status: "warn",
+        title: "HTML 未更新",
+        detail: htmlEmbed.reason
+      });
+    } else {
+      const originalHtml = fs.readFileSync(targetHtmlPath, "utf8");
+      const replaced = replaceHtmlSrcWithDataUri(
+        originalHtml,
+        path.basename(sourcePath),
+        dataUri,
+        extractPromptImageHints(payload.prompt)
+      );
+      if (replaced.replacements > 0) {
+        fs.writeFileSync(targetHtmlPath, replaced.content, "utf8");
+        htmlEmbed = {
+          attempted: true,
+          ok: true,
+          path: targetHtmlPath,
+          relativePath: path.relative(workspaceRoot, targetHtmlPath),
+          replacements: replaced.replacements,
+          content: replaced.content
+        };
+        emitProgress({
+          status: "success",
+          title: "HTML 已内嵌 base64",
+          detail: `${htmlEmbed.relativePath} · 替换 ${htmlEmbed.replacements} 处 src`
+        });
+      } else if (replaced.alreadyEmbedded > 0) {
+        htmlEmbed = {
+          attempted: true,
+          ok: true,
+          alreadyEmbedded: true,
+          path: targetHtmlPath,
+          relativePath: path.relative(workspaceRoot, targetHtmlPath),
+          replacements: 0,
+          content: originalHtml
+        };
+        emitProgress({
+          status: "success",
+          title: "HTML 已包含 base64",
+          detail: `${htmlEmbed.relativePath} · 匹配 ${replaced.alreadyEmbedded} 个 <img>，无需重复写入`
+        });
+      } else {
+        htmlEmbed = {
+          attempted: true,
+          ok: false,
+          path: targetHtmlPath,
+          relativePath: path.relative(workspaceRoot, targetHtmlPath),
+          reason: `目标 HTML 中没有找到引用 ${path.basename(sourcePath)} 的 src`
+        };
+        emitProgress({
+          status: "warn",
+          title: "HTML 未更新",
+          detail: htmlEmbed.reason
+        });
+      }
+    }
+  }
+
+  const inlineBase64 = base64.length <= 12000 ? `\n\n\`\`\`base64\n${base64}\n\`\`\`` : "";
+  const summaryLines = [
+    `已将 ${relativeSource} 转成 base64。`,
+    `输出文件：${relativeOutput}`,
+    `MIME：${mimeType}`,
+    `原始大小：${buffer.length} bytes`,
+    `base64 长度：${base64.length}`
+  ];
+  if (htmlEmbed?.ok) {
+    summaryLines.push(
+      htmlEmbed.alreadyEmbedded
+        ? `HTML 已包含 base64：${htmlEmbed.relativePath}，无需重复写入。`
+        : `已更新 HTML：${htmlEmbed.relativePath}，替换 ${htmlEmbed.replacements} 处 src 为 data URI。`
+    );
+  } else if (htmlEmbed?.attempted) {
+    summaryLines.push(`未更新 HTML：${htmlEmbed.reason}`);
+  }
+  summaryLines.push(inlineBase64 || "base64 内容较长，已写入输出文件，可在本地资源中打开或复制。");
+  const summary = summaryLines.filter(Boolean).join("\n");
+  const artifactPath = htmlEmbed?.ok ? htmlEmbed.relativePath : relativeOutput;
+  const artifactTitle = htmlEmbed?.ok ? `${path.basename(htmlEmbed.path)} 已内嵌 base64` : `${path.basename(sourcePath)} Base64`;
+  const artifactLanguage = htmlEmbed?.ok ? "html" : "text";
+  const artifactContent = htmlEmbed?.ok ? htmlEmbed.content : outputContent;
+  const artifactStatus = htmlEmbed?.ok ? "modified" : "added";
+
+  return {
+    ok: true,
+    summary,
+    mode: "coding",
+    model: "local",
+    provider: "local-tool",
+    title: taskTitle,
+    artifact: {
+      path: artifactPath,
+      title: artifactTitle,
+      language: artifactLanguage,
+      status: artifactStatus,
+      additions: artifactContent.split(/\r?\n/).length,
+      deletions: 0,
+      preview: artifactContent.length > 60000 ? `${artifactContent.slice(0, 60000)}\n\n... truncated in preview; full file is at ${artifactPath}` : artifactContent
+    },
+    toolEvents: [
+      ...channelEvents,
+      ...businessAgentEvents,
+      { actor: "Intent Router", event: "识别文件 base64 转换", target: relativeSource, level: "info" },
+      { actor: "File Transform", event: "生成 base64 文件", target: relativeOutput, level: "success" },
+      ...(htmlEmbed?.attempted ? [{
+        actor: "HTML Embed",
+        event: htmlEmbed.alreadyEmbedded ? "确认 data URI 已存在" : htmlEmbed.ok ? "写入 data URI" : "未写入 data URI",
+        target: htmlEmbed.relativePath || htmlEmbed.reason,
+        level: htmlEmbed.ok ? "success" : "warn"
+      }] : [])
+    ]
+  };
 }
 
 function createMediaArtifact({ payload, profile, mediaResult, modality }) {
@@ -783,6 +1615,7 @@ function createAgentRuntime({
   artifactEngine,
   wechatAiSkillGateway,
   sessionLogStore,
+  memoryStore,
   telemetryStore,
   toolRegistry,
   skillRegistry,
@@ -1112,6 +1945,21 @@ function createAgentRuntime({
       });
     }
 
+    if (memoryStore?.buildContextPrompt) {
+      payload.memoryContextPrompt = memoryStore.buildContextPrompt({
+        prompt: payload.prompt,
+        workspacePath: payload.workspacePath,
+        channelId: payload.channelId || payload.channelContext?.channelId || channelAdapter?.id || "",
+        threadId: getSessionId(payload)
+      });
+      if (payload.memoryContextPrompt) {
+        await emitProgressStep({
+          title: "MemoryStore",
+          detail: "已召回长期记忆并注入本轮上下文。"
+        });
+      }
+    }
+
     const intent = routeIntent(payload);
     payload.intent = intent;
     const businessAgent = selectBusinessAgent(payload);
@@ -1142,6 +1990,19 @@ function createAgentRuntime({
         title: "Agent Router",
         detail: `调用 ${businessAgent.name}：${businessAgent.routeReason}`
       });
+    }
+
+    const redemptionResult = await tryRunZero2CodexRedemptionFlow({
+      payload,
+      mcpService,
+      emitProgress,
+      channelEvents,
+      businessAgentEvents,
+      taskTitle,
+      signal: runSignal
+    });
+    if (redemptionResult) {
+      return redemptionResult;
     }
 
     if (wechatAiSkillGateway) {
@@ -1201,6 +2062,18 @@ function createAgentRuntime({
           ]
         };
       }
+    }
+
+    const localFileTransformResult = await tryRunLocalFileTransform({
+      payload,
+      intent,
+      emitProgress,
+      channelEvents,
+      businessAgentEvents,
+      taskTitle
+    });
+    if (localFileTransformResult) {
+      return localFileTransformResult;
     }
 
     const preferredModel = resolveAgentModelPreference(businessAgent, payload.model);
@@ -1651,6 +2524,22 @@ function createAgentRuntime({
 
     try {
       const result = await runAgentTaskInner(payload, emitProgress, controller.signal);
+      try {
+        const writtenMemories = memoryStore?.recordRun?.({ payload, result }) || [];
+        if (writtenMemories.length > 0) {
+          emitProgress({
+            status: "success",
+            title: "MemoryStore",
+            detail: `已更新 ${writtenMemories.length} 条长期记忆`
+          });
+        }
+      } catch (memoryError) {
+        emitProgress({
+          status: "warn",
+          title: "MemoryStore",
+          detail: memoryError instanceof Error ? memoryError.message : "长期记忆写入失败"
+        });
+      }
       telemetryStore?.finishRun?.(telemetryRunId, {
         ...result,
         durationMs: Date.now() - startedAt
@@ -1765,7 +2654,7 @@ function createAgentRuntime({
       title: "继续执行",
       detail: payload.threadId
     });
-    return session.continueTurn();
+    return session.continueTurn(payload);
   }
 
   async function compact(payload, emitProgress = () => undefined) {

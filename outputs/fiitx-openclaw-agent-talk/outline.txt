@@ -1,0 +1,665 @@
+# Page 1. 从 LLM 到 Digital Worker
+- Title: 从 LLM 到 Digital Worker
+- SubTitle: OpenClaw 的 Agent 架构设计与落地实践
+- Content:
+  - 以 Fiitx 开发过程为例
+  - 50 分钟演讲 + 10 分钟问答
+  - 从架构问题到落地闭环
+  - Kicker: Agent Framework 的价值，不是接一个模型，而是让模型可运行、可治理、可复盘。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 2. 今天只讲一个问题
+- Title: 今天只讲一个问题
+- SubTitle: 为什么从 LLM 走到 Digital Worker，必须重做业务架构？
+- Content:
+  - LLM 很强，但默认没有组织边界
+  - Tool Calling 很有用，但默认不可治理
+  - Agent Demo 很快，但默认不可长期运行
+  - Kicker: Digital Worker 不是更聪明的 Chat，而是带职责、工具、记忆、权限和交付闭环的软件员工。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 3. 50 分钟路线图
+- Title: 50 分钟路线图
+- SubTitle: 用一个真实桌面 Agent 的迭代过程拆架构
+- Content:
+  - 第一段：从 LLM 到 Digital Worker 的定义
+  - 第二段：OpenClaw / Fiitx 的分层架构
+  - 第三段：开发 Fiitx 时踩到的 8 个坑
+  - 第四段：可迁移的方法论和组织落地路径
+  - Kicker: 听完之后，拿走的不是一个工具清单，而是一套 Agent 系统设计检查表。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 4. 先给结论
+- Title: 先给结论
+- SubTitle: Agent 架构的核心不是“会调用工具”，而是“能被托付任务”
+- Content:
+  - 能理解目标：Intent / Plan / Context
+  - 能执行任务：Tool / Workspace / Channel
+  - 能承担责任：Policy / Audit / Rollback
+  - 能持续改进：History / Skill / Evaluation
+  - Kicker: 从能力到责任，是 Agent Framework 与 Chat Wrapper 的本质差别。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 5. 阶段一：LLM 应用的第一层幻觉
+- Title: 阶段一：LLM 应用的第一层幻觉
+- SubTitle: “模型能回答”不等于“系统能完成”
+- Content:
+  - 回答是文本，业务需要状态变化
+  - 一次对话是瞬时的，工作流是长期的
+  - 模型输出没有天然权限边界
+  - 用户真正关心的是交付结果是否落盘
+  - Kicker: 把 LLM 当接口，会得到 Chat；把 LLM 当执行者，必须设计运行时。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 6. 阶段二：Tool Calling 的第二层幻觉
+- Title: 阶段二：Tool Calling 的第二层幻觉
+- SubTitle: 工具能调用，不代表工具链可信
+- Content:
+  - 工具调用需要审批、回滚、审计
+  - 工具结果需要结构化归档，而不是只显示日志
+  - 失败需要分类：权限、路径、依赖、模型、上下文
+  - 多轮工具调用还要保留 reasoning_content 等协议字段
+  - Kicker: 工具不是插件按钮，而是 Agent 运行时的一部分。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 7. 阶段三：Agent Demo 的第三层幻觉
+- Title: 阶段三：Agent Demo 的第三层幻觉
+- SubTitle: Demo 能跑，不代表能上线
+- Content:
+  - 没有长期运行 daemon，任务无法跨时间触发
+  - 没有 Channel 抽象，外部 IM 无法可靠进入系统
+  - 没有 SessionDB，复盘只能靠截图
+  - 没有 Profile isolation，不同入口会污染上下文假设
+  - Kicker: 上线级 Agent 的问题大多不在模型，而在系统边界和生命周期。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 8. Digital Worker 的最小定义
+- Title: Digital Worker 的最小定义
+- SubTitle: 一个能被托付、能交付、能复盘的 Agent 单元
+- Content:
+  - 身份：它是谁，服务哪个场景
+  - 能力：它能用哪些工具和数据
+  - 边界：它需要什么审批和权限
+  - 记录：它做过什么，为什么这么做
+  - 改进：它如何从历史任务形成 Skill
+  - Kicker: Digital Worker = Agent Runtime + Tool Boundary + Memory + Policy + Delivery.
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 9. Fiitx 为什么适合作为案例
+- Title: Fiitx 为什么适合作为案例
+- SubTitle: 它不是拿 Agent 做 Demo，而是用 Agent 迭代 Agent 产品本身
+- Content:
+  - React + Electron 的桌面壳，接近真实工作流
+  - 本地 workspace、IDE、文件预览、审批都在一个闭环中
+  - MCP、Skill、Channel、Model Router 持续加入
+  - 开发过程暴露出 Agent 产品化的真实痛点
+  - Kicker: Fiitx 的价值在于，它把“Agent 做事”变成了可观察的工程过程。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 10. 从 OpenClaw 看 Agent Framework
+- Title: 从 OpenClaw 看 Agent Framework
+- SubTitle: 框架要解决的是系统性问题，而不是模型提示词问题
+- Content:
+  - Context：怎样把用户、文件、历史、外部事件组织成输入
+  - Action：怎样选择工具、执行工具、处理失败
+  - Control：怎样审批、隔离、审计和降级
+  - Evolution：怎样沉淀 Skill、Profile 和评价数据
+  - Kicker: Agent Framework 是一层“生产关系”：让模型、工具、数据和人协同。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 11. 总架构：四层闭环
+- Title: 总架构：四层闭环
+- SubTitle: Fiitx 的开发过程最终收敛为四层
+- Content:
+  - 交互层：Workbench、IDE、Artifacts、Channels
+  - 决策层：Intent Router、Agent Orchestrator、Model Router
+  - 执行层：Tool Runtime、Workspace、MCP、Skill
+  - 治理层：Policy、Approval、Audit、History、Profile Isolation
+  - Kicker: 一切能力都必须落到闭环：输入、决策、执行、验证、复盘。
+- Design: Left text with right diagram, grid paper background and blue speaker-reminder bar
+
+# Page 12. 第一层：交互不是 Chatbox
+- Title: 第一层：交互不是 Chatbox
+- SubTitle: 用户需要的是工作台，而不是输入框
+- Content:
+  - 任务列表：区分 Chat / Coding / Waiting / Done
+  - 本地资源：显示真实落盘文件，而不是模型声称的路径
+  - Artifacts：预览 HTML、图片、PDF、PPT、文档
+  - IDE：代码查看、Diff、保存、路径定位
+  - Kicker: Agent UI 的核心是减少状态不确定性。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 13. 第二层：Intent Router
+- Title: 第二层：Intent Router
+- SubTitle: 一开始就判断任务类型，而不是中途提示用户切 Agent
+- Content:
+  - Chat：解释、问答、分析
+  - Coding：读取 workspace、修改文件、运行验证
+  - Artifact：生成可预览交付物
+  - Channel：来自 IM、IDE、Cron 的任务带不同上下文
+  - Kicker: 路由判断越早，用户越少被系统内部结构打断。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 14. 第三层：Agent Orchestrator
+- Title: 第三层：Agent Orchestrator
+- SubTitle: 不是一个万能 Agent，而是一组可组合角色
+- Content:
+  - Research Agent：补上下文和证据
+  - Coding Agent：读写文件、运行命令、验证结果
+  - Artifact Agent：生成 HTML/PPT/文档等交付物
+  - Chat Agent：用更低成本处理纯问答
+  - Kicker: 专业化不是为了复杂，而是为了把责任边界拆清楚。
+- Design: Left text with right diagram, grid paper background and blue speaker-reminder bar
+
+# Page 15. 第四层：Tool Runtime
+- Title: 第四层：Tool Runtime
+- SubTitle: 工具链要有统一的执行协议
+- Content:
+  - Shell / Workspace / Network / MCP 使用同一审批模型
+  - 工具输入、输出、错误都进入 session log
+  - 工具结果会反哺本地资源列表和 artifact 预览
+  - 每次写入后需要校验真实文件状态
+  - Kicker: 工具调用的重点不是 call，而是 result grounding。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 16. 第五层：Policy Gate
+- Title: 第五层：Policy Gate
+- SubTitle: Agent 必须先学会“不能做什么”
+- Content:
+  - 默认请求审批：文件写入、shell、网络、MCP tool
+  - 风险分级：低风险自动，高风险显式确认
+  - 审批结果写入审计链
+  - 策略可配置，而不是硬编码在 prompt 里
+  - Kicker: 企业 Agent 的可用性，来自安全边界清晰，而不是边界消失。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 17. 第六层：Model Router
+- Title: 第六层：Model Router
+- SubTitle: 模型对用户透明，但对系统可治理
+- Content:
+  - Provider Registry：模型、能力、成本、延迟元数据
+  - 按任务路由：文本、工具调用、视觉、JSON 输出
+  - Fallback：失败后自动换 MaaS
+  - 熔断：连续失败后短时避开故障 Provider
+  - Kicker: BYOM 不只是填 API Key，而是让模型成为可替换资源。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 18. 第七层：MCP / Skill
+- Title: 第七层：MCP / Skill
+- SubTitle: 外部能力必须标准化进入运行时
+- Content:
+  - MCP：tools、resources、prompts 统一注册
+  - Skill：把工作流经验封装为可安装能力
+  - 权限：外部工具同样走审批和审计
+  - 市场：本地 Skill、仓库 Skill、未来远程 Skill
+  - Kicker: Skill 是经验的交付格式，MCP 是外部世界的协议边界。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 19. 第八层：Channel Adapter
+- Title: 第八层：Channel Adapter
+- SubTitle: 电脑里的 Agent 需要能被外部世界触发
+- Content:
+  - Desktop Workbench：默认交互入口
+  - WeChat / Weixin iLink：IM 控制本机 Agent
+  - VS Code：把 IDE 上下文带进任务
+  - Daemon / Cron：没有用户在线时也能运行
+  - Kicker: Channel 不是 UI 适配，而是上下文和身份边界。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 20. Fiitx 开发过程：第一条问题线
+- Title: Fiitx 开发过程：第一条问题线
+- SubTitle: 从“完成了”到“真的完成了”
+- Content:
+  - 早期：Agent 回复结果，但 UI 没有展示真实执行过程
+  - 问题：用户不知道任务是否卡住、失败或只生成了摘要
+  - 改造：流式展示执行过程和 agent 正文
+  - 结果：执行和交付开始可观察
+  - Kicker: Agent 产品第一优先级：让用户看见系统正在做什么。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 21. 执行过程应该默认折叠
+- Title: 执行过程应该默认折叠
+- SubTitle: 信息透明不等于信息噪声
+- Content:
+  - 默认折叠：不打断阅读正文
+  - 点击展开：查看工具调用、推理阶段、状态变化
+  - 关键摘要常驻：已处理多久、编辑了几个文件
+  - 异常高亮：未完成、需审批、未落盘
+  - Kicker: 透明度要分层：摘要给所有人，trace 给需要排查的人。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 22. 第二条问题线：本地资源必须可信
+- Title: 第二条问题线：本地资源必须可信
+- SubTitle: 不要把模型提到的路径当文件列表
+- Content:
+  - 问题：文件不存在，却出现在本地资源区
+  - 根因：从文本和 manifest 抽路径，没有落盘校验
+  - 修复：去重、过滤 missing、区分 workspace 与 artifact
+  - 教训：资源列表展示的是事实，不是候选线索
+  - Kicker: Agent UI 中的“文件”必须来自文件系统状态。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 23. 第三条问题线：IDE 不是装饰
+- Title: 第三条问题线：IDE 不是装饰
+- SubTitle: 代码任务必须有阅读、Diff、保存和预览闭环
+- Content:
+  - Monaco Editor：语法高亮和大文件阅读
+  - 多标签：跨文件查看上下文
+  - Diff：查看修改前后，而不是只信 agent 总结
+  - Artifact 预览：HTML、图片、文档、PPT 可快速验证
+  - Kicker: Coding Agent 没有 Diff，就像数据库迁移没有变更脚本。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 24. 第四条问题线：路径和模块解析
+- Title: 第四条问题线：路径和模块解析
+- SubTitle: Agent 生成代码后，运行环境会暴露真实约束
+- Content:
+  - HTML 中 import three 失败：Vite 不认识裸模块
+  - file:// 安全域限制：本地文件不能直接跨模块加载
+  - 解决：CDN import、Vite server、依赖安装或构建配置
+  - 教训：生成代码必须接运行验证
+  - Kicker: Agent 写完代码不是结束，运行验证才是交付。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 25. 第五条问题线：多轮 Thinking Mode
+- Title: 第五条问题线：多轮 Thinking Mode
+- SubTitle: reasoning_content 是协议兼容问题，不是日志问题
+- Content:
+  - DeepSeek-V4 Thinking Mode 多轮工具调用需要保留 reasoning_content
+  - 只保存 content 会破坏后续请求
+  - Agent message schema 必须容纳 content、reasoning_content、tool_calls
+  - 历史存储和模型适配都要支持该字段
+  - Kicker: Harness 的稳定性，取决于你是否保存了模型协议的完整状态。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 26. 第六条问题线：MaaS 不是一个 Key
+- Title: 第六条问题线：MaaS 不是一个 Key
+- SubTitle: 配置了 Key，不代表路由能找到正确能力
+- Content:
+  - 文本模型、视觉模型、图像生成模型是不同能力域
+  - Provider 需要声明 supportsVision / imageGeneration / toolUse
+  - Router 需要按任务类型选择候选队列
+  - 错误提示要告诉用户缺的是能力，不只是 Key
+  - Kicker: 模型中心要管理能力矩阵，而不是 API Key 表。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 27. 第七条问题线：Settings 不是杂物间
+- Title: 第七条问题线：Settings 不是杂物间
+- SubTitle: 配置页必须反映系统架构
+- Content:
+  - General：语言、版本、本机状态
+  - Agent / Policy / Model：运行时核心
+  - MCP / Skill / Channels：扩展能力
+  - Platform：Daemon、Cron、SessionDB、Profile Isolation
+  - Kicker: 产品导航本身就是架构教育。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 28. 第八条问题线：长期运行
+- Title: 第八条问题线：长期运行
+- SubTitle: Digital Worker 不能只在用户按发送时存在
+- Content:
+  - Daemon：桌面 Agent 的后台生命线
+  - Cron：定时巡检、发布、复盘、同步
+  - Channel Keep Warm：IM 入口需要长期监听
+  - SessionDB：后台任务同样必须可审计
+  - Kicker: 从 Chatbot 到 Worker 的一个标志：它能在你不看着的时候工作。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 29. 运行时闭环：从一句话到文件落盘
+- Title: 运行时闭环：从一句话到文件落盘
+- SubTitle: Agent task 的完整链路
+- Content:
+  - 输入：用户、附件、workspace、channel context
+  - 路由：intent + agent + model profile
+  - 执行：tool loop + policy gate + progress stream
+  - 验证：文件系统检查 + artifact preview + audit log
+  - Kicker: 把“模型回答”变成“系统状态变化”，需要至少四次转换。
+- Design: Left text with right diagram, grid paper background and blue speaker-reminder bar
+
+# Page 30. 状态模型：Thread / Session / Artifact
+- Title: 状态模型：Thread / Session / Artifact
+- SubTitle: 没有状态模型，就没有复盘
+- Content:
+  - Thread：用户可见的任务上下文
+  - Session：运行时事件和工具调用日志
+  - Artifact：可预览、可打开、可复用的交付物
+  - Trace：把消息、工具、策略、产物串起来
+  - Kicker: Agent 的记忆不是聊天记录，而是可查询的执行账本。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 31. Progress Stream：即时信任感
+- Title: Progress Stream：即时信任感
+- SubTitle: 流式展示的不只是 token，而是状态
+- Content:
+  - 模型正文流式：减少等待黑箱
+  - 工具事件流式：让用户看到正在读写什么
+  - 状态摘要流式：处理多久、是否等待审批
+  - 异常流式：失败尽早暴露，不等最终回答
+  - Kicker: Agent UI 的 streaming 应该包含文字、工具、状态三条流。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 32. Approval：让人参与关键决策
+- Title: Approval：让人参与关键决策
+- SubTitle: Human-in-the-loop 不是弹窗，而是责任边界
+- Content:
+  - 请求审批：解释要做什么、为什么做、影响范围
+  - 审批后继续：runtime 能恢复现场
+  - 拒绝后降级：给出替代路径
+  - 审计可追踪：谁在何时批准了什么
+  - Kicker: 审批系统的难点不是问用户，而是恢复执行。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 33. MCP：外部世界的工具协议
+- Title: MCP：外部世界的工具协议
+- SubTitle: 把工具、资源、提示词纳入统一生命周期
+- Content:
+  - 连接：stdio / HTTP / SSE server
+  - 发现：tools / resources / prompts
+  - 转换：模型 tool calls
+  - 治理：审批、调用、展示、审计
+  - Kicker: MCP 的价值不是多一个插件格式，而是把外部能力变成治理对象。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 34. Skill：把经验固化为能力
+- Title: Skill：把经验固化为能力
+- SubTitle: 从一次成功任务，到可复用 workflow
+- Content:
+  - Skill.md：说明触发条件、步骤、约束
+  - 本地安装：从目录或 Git 仓库扫描
+  - 启用/禁用/删除：像软件包一样管理
+  - 自学习：从 session 中生成 Skill 草稿
+  - Kicker: Skill 是 Agent 团队的知识资产格式。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 35. Profile Isolation：避免上下文污染
+- Title: Profile Isolation：避免上下文污染
+- SubTitle: 不同入口应该拥有不同身份和默认假设
+- Content:
+  - Workbench：完整上下文，适合复杂任务
+  - IM Channel：短文本、轻交互、需确认
+  - Cron：无人值守，默认更保守
+  - Coding：拥有 workspace，但写入仍需策略约束
+  - Kicker: Profile 不是用户画像，而是运行边界。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 36. SessionDB / FTS：让复盘成为产品能力
+- Title: SessionDB / FTS：让复盘成为产品能力
+- SubTitle: 搜索历史不是辅助功能，而是治理能力
+- Content:
+  - 按线程搜索：找任务上下文
+  - 按工具搜索：找失败调用
+  - 按产物搜索：找交付路径
+  - 按策略搜索：找审批和风险点
+  - Kicker: 没有可检索历史，就无法从失败中学习。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 37. Model Router：不要让用户理解 MaaS 差异
+- Title: Model Router：不要让用户理解 MaaS 差异
+- SubTitle: 系统负责选择模型，用户负责定义目标
+- Content:
+  - 能力维度：tools、vision、JSON、streaming、image
+  - 质量维度：成功率、连续失败、熔断状态
+  - 成本维度：input/output price
+  - 体验维度：延迟和可用性
+  - Kicker: 模型路由是 Agent 平台的基础设施，不是高级设置。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 38. Channel：外部 IM 控制本机 Agent
+- Title: Channel：外部 IM 控制本机 Agent
+- SubTitle: 真正的 Digital Worker 应该能被工作流触发
+- Content:
+  - WeChat / iLink：移动端任务入口
+  - Telegram / Slack / Discord：全球协作入口
+  - VS Code：开发者上下文入口
+  - Daemon Cron：时间触发入口
+  - Kicker: Channel 决定任务从哪里来，也决定默认权限和交互密度。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 39. 工程原则一：先定义完成标准
+- Title: 工程原则一：先定义完成标准
+- SubTitle: 每个 Agent 任务都要回答“什么叫完成”
+- Content:
+  - 聊天任务：给出答案和不确定性
+  - 代码任务：文件写入 + 构建/测试通过
+  - 文档任务：文件生成 + 可预览
+  - 运维任务：命令结果 + 回滚方案
+  - Kicker: 没有完成标准，就只能得到漂亮总结。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 40. 工程原则二：一切输出都要落到事实
+- Title: 工程原则二：一切输出都要落到事实
+- SubTitle: 文件系统、命令退出码、URL、截图、测试结果
+- Content:
+  - 写文件后立即 stat/read 校验
+  - 启动服务后用浏览器或 HTTP 验证
+  - Diff 需要真实 base 和 current
+  - 预览文件只显示存在的路径
+  - Kicker: 事实校验是 Agent 产品和文本生成器的分界线。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 41. 工程原则三：协议字段不能被 UI 简化掉
+- Title: 工程原则三：协议字段不能被 UI 简化掉
+- SubTitle: message history 是运行时状态，不只是聊天内容
+- Content:
+  - 保留 reasoning_content
+  - 保留 tool_calls 和 tool_results
+  - 保留 channel context
+  - 保留 approval decision 和 policy snapshot
+  - Kicker: Agent Framework 最容易被低估的部分，是消息 schema。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 42. 工程原则四：把失败做成一等公民
+- Title: 工程原则四：把失败做成一等公民
+- SubTitle: 失败不是边角 case，而是 Agent 迭代燃料
+- Content:
+  - 分类：模型、权限、路径、依赖、工具、网络
+  - 展示：用户能看懂，不只看 stack trace
+  - 复盘：进入 history 和 audit
+  - 学习：沉淀为 Skill、policy 或 route rule
+  - Kicker: 成熟 Agent 系统不是不失败，而是失败可恢复、可解释、可学习。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 43. 工程原则五：前端性能也是 Agent 架构问题
+- Title: 工程原则五：前端性能也是 Agent 架构问题
+- SubTitle: 多轮对话越长，UI 越容易成为瓶颈
+- Content:
+  - 长 trace 默认折叠
+  - 消息和执行事件分层渲染
+  - 大型文件放进 IDE/Artifact，不堆在消息里
+  - 历史线程需要索引和懒加载
+  - Kicker: Agent 任务越真实，UI 状态越多；性能必须早设计。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 44. 工程原则六：Settings 是控制面
+- Title: 工程原则六：Settings 是控制面
+- SubTitle: 用户要能理解和改变系统行为
+- Content:
+  - Model：配置 provider 和路由
+  - Policy：配置权限和沙箱
+  - MCP / Skill：配置外部能力
+  - Platform：配置 daemon、cron、profile
+  - Kicker: Agent 平台需要 control plane，而不是只靠 prompt 约束。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 45. 工程原则七：本地优先，云端可选
+- Title: 工程原则七：本地优先，云端可选
+- SubTitle: 桌面 Agent 的独特优势
+- Content:
+  - 可直接访问 workspace 和本地应用
+  - Keychain / safeStorage 保护密钥
+  - 离线状态下保留历史和配置
+  - 外部 Channel 通过受控入口进入本机
+  - Kicker: Local-first 不是反云，而是把执行权交回用户机器。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 46. 工程原则八：自举能力
+- Title: 工程原则八：自举能力
+- SubTitle: 用 Fiitx 开发 Fiitx，暴露架构真实度
+- Content:
+  - 发现问题：用户直接在产品里反馈
+  - 修改代码：Agent 读写项目文件
+  - 运行验证：build / smoke test
+  - 沉淀规则：把坑变成产品能力
+  - Kicker: 能自我迭代的 Agent 产品，更容易发现真实工作流问题。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 47. OpenClaw、Hermes、Fiitx 的角色分工
+- Title: OpenClaw、Hermes、Fiitx 的角色分工
+- SubTitle: 三类能力对 Agent 平台都重要
+- Content:
+  - OpenClaw：结构化 Agent / Skill / Channel 思路
+  - Hermes：长期运行、Cron、多 Channel、Profile isolation
+  - Fiitx：桌面 Workbench、IDE、Artifact、Policy 和本地 workspace
+  - 融合方向：Digital Worker OS
+  - Kicker: 架构演进不是替代，而是吸收不同系统的强项。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 48. 为什么要吸收 Hermes 的强项
+- Title: 为什么要吸收 Hermes 的强项
+- SubTitle: Fiitx 原本强在交互闭环，Hermes 强在后台生命周期
+- Content:
+  - Daemon：让 Agent 不依赖前端页面
+  - Cron：让任务可以按时间发生
+  - Channels：让外部世界触发本机能力
+  - Profile isolation：让不同入口互不污染
+  - SessionDB/FTS：让历史可检索
+  - Kicker: Digital Worker 的生命周期，比 Chat 会话长得多。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 49. 架构检查表：十个必须回答的问题
+- Title: 架构检查表：十个必须回答的问题
+- SubTitle: 做 Agent Framework 前先问清楚
+- Content:
+  - 谁触发任务？从哪个 channel？
+  - 用哪个 profile？默认权限是什么？
+  - 上下文从哪里来？如何压缩？
+  - 工具如何审批？失败如何恢复？
+  - 结果如何验证？历史如何复盘？
+  - Kicker: 如果这些问题答不上来，系统还停留在 Demo 阶段。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 50. 从 Demo 到业务闭环的迁移路径
+- Title: 从 Demo 到业务闭环的迁移路径
+- SubTitle: 不要一次性建完 Agent OS
+- Content:
+  - Step 1：把任务完成标准产品化
+  - Step 2：把工具调用治理化
+  - Step 3：把历史和失败结构化
+  - Step 4：把能力 Skill 化
+  - Step 5：把 Channel 和 Daemon 接入生产流程
+  - Kicker: Agent 平台应当从一个闭环场景开始，而不是从功能大而全开始。
+- Design: Left text with right diagram, grid paper background and blue speaker-reminder bar
+
+# Page 51. 评价 Digital Worker 的五个指标
+- Title: 评价 Digital Worker 的五个指标
+- SubTitle: 不要只看回答质量
+- Content:
+  - Task success：真实完成率
+  - Grounding：结果和事实的一致性
+  - Recoverability：失败后可恢复性
+  - Governance：审批和审计覆盖率
+  - Learnability：能否沉淀为 Skill 和路由规则
+  - Kicker: Agent 评测应该覆盖系统行为，而不只是模型输出。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 52. 下一阶段：从 Workbench 到 Worker Mesh
+- Title: 下一阶段：从 Workbench 到 Worker Mesh
+- SubTitle: 多个 Digital Worker 协同，而不是一个大模型助手
+- Content:
+  - 每个 Worker 有明确职责和 profile
+  - 通过 Channel 接收外部事件
+  - 通过 Skill 复用组织经验
+  - 通过 Policy 共享安全边界
+  - 通过 SessionDB 形成组织记忆
+  - Kicker: 未来的 Agent 平台更像组织系统，而不是聊天工具。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 53. 还没有完全解决的问题
+- Title: 还没有完全解决的问题
+- SubTitle: 成熟度来自承认边界
+- Content:
+  - 跨工具事务：部分成功后的回滚仍复杂
+  - 长期记忆：保留什么、忘记什么、谁有权限看
+  - Skill 质量：自学习草稿如何验证和版本化
+  - 多 Channel 安全：外部 IM 控制本机需要强认证
+  - 模型漂移：Provider 行为变化需要持续监测
+  - Kicker: Agent OS 的难点不是第一次跑通，而是长期稳定。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 54. 给架构师的三条建议
+- Title: 给架构师的三条建议
+- SubTitle: 从明天可以做的事情开始
+- Content:
+  - 把当前 AI 应用的状态模型画出来
+  - 给每个工具调用补上审批、日志和结果校验
+  - 把一个成功 workflow 写成 Skill，而不是写进 prompt
+  - Kicker: 先把一个场景做成闭环，再谈平台化。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 55. 核心洞察一
+- Title: 核心洞察一
+- SubTitle: Agent Framework 的本质是“责任工程”
+- Content:
+  - 让模型知道目标
+  - 让工具有边界
+  - 让结果可验证
+  - 让过程可追踪
+  - 让经验可复用
+  - Kicker: 从 LLM 到 Digital Worker，就是从生成能力到责任能力。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 56. 核心洞察二
+- Title: 核心洞察二
+- SubTitle: 最有价值的不是成功路径，而是失败闭环
+- Content:
+  - 失败可见：用户知道发生了什么
+  - 失败可诊断：系统知道哪里出了问题
+  - 失败可恢复：运行时可以继续或降级
+  - 失败可学习：沉淀为 Skill、策略和路由
+  - Kicker: 如果失败不能进入系统记忆，Agent 永远停留在一次性 Demo。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 57. 核心洞察三
+- Title: 核心洞察三
+- SubTitle: Digital Worker 需要 Control Plane
+- Content:
+  - Model：能力、成本、延迟和 fallback
+  - Policy：审批、沙箱和敏感操作
+  - Skill：能力安装、启用和版本
+  - Channel：入口、身份和上下文
+  - Platform：Daemon、Cron 和 SessionDB
+  - Kicker: 没有控制面，Agent 就只能靠 prompt 运气运行。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 58. 把峰值记忆留给听众
+- Title: 把峰值记忆留给听众
+- SubTitle: 一句话总结全场
+- Content:
+  - 不要问模型能不能回答
+  - 要问系统能不能交付
+  - 不要只看 Demo 漂亮不漂亮
+  - 要看失败之后能不能复盘和修复
+  - Kicker: 好的 Agent 系统，是能把不确定性变成可管理工程对象的系统。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 59. Q&A：建议讨论的问题
+- Title: Q&A：建议讨论的问题
+- SubTitle: 10 分钟问答
+- Content:
+  - 企业内部第一个 Agent 闭环场景怎么选？
+  - MCP 和 Skill 的边界如何划分？
+  - 模型路由和成本控制怎么做？
+  - IM 控制本机 Agent 的安全边界在哪里？
+  - 长期记忆和隐私如何平衡？
+  - Kicker: 欢迎从架构、工程、产品和组织落地四个角度提问。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway
+
+# Page 60. 谢谢
+- Title: 谢谢
+- SubTitle: 从 LLM 到 Digital Worker
+- Content:
+  - FIIT.AI / Fiitx
+  - Agent Framework、OpenClaw、Digital Worker
+  - 让 AI 从回答问题走向完成工作
+  - Kicker: 把模型能力变成可托付的工作系统。
+- Design: Single-topic layout, grid paper background, blue speaker-reminder bar, highlighted takeaway

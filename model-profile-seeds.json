@@ -1,0 +1,21 @@
+[
+  {
+    "id": "seed-deepseek-v4-flash",
+    "provider": "DeepSeek",
+    "model": "deepseek-v4-flash",
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "sk-7a08a28d14e4420ba5c068e34594313b",
+    "contextWindow": 64000,
+    "toolCallStyle": "openai",
+    "capabilities": [
+      "tools",
+      "vision",
+      "streaming",
+      "json",
+      "coding",
+      "research",
+      "cheap"
+    ],
+    "source": "packaged-seed"
+  }
+]

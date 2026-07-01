@@ -1,6 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { defaultProfileSeeds, endpointForProfile, normalizeModelName } = require("./provider-registry.cjs");
+const {
+  modelCapabilityHints: registryModelCapabilityHints,
+  normalizeCapabilityProfile,
+  profileCanUseCapability
+} = require("./model-capability-registry.cjs");
 
 const siliconFlowImageFallbackModels = [
   "Kwai-Kolors/Kolors",
@@ -301,6 +306,16 @@ function createModelRouter({ app, safeStorage }) {
     return path.join(app.getPath("userData"), "model-profiles.json");
   }
 
+  function getPackagedSeedPaths() {
+    const candidates = [
+      path.join(__dirname, "../model-profile-seeds.json")
+    ];
+    if (process.resourcesPath) {
+      candidates.push(path.join(process.resourcesPath, "model-profile-seeds.json"));
+    }
+    return candidates;
+  }
+
   function getMetricsPath() {
     return path.join(app.getPath("userData"), "model-router-metrics.json");
   }
@@ -579,7 +594,7 @@ function createModelRouter({ app, safeStorage }) {
     const encryptedApiKey = payload.apiKey
       ? encryptApiKey(payload.apiKey)
       : existingProfile?.encryptedApiKey || null;
-    return {
+    return normalizeCapabilityProfile({
       id: payload.id,
       provider: payload.provider,
       model: normalizeModelName(payload.model),
@@ -589,6 +604,9 @@ function createModelRouter({ app, safeStorage }) {
       supportsVision: payload.supportsVision,
       supportsStreaming: payload.supportsStreaming,
       supportsJsonMode: payload.supportsJsonMode,
+      inputModalities: payload.inputModalities,
+      outputModalities: payload.outputModalities,
+      capabilities: payload.capabilities,
       bestFor: payload.bestFor,
       toolCallStyle: payload.toolCallStyle,
       inputCostPer1M: payload.inputCostPer1M,
@@ -599,16 +617,55 @@ function createModelRouter({ app, safeStorage }) {
       encryptedApiKey,
       updatedAt: now,
       createdAt: payload.createdAt || existingProfile?.createdAt || now
-    };
+    });
+  }
+
+  function readPackagedProfileSeeds() {
+    for (const seedPath of getPackagedSeedPaths()) {
+      try {
+        if (!fs.existsSync(seedPath)) {
+          continue;
+        }
+        const parsed = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+        const list = Array.isArray(parsed) ? parsed : parsed?.profiles;
+        if (!Array.isArray(list)) {
+          continue;
+        }
+        return list
+          .map((seed) => {
+            const normalizedModel = normalizeModelName(seed?.model || "");
+            const baseSeed = defaultProfileSeeds.find((item) =>
+              item.id === seed?.id ||
+              (item.provider === seed?.provider && normalizeModelName(item.model) === normalizedModel)
+            );
+            return {
+              ...(baseSeed || {}),
+              ...seed,
+              id: seed?.id || baseSeed?.id || `packaged-${String(seed?.provider || "model").toLowerCase()}-${normalizedModel}`,
+              model: normalizedModel,
+              apiKey: seed?.apiKey || seed?.key || process.env[seed?.envKey] || ""
+            };
+          })
+          .filter((seed) => seed.provider && seed.model && seed.apiKey);
+      } catch {
+        continue;
+      }
+    }
+    return [];
   }
 
   function ensureSeededProfiles() {
-    const seeds = defaultProfileSeeds
+    const envSeeds = defaultProfileSeeds
       .map((seed) => ({
         ...seed,
         apiKey: process.env[seed.envKey]
       }))
       .filter((seed) => seed.apiKey);
+    const seedById = new Map();
+    for (const seed of readPackagedProfileSeeds().concat(envSeeds)) {
+      seedById.set(seed.id, seed);
+    }
+    const seeds = Array.from(seedById.values());
 
     if (seeds.length === 0) {
       return;
@@ -616,20 +673,26 @@ function createModelRouter({ app, safeStorage }) {
 
     const profiles = readProfiles();
     const seededIds = new Set(seeds.map((seed) => seed.id));
-    const next = seeds.map(createStoredProfile).concat(profiles.filter((profile) => !seededIds.has(profile.id)));
+    const next = seeds
+      .map((seed) => {
+        const existingProfile = profiles.find((profile) => profile.id === seed.id) ||
+          profiles.find((profile) => profile.provider === seed.provider && normalizeModelName(profile.model) === normalizeModelName(seed.model));
+        return hasDecryptableApiKey(existingProfile) ? existingProfile : createStoredProfile(seed, existingProfile);
+      })
+      .concat(profiles.filter((profile) => !seededIds.has(profile.id)));
     writeProfiles(next);
   }
 
   function sanitizeProfile(profile) {
     const { encryptedApiKey, ...safeProfile } = profile;
     const keyStatus = apiKeyStatus(profile);
-    return {
+    return normalizeCapabilityProfile({
       ...safeProfile,
       hasApiKey: keyStatus === "available",
       hasStoredApiKey: hasStoredApiKey(profile),
       keyStatus,
       routeStats: profileStats(profile)
-    };
+    });
   }
 
   function listProfiles() {
@@ -675,39 +738,7 @@ function createModelRouter({ app, safeStorage }) {
   }
 
   function modelCapabilityHints(profile, capability) {
-    const provider = String(profile?.provider || "").toLowerCase();
-    const model = String(profile?.model || "").toLowerCase();
-    const haystack = `${provider} ${model}`;
-
-    if (capability === "image") {
-      return [
-        "image",
-        "img",
-        "vision",
-        "vl",
-        "flux",
-        "kolors",
-        "stable-diffusion",
-        "sdxl",
-        "dall-e",
-        "gpt-image",
-        "midjourney",
-        "ideogram",
-        "janus"
-      ].some((hint) => haystack.includes(hint));
-    }
-
-    if (capability === "video") {
-      return ["video", "wan", "kling", "sora", "hunyuan", "minimax-video", "runway"].some((hint) =>
-        haystack.includes(hint)
-      );
-    }
-
-    if (capability === "audio") {
-      return ["audio", "voice", "speech", "tts", "asr", "whisper"].some((hint) => haystack.includes(hint));
-    }
-
-    return false;
+    return registryModelCapabilityHints(profile, capability);
   }
 
   function imageModelCandidates(profile) {
@@ -720,7 +751,7 @@ function createModelRouter({ app, safeStorage }) {
     if (isSiliconFlow) {
       candidates.push(...siliconFlowImageFallbackModels);
     }
-    if (!isSiliconFlow && model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01"].includes(String(model).toLowerCase())) {
+    if (!isSiliconFlow && model && !candidates.includes(model) && !["deepseek-v4-flash", "deepseek-v4-pro", "minimax-text-01", "openrouter/auto"].includes(String(model).toLowerCase())) {
       candidates.push(model);
     }
     return Array.from(new Set(candidates.filter(Boolean)));
@@ -802,11 +833,15 @@ function createModelRouter({ app, safeStorage }) {
 
   function profileRank(profile, preferredModel, intent = {}) {
     let score = 0;
+    const requiredCapability = primaryIntentModelCapability(intent);
     if (profile.id === preferredModel || profile.provider === preferredModel || normalizeModelName(profile.model) === normalizeModelName(preferredModel)) {
       score += 40;
     }
     if (intent.preferredProvider && profileMatchesProvider(profile, intent.preferredProvider)) {
       score += 35;
+    }
+    if (requiredCapability && profileMatchesCapability(profile, requiredCapability)) {
+      score += 45;
     }
     if (intent.modality && intent.modality !== "text" && profileMatchesCapability(profile, intent.modality)) {
       score += 30;
@@ -828,6 +863,7 @@ function createModelRouter({ app, safeStorage }) {
   function routeCandidate(profile, preferredModel, intent = {}, index = 0) {
     const stats = profileStats(profile);
     const score = profileRank(profile, preferredModel, intent);
+    const requiredCapability = primaryIntentModelCapability(intent);
     return {
       profile,
       index,
@@ -837,6 +873,7 @@ function createModelRouter({ app, safeStorage }) {
           ? "preferred"
           : "",
         intent.preferredProvider && profileMatchesProvider(profile, intent.preferredProvider) ? "provider-match" : "",
+        requiredCapability && profileMatchesCapability(profile, requiredCapability) ? `capability:${requiredCapability}` : "",
         intent.mode === "coding" && profileMatchesCapability(profile, "coding") ? "coding" : "",
         intent.modality && intent.modality !== "text" && profileMatchesCapability(profile, intent.modality) ? intent.modality : "",
         stats.averageLatencyMs ? `avg-latency:${stats.averageLatencyMs}ms` : "",
@@ -848,8 +885,11 @@ function createModelRouter({ app, safeStorage }) {
 
   function resolveModelProfiles(preferredModel, intent = {}) {
     const allProfiles = readProfiles().filter(hasDecryptableApiKey);
+    const requiredCapability = primaryIntentModelCapability(intent);
     const profiles =
-      intent.modality && ["image", "video", "audio"].includes(intent.modality)
+      requiredCapability
+        ? allProfiles.filter((profile) => profileMatchesCapability(profile, requiredCapability))
+        : intent.modality && ["image", "video", "audio"].includes(intent.modality)
         ? allProfiles.filter((profile) => profileMatchesCapability(profile, intent.modality))
         : allProfiles;
     const sorted = profiles
@@ -875,31 +915,30 @@ function createModelRouter({ app, safeStorage }) {
     if (!profile || !capability || capability === "text") {
       return false;
     }
-    const bestFor = Array.isArray(profile.bestFor) ? profile.bestFor.map((item) => String(item).toLowerCase()) : [];
-    if (profileMatchesProvider(profile, "OpenRouter") && normalizeModelName(profile.model) === "openrouter/auto") {
-      return ["image", "video", "audio", "vision", "coding", "research"].includes(capability);
-    }
+    return profileCanUseCapability(profile, capability);
+  }
 
-    if (["image", "video", "audio"].includes(capability)) {
-      if (modelCapabilityHints(profile, capability)) {
-        return true;
-      }
-      if (profileMatchesProvider(profile, "硅基流动") || profileMatchesProvider(profile, "SiliconFlow")) {
-        return bestFor.includes(capability) || (capability === "image" && (bestFor.includes("vision") || profile.supportsVision));
-      }
-      return false;
+  function primaryIntentModelCapability(intent = {}) {
+    const capabilities = Array.isArray(intent.capabilityIntent?.requiredModelCapabilities)
+      ? intent.capabilityIntent.requiredModelCapabilities.filter(Boolean)
+      : [];
+    if (capabilities.length > 0) {
+      return capabilities[0];
     }
-
-    if (bestFor.includes(capability)) {
-      return true;
+    const modelCapability = String(intent.capabilityIntent?.modelCapability || "");
+    if (modelCapability && modelCapability !== "chat") {
+      return modelCapability;
     }
-    if (modelCapabilityHints(profile, capability)) {
-      return true;
+    if (intent.modality === "image") {
+      return "imageGeneration";
     }
-    if (capability === "vision" && (bestFor.includes("vision") || profile.supportsVision)) {
-      return true;
+    if (intent.modality === "video") {
+      return "videoGeneration";
     }
-    return false;
+    if (intent.modality === "audio") {
+      return "audioGeneration";
+    }
+    return "";
   }
 
   function resolveModelProfile(preferredModel, intent = {}) {
@@ -1547,8 +1586,9 @@ function createModelRouter({ app, safeStorage }) {
 
   async function callMediaWithFallback(intent, prompt, options = {}) {
     const profiles = resolveModelProfiles(options.preferredModel, intent);
+    const requiredCapability = primaryIntentModelCapability(intent);
     const skippedKeyless = readProfiles()
-      .filter((profile) => !hasDecryptableApiKey(profile) && profileMatchesCapability(profile, intent.modality))
+      .filter((profile) => !hasDecryptableApiKey(profile) && profileMatchesCapability(profile, requiredCapability || intent.modality))
       .map((profile) =>
         `${profile.provider} / ${profile.model}${hasStoredApiKey(profile) ? "（API Key 无法解密，请重新保存）" : ""}`
       );
